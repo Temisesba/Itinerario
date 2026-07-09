@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ideas ✦</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink:        #1a1814;
+  --ink-2:      #5a5650;
+  --ink-3:      #9a9590;
+  --cream:      #faf8f4;
+  --cream-2:    #f2efe9;
+  --cream-3:    #e8e4dc;
+  --line:       rgba(26,24,20,0.10);
+  --gold:       #c9973a;
+  --gold-light: #fdf3e1;
+  --radius:     12px;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-sans:  'DM Sans', sans-serif;
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--cream);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── Layout ───────────────────────────────────────────────── */
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* Sidebar */
+.sidebar {
+  width: 220px; flex-shrink: 0;
+  background: var(--cream-2);
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  padding: 24px 0;
+  overflow-y: auto;
+}
+
+.sidebar-logo {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  padding: 0 20px 20px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+  color: var(--ink);
+  letter-spacing: -0.3px;
+}
+.sidebar-logo span { color: var(--gold); }
+
+.sidebar-section {
+  font-size: 10px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 0 20px 8px;
+  margin-top: 8px;
+}
+
+.filter-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 7px 20px;
+  background: none; border: none; cursor: pointer;
+  font-family: var(--font-sans); font-size: 13px;
+  color: var(--ink-2); text-align: left;
+  transition: background 0.15s, color 0.15s;
+  border-radius: 0;
+}
+.filter-btn:hover { background: var(--cream-3); color: var(--ink); }
+.filter-btn.active { background: var(--cream-3); color: var(--ink); font-weight: 500; }
+.filter-btn .dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--ink-3);
+}
+
+.tag-list { overflow-y: auto; flex: 1; }
+
+/* Main */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+.topbar {
+  padding: 16px 24px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px;
+  background: var(--cream);
+}
+
+.search-wrap { flex: 1; position: relative; }
+.search-wrap input {
+  width: 100%; padding: 9px 12px 9px 36px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--cream-2); font-family: var(--font-sans);
+  font-size: 13px; color: var(--ink);
+  outline: none; transition: border-color 0.15s;
+}
+.search-wrap input:focus { border-color: var(--gold); background: #fff; }
+.search-wrap .ico {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--ink-3); font-size: 15px; pointer-events: none;
+}
+
+.btn-add {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 16px; border-radius: var(--radius);
+  background: var(--ink); color: var(--cream);
+  border: none; cursor: pointer;
+  font-family: var(--font-sans); font-size: 13px; font-weight: 500;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-add:hover { background: #333; }
+
+.count-bar {
+  padding: 8px 24px;
+  font-size: 12px; color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Grid de ideas */
+.ideas-wrap { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.ideas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+/* Card idea */
+.idea-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  cursor: default;
+  animation: fadeIn 0.2s ease;
+}
+.idea-card:hover { border-color: var(--cream-3); box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.card-text {
+  font-size: 13.5px; line-height: 1.65; color: var(--ink);
+  flex: 1;
+}
+
+.card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-pill {
+  font-size: 11px; font-weight: 500;
+  padding: 2px 9px; border-radius: 20px;
+  cursor: pointer; transition: opacity 0.15s;
+  background: var(--cream-2); color: var(--ink-2);
+  border: 1px solid var(--line);
+}
+.tag-pill:hover { opacity: 0.75; }
+
+/* colores por categoría */
+.tag-pill[data-cat="estado-animo"]    { background: #EDF5FB; color: #0c447c; border-color: #b5d4f4; }
+.tag-pill[data-cat="superacion"]      { background: #EEEDFE; color: #3C3489; border-color: #afa9ec; }
+.tag-pill[data-cat="recomendacion"]   { background: #FBEAF0; color: #72243E; border-color: #ed93b1; }
+.tag-pill[data-cat="proyecto"]        { background: #EAF3DE; color: #27500A; border-color: #97c459; }
+.tag-pill[data-cat="habito"]          { background: #FAEEDA; color: #633806; border-color: #ef9f27; }
+
+.card-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; color: var(--ink-3);
+}
+.card-actions { display: flex; gap: 6px; }
+.icon-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--ink-3); font-size: 15px; padding: 2px;
+  transition: color 0.15s; line-height: 1;
+}
+.icon-btn:hover { color: var(--ink); }
+.icon-btn.fav.active { color: var(--gold); }
+
+/* Empty state */
+.empty {
+  grid-column: 1/-1;
+  text-align: center; padding: 60px 20px;
+  color: var(--ink-3);
+}
+.empty .emoji { font-size: 40px; margin-bottom: 12px; }
+.empty p { font-size: 14px; }
+
+/* ── Modal base ───────────────────────────────────────────── */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(26,24,20,0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; padding: 16px;
+  animation: fadeOverlay 0.15s ease;
+}
+@keyframes fadeOverlay { from { opacity: 0; } to { opacity: 1; } }
+
+.modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%; max-width: 540px;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  animation: slideUp 0.2s ease;
+}
+@keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.modal-header {
+  padding: 20px 24px 0;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-title {
+  font-family: var(--font-serif);
+  font-size: 20px; color: var(--ink);
+}
+.modal-close {
+  background: none; border: none; cursor: pointer;
+  color: var(--ink-3); font-size: 20px; line-height: 1;
+  padding: 4px; transition: color 0.15s;
+}
+.modal-close:hover { color: var(--ink); }
+.modal-body { padding: 16px 24px 24px; }
+
+/* Form elements */
+.field { margin-bottom: 14px; }
+.field label {
+  display: block; font-size: 12px; font-weight: 500;
+  color: var(--ink-2); margin-bottom: 5px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.field textarea, .field input, .field select {
+  width: 100%; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--cream-2); font-family: var(--font-sans);
+  font-size: 13px; color: var(--ink);
+  outline: none; transition: border-color 0.15s;
+}
+.field textarea { resize: vertical; min-height: 90px; }
+.field textarea:focus, .field input:focus, .field select:focus {
+  border-color: var(--gold); background: #fff;
+}
+
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Tags seleccionadas en el modal */
+.selected-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; min-height: 28px; }
+.selected-tag {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--gold-light); color: #7a5a10;
+  border: 1px solid #e8c87a;
+  font-size: 12px; font-weight: 500;
+  padding: 3px 10px; border-radius: 20px;
+}
+.selected-tag button {
+  background: none; border: none; cursor: pointer;
+  color: #a07830; font-size: 13px; line-height: 1; padding: 0 0 0 2px;
+}
+
+/* Botón pedir sugerencia IA */
+.btn-ai {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: var(--radius);
+  background: var(--gold-light); color: #7a5a10;
+  border: 1px solid #e8c87a; cursor: pointer;
+  font-family: var(--font-sans); font-size: 12px; font-weight: 500;
+  transition: background 0.15s;
+}
+.btn-ai:hover { background: #fbe8b8; }
+.btn-ai:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Chat de negociación IA */
+.chat-box {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--cream-2);
+  max-height: 240px; overflow-y: auto;
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 10px;
+}
+.chat-msg {
+  padding: 8px 12px; border-radius: 10px;
+  font-size: 12.5px; line-height: 1.6; max-width: 90%;
+}
+.chat-msg.ai {
+  background: #fff; border: 1px solid var(--line);
+  align-self: flex-start; color: var(--ink);
+}
+.chat-msg.user {
+  background: var(--ink); color: var(--cream);
+  align-self: flex-end;
+}
+.chat-input-row { display: flex; gap: 8px; margin-top: 8px; }
+.chat-input-row input {
+  flex: 1; padding: 8px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: #fff; font-family: var(--font-sans); font-size: 13px;
+  outline: none;
+}
+.chat-input-row input:focus { border-color: var(--gold); }
+.chat-send {
+  padding: 8px 14px; border-radius: var(--radius);
+  background: var(--ink); color: var(--cream);
+  border: none; cursor: pointer; font-size: 13px;
+  transition: background 0.15s;
+}
+.chat-send:hover { background: #333; }
+
+.accept-tags-btn {
+  margin-top: 8px;
+  padding: 7px 14px; border-radius: var(--radius);
+  background: #dcfce7; color: #166534;
+  border: 1px solid #a7f3d0; cursor: pointer;
+  font-family: var(--font-sans); font-size: 12px; font-weight: 500;
+  display: none;
+}
+.accept-tags-btn.visible { display: inline-flex; align-items: center; gap: 5px; }
+
+/* Botones del modal */
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+.btn-cancel {
+  padding: 9px 18px; border-radius: var(--radius);
+  background: none; border: 1px solid var(--line);
+  color: var(--ink-2); cursor: pointer;
+  font-family: var(--font-sans); font-size: 13px;
+  transition: background 0.15s;
+}
+.btn-cancel:hover { background: var(--cream-2); }
+.btn-save {
+  padding: 9px 20px; border-radius: var(--radius);
+  background: var(--ink); color: var(--cream);
+  border: none; cursor: pointer;
+  font-family: var(--font-sans); font-size: 13px; font-weight: 500;
+  transition: background 0.15s;
+}
+.btn-save:hover { background: #333; }
+.btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: var(--cream);
+  padding: 10px 20px; border-radius: 30px;
+  font-size: 13px; font-weight: 500;
+  z-index: 999; animation: toastIn 0.2s ease;
+  pointer-events: none;
+}
+@keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+/* Spinner */
+.spinner { display: inline-block; width: 14px; height: 14px; }
+.spinner::after {
+  content: '';
+  display: block; width: 14px; height: 14px;
+  border: 2px solid currentColor; border-top-color: transparent;
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* CSS NUEVO PARA CORRECCION Y EDICION INLINE */
+@keyframes goldenBlink {
+  0% { box-shadow: 0 0 0px transparent; border-color: var(--line); }
+  50% { box-shadow: 0 0 8px rgba(201, 151, 58, 0.5); border-color: var(--gold); }
+  100% { box-shadow: 0 0 0px transparent; border-color: var(--line); }
+}
+.blinking-gold { 
+  animation: goldenBlink 1.5s infinite; 
+  transition: border-color 0.3s; 
+}
+.edit-input {
+  width: 100%; font-family: var(--font-sans); font-size: 13.5px;
+  line-height: 1.65; border: 1px dashed var(--gold); background: var(--cream-2);
+  border-radius: 6px; padding: 8px; outline: none; resize: vertical;
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">Ideas <span>✦</span></div>
+
+    <div class="sidebar-section">Vistas</div>
+    <button class="filter-btn active" data-filter="todas" onclick="setFilter('todas', this)">
+      <span style="font-size:15px">📋</span> Todas
+    </button>
+    <button class="filter-btn" data-filter="favoritas" onclick="setFilter('favoritas', this)">
+      <span style="font-size:15px">⭐</span> Favoritas
+    </button>
+
+    <div class="sidebar-section" style="margin-top:16px">Por etiqueta</div>
+    <div class="tag-list" id="tagList">
+      <div style="padding:8px 20px;font-size:12px;color:var(--ink-3)">Cargando…</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="topbar">
+      <div class="search-wrap">
+        <span class="ico">🔍</span>
+        <input type="text" placeholder="Buscar ideas…" id="searchInput" oninput="renderIdeas()">
+      </div>
+      <button class="btn-add" onclick="openModal()">
+        ＋ Nueva idea
+      </button>
+    </div>
+
+    <div class="count-bar" id="countBar">Cargando…</div>
+
+    <div class="ideas-wrap">
+      <div class="ideas-grid" id="ideasGrid">
+        <div class="empty">
+          <div class="emoji">✦</div>
+          <p>Cargando tus ideas…</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal nueva idea -->
+<div class="overlay" id="modalOverlay" style="display:none" onclick="closeOnBackdrop(event)">
+<div class="modal" id="modal">
+  <div class="modal-header">
+    <span class="modal-title">Nueva idea</span>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+  </div>
+  <div class="modal-body">
+
+    <div class="field">
+      <label>Contenido</label>
+      <textarea id="inputContenido" placeholder="Escribe tu idea, reflexión, recomendación…" rows="4"></textarea>
+    </div>
+
+    <div class="row-2">
+      <div class="field">
+        <label>Estado de ánimo</label>
+        <select id="inputAnimo">
+          <option value="">— opcional —</option>
+          <option>triste</option>
+          <option>feliz</option>
+          <option>estresada</option>
+          <option>enfocada</option>
+          <option>eufórica</option>
+          <option>neutral</option>
+          <option>ansiosa</option>
+          <option>motivada</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Tipo (Opcional)</label>
+        <select id="inputTipo">
+          <option value="">— opcional —</option>
+          <option>reflexión</option>
+          <option>idea-trabajo</option>
+          <option>tesis</option>
+          <option>recomendación</option>
+          <option>hábito</option>
+          <option>canción</option>
+          <option>película</option>
+          <option>ejercicio</option>
+          <option>motivación</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Etiquetas</label>
+      <div class="selected-tags" id="selectedTags"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+        <input type="text" id="tagInput" placeholder="Escribe una etiqueta y presiona Enter"
+          style="flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:var(--radius);font-family:var(--font-sans);font-size:13px;outline:none"
+          onkeydown="handleTagInput(event)">
+        <button class="btn-ai" id="btnAI" onclick="requestAISuggestion()" title="Pedir sugerencia a Claude">
+          <span id="aiSpinner" style="display:none"><span class="spinner"></span></span>
+          <span id="aiText">✦ Sugerir etiquetas</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Chat de negociación -->
+    <div id="chatSection" style="display:none">
+      <div class="chat-box" id="chatBox"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chatInput" placeholder="Respóndele a Claude… (ej: quita 'tristeza', agrega 'estudio')"
+          onkeydown="if(event.key==='Enter') sendChatMsg()">
+        <button class="chat-send" onclick="sendChatMsg()">Enviar</button>
+      </div>
+      <button class="accept-tags-btn" id="acceptTagsBtn" onclick="acceptSuggestedTags()">
+        ✓ Aceptar etiquetas sugeridas
+      </button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-save" id="btnSave" onclick="saveIdea()">Guardar idea</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────
+// RECUERDA PONER TU URL AQUI ABAJO
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwTtMX0TMhGDW9aCmTi8UM5BXXjuiYT4o4jNVotPhjcuwW1_J9Zq_IsK19_U50CiCgHDg/exec';
+
+// ── Estado ───────────────────────────────────────────────────
+let allIdeas     = [];
+let allTags      = [];
+let activeFilter = 'todas';
+let activeTags   = []; // <-- Ahora es un arreglo para selección múltiple
+let selectedTags = [];
+let chatHistory  = [];
+let pendingFinalTags = null;
+
+// ── Init ─────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([loadIdeas(), loadTags()]);
+}
+
+async function loadIdeas() {
+  try {
+    // El &t=Date.now() evita que el navegador use caché viejo
+    const r = await fetch(`${GAS_URL}?action=getIdeas&t=${Date.now()}`);
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    allIdeas = d.ideas || [];
+    renderIdeas();
+  } catch(e) {
+    showToast('Error cargando ideas');
+  }
+}
+
+async function loadTags() {
+  try {
+    const r = await fetch(`${GAS_URL}?action=getTags&t=${Date.now()}`);
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    allTags = d.tags || [];
+    renderTagSidebar();
+  } catch(e) {}
+}
+
+// ── Render ideas ─────────────────────────────────────────────
+function renderIdeas() {
+  const grid   = document.getElementById('ideasGrid');
+  const search = document.getElementById('searchInput').value.toLowerCase().trim();
+
+  let list = [...allIdeas].reverse(); // más recientes primero
+
+  if (activeFilter === 'favoritas') {
+    list = list.filter(i => i.favorita);
+  }
+  if (activeTag) {
+    list = list.filter(i => i.etiquetas.some(t => t.toLowerCase() === activeTag.toLowerCase()));
+  }
+  if (search) {
+    list = list.filter(i =>
+      i.contenido.toLowerCase().includes(search) ||
+      i.etiquetas.some(t => t.toLowerCase().includes(search)) ||
+      (i.estadoAnimo||'').toLowerCase().includes(search)
+    );
+  }
+
+  document.getElementById('countBar').textContent =
+    list.length === 1 ? '1 idea' : `${list.length} ideas`;
+
+  if (list.length === 0) {
+    grid.innerHTML = `<div class="empty">
+      <div class="emoji">✦</div>
+      <p>${search || activeTag ? 'Sin resultados para este filtro' : 'Aún no hay ideas — ¡agrega la primera!'}</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = list.map(idea => `
+    <div class="idea-card" data-id="${idea.id}">
+      <div class="card-text" id="text-${idea.id}" ondblclick="startEdit('${idea.id}')">${escHtml(idea.contenido)}</div>
+      <div class="card-tags">
+        ${idea.etiquetas.map(t => `
+          <span class="tag-pill" onclick="filterByTag('${escHtml(t)}')">${escHtml(t)}</span>
+        `).join('')}
+      </div>
+      <div class="card-meta">
+        <!-- Quitamos "Tipo" y dejamos solo Fecha y Ánimo -->
+        <span>${idea.fecha || ''} ${idea.estadoAnimo ? '· ' + idea.estadoAnimo : ''}</span>
+        <div class="card-actions">
+          <button class="icon-btn" onclick="startEdit('${idea.id}')" title="Editar">✏️</button>
+          <button class="icon-btn fav ${idea.favorita ? 'active' : ''}"
+            onclick="toggleFav('${idea.id}', this)" title="Favorita">⭐</button>
+          <button class="icon-btn" onclick="deleteIdea('${idea.id}')" title="Eliminar">🗑</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+
+// ── Sidebar etiquetas ─────────────────────────────────────────
+function renderTagSidebar() {
+  const list = document.getElementById('tagList');
+  if (allTags.length === 0) {
+    list.innerHTML = '<div style="padding:8px 20px;font-size:12px;color:var(--ink-3)">Sin etiquetas aún</div>';
+    return;
+  }
+  const sorted = [...allTags].sort((a,b) => (b.usos||0) - (a.usos||0));
+  list.innerHTML = sorted.map(t => `
+    <button class="filter-btn ${activeTags.includes(t.etiqueta) ? 'active' : ''}"
+      data-tag="${escHtml(t.etiqueta)}"
+      onclick="filterByTag('${escHtml(t.etiqueta)}')">
+      <span class="dot" style="background:${tagColor(t.color)}"></span>
+      ${escHtml(t.etiqueta)}
+      <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">${t.usos||0}</span>
+    </button>
+  `).join('');
+}
+
+function tagColor(c) {
+  const map = {
+    purple:'#7F77DD', teal:'#1D9E75', coral:'#D85A30',
+    pink:'#D4537E', blue:'#378ADD', green:'#639922',
+    amber:'#EF9F27', red:'#E24B4A', gray:'#888780'
+  };
+  return map[c] || map.gray;
+}
+
+// ── Filtros ───────────────────────────────────────────────────
+function setFilter(f, el) {
+  activeFilter = f;
+  activeTags   = []; // Limpiamos selección múltiple
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderTagSidebar(); // Para quitar la clase active de las etiquetas
+  renderIdeas();
+}
+
+function filterByTag(tag) {
+  activeFilter = null;
+  document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
+
+  // Lógica de selección/deselección múltiple
+  const index = activeTags.indexOf(tag);
+  if (index > -1) {
+    activeTags.splice(index, 1); // Quitar si ya estaba
+  } else {
+    activeTags.push(tag); // Agregar si no estaba
+  }
+
+  // Si nos quedamos sin etiquetas seleccionadas, volvemos a "Todas"
+  if (activeTags.length === 0) {
+    setFilter('todas', document.querySelector('[data-filter="todas"]'));
+    return;
+  }
+
+  // Actualizar UI del sidebar sin recargar la lista entera para no perder el scroll
+  document.querySelectorAll('.filter-btn[data-tag]').forEach(b => {
+     if (activeTags.includes(b.dataset.tag)) {
+        b.classList.add('active');
+     } else {
+        b.classList.remove('active');
+     }
+  });
+
+  renderIdeas();
+}
+
+// ── Favorita / Delete ─────────────────────────────────────────
+async function toggleFav(id, btn) {
+  // Cambio instantáneo en pantalla (Optimistic UI)
+  const isFav = !btn.classList.contains('active');
+  btn.classList.toggle('active', isFav);
+  
+  const idea = allIdeas.find(i => i.id === id);
+  if (idea) idea.favorita = isFav;
+
+  try {
+    await postGAS({ action: 'toggleFav', id });
+  } catch(e) {
+    // Si falla el servidor, revertimos la estrella
+    btn.classList.toggle('active', !isFav);
+    if (idea) idea.favorita = !isFav;
+    showToast('Error de conexión');
+  }
+}
+
+async function deleteIdea(id) {
+  if (!confirm('¿Eliminar esta idea?')) return;
+  try {
+    await postGAS({ action: 'deleteIdea', id });
+    allIdeas = allIdeas.filter(i => i.id !== id);
+    renderIdeas();
+    showToast('Idea eliminada');
+  } catch(e) { showToast('Error al eliminar'); }
+}
+
+// ── Modal ─────────────────────────────────────────────────────
+function openModal() {
+  selectedTags  = [];
+  chatHistory   = [];
+  pendingFinalTags = null;
+  document.getElementById('inputContenido').value = '';
+  document.getElementById('inputAnimo').value     = '';
+  document.getElementById('inputTipo').value      = '';
+  document.getElementById('tagInput').value       = '';
+  document.getElementById('chatSection').style.display = 'none';
+  document.getElementById('chatBox').innerHTML    = '';
+  document.getElementById('acceptTagsBtn').classList.remove('visible');
+  renderSelectedTags();
+  document.getElementById('modalOverlay').style.display = 'flex';
+  setTimeout(() => document.getElementById('inputContenido').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').style.display = 'none';
+}
+
+function closeOnBackdrop(e) {
+  if (e.target.id === 'modalOverlay') closeModal();
+}
+
+// ── Tags en el modal ──────────────────────────────────────────
+function renderSelectedTags() {
+  const wrap = document.getElementById('selectedTags');
+  wrap.innerHTML = selectedTags.map(t => `
+    <span class="selected-tag">
+      ${escHtml(t)}
+      <button onclick="removeTag('${escHtml(t)}')" title="Quitar">✕</button>
+    </span>
+  `).join('');
+}
+
+function addTag(tag) {
+  const clean = tag.toLowerCase().trim().replace(/\s+/g, '-');
+  if (clean && !selectedTags.includes(clean)) {
+    selectedTags.push(clean);
+    renderSelectedTags();
+  }
+}
+
+function removeTag(tag) {
+  selectedTags = selectedTags.filter(t => t !== tag);
+  renderSelectedTags();
+}
+
+function handleTagInput(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const v = document.getElementById('tagInput').value.trim();
+    if (v) { addTag(v); document.getElementById('tagInput').value = ''; }
+  }
+}
+
+// ── Claude sugerencia de etiquetas ───────────────────────────
+async function requestAISuggestion() {
+  const contenido = document.getElementById('inputContenido').value.trim();
+  if (!contenido) { showToast('Primero escribe tu idea'); return; }
+
+  setAILoading(true);
+  document.getElementById('chatSection').style.display = 'block';
+
+  const userMsg = `Nota: "${contenido}"\n\nSugiere etiquetas para esta nota.`;
+  chatHistory = [{ role: 'user', content: userMsg }];
+
+  try {
+    const r = await postGAS({
+      action:        'suggestTags',
+      contenido:     contenido,
+      existingTags:  allTags.map(t => t.etiqueta),
+      conversacion:  chatHistory
+    });
+
+    if (r.error) throw new Error(r.error);
+
+    chatHistory.push({ role: 'assistant', content: r.message });
+    appendChatMsg('ai', r.message);
+
+    if (r.finalTags) {
+      pendingFinalTags = r.finalTags;
+      showAcceptBtn(r.finalTags);
+    }
+  } catch(e) {
+    appendChatMsg('ai', 'Hubo un error al consultar a Claude.');
+  }
+
+  setAILoading(false);
+}
+
+async function sendChatMsg() {
+  const input = document.getElementById('chatInput');
+  const msg   = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  appendChatMsg('user', msg);
+  chatHistory.push({ role: 'user', content: msg });
+
+  document.getElementById('acceptTagsBtn').classList.remove('visible');
+  pendingFinalTags = null;
+
+  setAILoading(true);
+  try {
+    const r = await postGAS({
+      action:       'suggestTags',
+      contenido:    document.getElementById('inputContenido').value,
+      existingTags: allTags.map(t => t.etiqueta),
+      conversacion: chatHistory
+    });
+
+    if (r.error) throw new Error(r.error);
+
+    chatHistory.push({ role: 'assistant', content: r.message });
+    appendChatMsg('ai', r.message);
+
+    if (r.finalTags) {
+      pendingFinalTags = r.finalTags;
+      showAcceptBtn(r.finalTags);
+    }
+  } catch(e) {
+    appendChatMsg('ai', 'Error al conectar con Claude.');
+  }
+  setAILoading(false);
+}
+
+function appendChatMsg(role, text) {
+  const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}`;
+  div.textContent = text;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function showAcceptBtn(tags) {
+  const btn = document.getElementById('acceptTagsBtn');
+  btn.textContent = `✓ Aceptar: ${tags.join(', ')}`;
+  btn.classList.add('visible');
+}
+
+function acceptSuggestedTags() {
+  if (!pendingFinalTags) return;
+  pendingFinalTags.forEach(t => addTag(t));
+  document.getElementById('acceptTagsBtn').classList.remove('visible');
+  showToast('Etiquetas agregadas ✓');
+}
+
+function setAILoading(on) {
+  document.getElementById('aiSpinner').style.display = on ? 'inline-block' : 'none';
+  document.getElementById('aiText').textContent       = on ? 'Pensando…' : '✦ Sugerir etiquetas';
+  document.getElementById('btnAI').disabled           = on;
+}
+
+// ── Guardar idea ──────────────────────────────────────────────
+async function saveIdea() {
+  const contenido = document.getElementById('inputContenido').value.trim();
+  if (!contenido) { showToast('Escribe algo primero'); return; }
+
+  const tagInputVal = document.getElementById('tagInput').value.trim();
+  if (tagInputVal) addTag(tagInputVal);
+
+  const btn = document.getElementById('btnSave');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+
+  try {
+    const r = await postGAS({
+      action:      'saveIdea',
+      contenido:   contenido,
+      etiquetas:   selectedTags,
+      estadoAnimo: document.getElementById('inputAnimo').value,
+      tipo:        document.getElementById('inputTipo').value
+    });
+
+    if (r.ok) {
+      closeModal();
+      showToast('Idea guardada ✦');
+      await Promise.all([loadIdeas(), loadTags()]);
+    } else {
+      showToast('Error al guardar');
+    }
+  } catch(e) {
+    showToast('Error de conexión');
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Guardar idea';
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+async function postGAS(body) {
+  const form = new FormData();
+  form.append('payload', JSON.stringify(body));
+  const r = await fetch(GAS_URL, { method: 'POST', body: form });
+  return r.json();
+}
+
+function escHtml(s) {
+  return String(s||'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg) {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  clearTimeout(toastTimer);
+  const t = document.createElement('div');
+  t.className   = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  toastTimer = setTimeout(() => t.remove(), 2800);
+}
+
+// ── Autocorrección silenciosa (1.8s) ──────────────────────
+let typingTimer;
+let isCorrecting = false;
+
+document.getElementById('inputContenido').addEventListener('input', function(e) {
+  clearTimeout(typingTimer);
+  const currentText = e.target.value;
+  
+  if (!currentText.trim() || isCorrecting) return;
+
+  typingTimer = setTimeout(async () => {
+    const textToCorrect = document.getElementById('inputContenido').value;
+    if (currentText !== textToCorrect) return; 
+
+    isCorrecting = true;
+    e.target.classList.add('blinking-gold');
+    
+    try {
+      const r = await postGAS({ action: 'correctText', text: textToCorrect });
+      if (r.ok && r.corrected && e.target.value === textToCorrect) {
+        e.target.value = r.corrected;
+      }
+    } catch(err) {}
+    
+    e.target.classList.remove('blinking-gold');
+    isCorrecting = false;
+  }, 1800);
+});
+
+// ── Edición Inline Avanzada ───────────────────────────
+function startEdit(id) {
+  const card = document.querySelector(`.idea-card[data-id="${id}"]`);
+  if (!card || card.classList.contains('editing')) return;
+  card.classList.add('editing');
+  
+  const idea = allIdeas.find(i => i.id === id);
+  const currentText = idea.contenido;
+  const currentTags = idea.etiquetas.join(', ');
+
+// Guardamos cómo se veía por si presiona Cancelar
+  card.dataset.originalHtml = card.innerHTML;
+
+card.innerHTML = `
+    <textarea class="edit-input" id="edit-text-${id}" rows="4" style="margin-bottom:8px;">${currentText}</textarea>
+    <label style="font-size:11px; color:var(--ink-3); text-transform:uppercase; margin-bottom:4px; display:block;">Etiquetas (separadas por coma)</label>
+    <input type="text" class="edit-input" id="edit-tags-${id}" value="${currentTags}" style="margin-bottom:12px;" placeholder="ej: tesis, ideas, salud">
+    <div style="display:flex; gap:8px;">
+      <button class="btn-save" style="padding:6px 12px;" onclick="saveInlineEdit('${id}')">Guardar</button>
+      <button class="btn-cancel" style="padding:6px 12px;" onclick="cancelInlineEdit('${id}')">Cancelar</button>
+    </div>
+  `;
+  document.getElementById(`edit-text-${id}`).focus();
+}
+
+function cancelInlineEdit(id) {
+  const card = document.querySelector(`.idea-card[data-id="${id}"]`);
+  if (card) {
+    card.innerHTML = card.dataset.originalHtml;
+    card.classList.remove('editing');
+  }
+}
+
+async function saveInlineEdit(id) {
+  const card = document.querySelector(`.idea-card[data-id="${id}"]`);
+  const newText = document.getElementById(`edit-text-${id}`).value.trim();
+  const tagsRaw = document.getElementById(`edit-tags-${id}`).value;
+  
+  // Limpiamos las etiquetas para que queden perfectas
+  const newTags = tagsRaw.split(',').map(t => t.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean);
+
+  card.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--gold); font-style: italic;">✦ Corrigiendo y guardando...</div>`;
+
+  try {
+    const r = await postGAS({ action: 'updateIdea', id: id, text: newText, etiquetas: newTags });
+    if (r.ok) {
+      // Forzamos actualización de memoria y pantalla
+      await Promise.all([loadIdeas(), loadTags()]); 
+      showToast('Idea actualizada ✦');
+    } else {
+      cancelInlineEdit(id);
+      showToast('Error al editar');
+    }
+  } catch(e) {
+    cancelInlineEdit(id);
+    showToast('Error de red');
+  }
+}
+
+// ── Start ─────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

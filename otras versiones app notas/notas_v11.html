@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ideas ✦</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --ink: #1a1814; --ink-2: #5a5650; --ink-3: #9a9590;
+  --cream: #faf8f4; --cream-2: #f2efe9; --cream-3: #e8e4dc; --line: rgba(26,24,20,0.10);
+  --gold: #c9973a; --gold-light: #fdf3e1; --radius: 12px;
+  --font-serif: 'Instrument Serif', Georgia, serif; --font-sans: 'DM Sans', sans-serif;
+}
+html, body { height: 100%; font-family: var(--font-sans); background: var(--cream); color: var(--ink); font-size: 14px; line-height: 1.6; }
+
+/* ── Layout ───────────────────────────────────────────────── */
+.app { display: flex; height: 100vh; overflow: hidden; }
+.sidebar { width: 240px; flex-shrink: 0; background: var(--cream-2); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 24px 0; overflow-y: auto; transition: width 0.25s ease, padding 0.25s ease, opacity 0.2s ease; }
+.sidebar.collapsed { width: 0; padding: 0; opacity: 0; overflow: hidden; pointer-events: none; border-right: none; }
+.sidebar-logo { font-family: var(--font-serif); font-size: 20px; padding: 0 20px 20px; border-bottom: 1px solid var(--line); margin-bottom: 16px; color: var(--ink); letter-spacing: -0.3px; display: flex; justify-content: space-between; align-items: center; }
+.sidebar-logo span { color: var(--gold); cursor: pointer; user-select: none; transition: opacity 0.15s; }
+.sidebar-logo span:hover { opacity: 0.75; }
+/* Botón flotante para reabrir sidebar */
+.sidebar-reopen { display: none; align-items: center; justify-content: center; padding: 8px 12px; background: var(--cream-2); border: 1px solid var(--line); border-left: none; border-radius: 0 8px 8px 0; cursor: pointer; font-family: var(--font-serif); font-size: 13px; color: var(--gold); transition: background 0.15s; flex-shrink: 0; white-space: nowrap; gap: 4px; }
+.sidebar-reopen:hover { background: var(--cream-3); }
+.app.sidebar-hidden .sidebar-reopen { display: flex; }
+
+/* Switch de selección múltiple */
+.multi-toggle { font-family: var(--font-sans); font-size: 11px; font-weight: 500; color: var(--ink-2); display: flex; align-items: center; gap: 6px; cursor: pointer; background: #fff; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--line); }
+.multi-toggle input { margin: 0; cursor: pointer; }
+.multi-toggle:hover { border-color: var(--gold); }
+
+.sidebar-section { font-size: 10px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); padding: 0 20px 8px; margin-top: 20px; }
+.filter-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 20px; background: none; border: none; cursor: pointer; font-family: var(--font-sans); font-size: 12.5px; color: var(--ink-2); text-align: left; transition: background 0.15s, color 0.15s; border-radius: 0; }
+.filter-btn:hover { background: var(--cream-3); color: var(--ink); }
+.filter-btn.active { background: var(--gold-light); color: #7a5a10; font-weight: 500; }
+.filter-btn .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--ink-3); }
+
+/* Main */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topbar { padding: 16px 24px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; background: var(--cream); }
+.search-wrap { flex: 1; position: relative; }
+.search-wrap input { width: 100%; padding: 9px 12px 9px 36px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--cream-2); font-family: var(--font-sans); font-size: 13px; color: var(--ink); outline: none; transition: border-color 0.15s; }
+.search-wrap input:focus { border-color: var(--gold); background: #fff; }
+.search-wrap .ico { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); font-size: 15px; pointer-events: none; }
+.btn-add { display: flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: var(--radius); background: var(--ink); color: var(--cream); border: none; cursor: pointer; font-family: var(--font-sans); font-size: 13px; font-weight: 500; transition: background 0.15s; white-space: nowrap; }
+.btn-add:hover { background: #333; }
+.count-bar { padding: 8px 24px; font-size: 12px; color: var(--ink-3); border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: center; }
+.clear-filters { font-size: 11px; background: var(--cream-3); padding: 2px 8px; border-radius: 12px; cursor: pointer; display: none; border:none; }
+.clear-filters.visible { display: inline-block; }
+
+/* Grid de ideas */
+.ideas-wrap { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.ideas-grid { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
+  gap: 14px; 
+  align-items: start; /* Esto evita que las tarjetas se estiren */
+}
+.idea-card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: box-shadow 0.15s, border-color 0.15s; cursor: default; animation: fadeIn 0.2s ease; }
+.idea-card:hover { border-color: var(--cream-3); box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.card-top-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 500; text-transform: uppercase; color: var(--ink-3); letter-spacing: 0.05em; margin-bottom: 4px; }
+.card-top-meta .proyecto { color: var(--gold); }
+.card-text { 
+  font-size: 13.5px; 
+  line-height: 1.65; 
+  color: var(--ink); 
+  flex: 1; 
+  margin-bottom: 4px; 
+  max-height: 250px; /* Límite de altura */
+  overflow-y: auto;  /* Scroll automático si el texto es muy largo */
+  white-space: pre-wrap; /* Respeta saltos de línea y espacios */
+  word-break: break-word;
+}
+.card-accion { font-size: 12px; background: #fdfdfa; border: 1px dashed #dcdacb; padding: 8px 10px; border-radius: 6px; color: #5a5746; }
+.card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-pill { font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 20px; cursor: pointer; transition: opacity 0.15s; background: var(--cream-2); color: var(--ink-2); border: 1px solid var(--line); }
+.tag-pill:hover { opacity: 0.75; }
+
+/* Tutor / Leccion Box UI */
+.tutor-box { background:#f8fafc; border: 1px dashed #cbd5e1; padding:10px; border-radius:6px; margin-top:4px; font-size:12px; color:#334155; }
+.tutor-box .original { margin-bottom: 6px; }
+.tutor-box strong { font-weight: 500; }
+
+.selectable-tag { font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 20px; cursor: pointer; background: var(--cream-2); border: 1px solid var(--line); color: var(--ink-2); transition: all 0.15s; user-select: none; }
+.selectable-tag:hover { border-color: var(--ink-3); }
+.selectable-tag.active { background: var(--gold-light); color: #7a5a10; border-color: #e8c87a; }
+.card-meta { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+.card-actions { display: flex; gap: 6px; }
+.icon-btn { background: none; border: none; cursor: pointer; color: var(--ink-3); font-size: 15px; padding: 2px; transition: color 0.15s; line-height: 1; }
+.icon-btn:hover { color: var(--ink); }
+.empty { grid-column: 1/-1; text-align: center; padding: 60px 20px; color: var(--ink-3); }
+.empty .emoji { font-size: 40px; margin-bottom: 12px; }
+
+/* ── Modal base ───────────────────────────────────────────── */
+.overlay { position: fixed; inset: 0; background: rgba(26,24,20,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; animation: fadeOverlay 0.15s ease; }
+@keyframes fadeOverlay { from { opacity: 0; } to { opacity: 1; } }
+.modal { background: #fff; border-radius: 16px; width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.15); animation: slideUp 0.2s ease; }
+@keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+.modal-header { padding: 20px 24px 0; display: flex; align-items: center; justify-content: space-between; }
+.modal-title { font-family: var(--font-serif); font-size: 20px; color: var(--ink); }
+.modal-close { background: none; border: none; cursor: pointer; color: var(--ink-3); font-size: 20px; line-height: 1; padding: 4px; transition: color 0.15s; }
+.modal-close:hover { color: var(--ink); }
+.modal-body { padding: 16px 24px 24px; }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-2); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.field textarea, .field input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--cream-2); font-family: var(--font-sans); font-size: 13px; color: var(--ink); outline: none; transition: border-color 0.15s; }
+.field textarea { resize: vertical; min-height: 80px; }
+.field textarea:focus, .field input:focus { border-color: var(--gold); background: #fff; }
+.row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.btn-ai { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: var(--radius); background: var(--gold-light); color: #7a5a10; border: 1px solid #e8c87a; cursor: pointer; font-family: var(--font-sans); font-size: 13px; font-weight: 500; transition: background 0.15s; }
+.btn-ai:hover { background: #fbe8b8; }
+.btn-ai:disabled { opacity: 0.5; cursor: not-allowed; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+.btn-cancel { padding: 9px 18px; border-radius: var(--radius); background: none; border: 1px solid var(--line); color: var(--ink-2); cursor: pointer; font-family: var(--font-sans); font-size: 13px; transition: background 0.15s; }
+.btn-cancel:hover { background: var(--cream-2); }
+.btn-save { padding: 9px 20px; border-radius: var(--radius); background: var(--ink); color: var(--cream); border: none; cursor: pointer; font-family: var(--font-sans); font-size: 13px; font-weight: 500; transition: background 0.15s; }
+.btn-save:hover { background: #333; }
+.btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Chat IA */
+.chat-box { border: 1px solid var(--line); border-radius: var(--radius); background: var(--cream-2); max-height: 180px; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.chat-msg { padding: 8px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.6; max-width: 90%; }
+.chat-msg.ai { background: #fff; border: 1px solid var(--line); align-self: flex-start; color: var(--ink); }
+.chat-msg.user { background: var(--ink); color: var(--cream); align-self: flex-end; }
+.chat-input-row { display: flex; gap: 8px; margin-top: 8px; }
+.chat-input-row input { flex: 1; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; font-family: var(--font-sans); font-size: 13px; outline: none; }
+.chat-input-row input:focus { border-color: var(--gold); }
+.chat-send { padding: 8px 14px; border-radius: var(--radius); background: var(--ink); color: var(--cream); border: none; cursor: pointer; font-size: 13px; transition: background 0.15s; }
+.chat-send:hover { background: #333; }
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--cream); padding: 10px 20px; border-radius: 30px; font-size: 13px; font-weight: 500; z-index: 999; animation: toastIn 0.2s ease; pointer-events: none; }
+@keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+.spinner { display: inline-block; width: 14px; height: 14px; }
+.spinner::after { content: ''; display: block; width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* CSS PARA EDICION INLINE */
+@keyframes goldenBlink { 0% { box-shadow: 0 0 0px transparent; border-color: var(--line); } 50% { box-shadow: 0 0 8px rgba(201, 151, 58, 0.5); border-color: var(--gold); } 100% { box-shadow: 0 0 0px transparent; border-color: var(--line); } }
+.blinking-gold { animation: goldenBlink 1.5s infinite; transition: border-color 0.3s; }
+.edit-input { width: 100%; font-family: var(--font-sans); font-size: 13.5px; line-height: 1.65; border: 1px dashed var(--gold); background: var(--cream-2); border-radius: 6px; padding: 8px; outline: none; resize: vertical; margin-bottom: 8px; }
+.edit-input-small { width: 100%; font-family: var(--font-sans); font-size: 12px; border: 1px dashed var(--gold); background: var(--cream-2); border-radius: 4px; padding: 5px; outline: none; }
+</style>
+</head>
+<body>
+
+<datalist id="list-proyecto"></datalist>
+<datalist id="list-tipo"></datalist>
+<datalist id="list-animo"></datalist>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span onclick="toggleSidebar()" title="Ocultar menú">Ideas ✦</span>
+      <label class="multi-toggle" title="Permite seleccionar múltiples filtros al mismo tiempo">
+        <input type="checkbox" id="multiSelectCb" onchange="toggleMultiSelect()"> Múltiple
+      </label>
+    </div>
+    <div style="padding:0 12px;">
+       <button class="filter-btn active" data-view="todas" onclick="setView('todas', this)">
+         <span style="font-size:15px">📋</span> Todas
+       </button>
+       <button class="filter-btn" data-view="favoritas" onclick="setView('favoritas', this)">
+         <span style="font-size:15px">⭐</span> Favoritas
+       </button>
+    </div>
+    <div id="dynamicSidebarFilters"></div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <button class="sidebar-reopen" onclick="toggleSidebar()" title="Mostrar menú">Ideas ✦ ›</button>
+      <div class="search-wrap">
+        <span class="ico">🔍</span>
+        <input type="text" placeholder="Buscar notas, proyectos, etiquetas…" id="searchInput" oninput="renderIdeas()">
+      </div>
+      <button class="btn-add" onclick="openModal()">＋ Nueva Entrada</button>
+    </div>
+    <div class="count-bar">
+       <span id="countBar">Cargando…</span>
+       <button class="clear-filters" id="clearFiltersBtn" onclick="clearAllFilters()">Borrar filtros ✕</button>
+    </div>
+    <div class="ideas-wrap">
+      <div class="ideas-grid" id="ideasGrid">
+        <div class="empty"><div class="emoji">✦</div><p>Cargando tus notas…</p></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal nueva idea / Edición profunda -->
+<div class="overlay" id="modalOverlay" style="display:none" onclick="closeOnBackdrop(event)">
+<div class="modal" id="modal">
+  <div class="modal-header">
+    <span class="modal-title" id="modalTitle">Nueva Entrada</span>
+    <button class="modal-close" onclick="closeModal(false)">✕</button>
+  </div>
+  <div class="modal-body">
+    <input type="hidden" id="editIdeaId">
+    
+    <div class="field">
+      <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+        <label style="margin:0;">Contenido</label>
+        <button class="btn-ai" id="btnAutoFill" onclick="requestAutoFill()" style="padding: 4px 10px; font-size:11px;">
+           <span id="aiSpinner" style="display:none"><span class="spinner"></span></span>
+           <span id="aiText">🪄 Asistente & Tutor IA</span>
+        </button>
+      </div>
+      <textarea id="inputContenido" placeholder="Escribe tu idea. Si usas el botón mágico, la IA considerará lo que pongas abajo para mejorarlo, e incluso corregirá tu gramática/inglés..." rows="5"></textarea>
+    </div>
+
+    <!-- Cajas ocultas para el tutor de idiomas -->
+    <input type="hidden" id="inputOriginal">
+    <input type="hidden" id="inputLeccion">
+    <div id="tutorPreview" style="display:none; background:#f0fdf4; border: 1px solid #bbf7d0; padding:10px; border-radius:8px; margin-bottom:12px; font-size:12px; color:#166534;"></div>
+
+    <div class="row-3">
+      <div class="field">
+        <label>Proyecto</label>
+        <input type="text" id="inputProyecto" list="list-proyecto" placeholder="Ej: Tesis">
+      </div>
+      <div class="field">
+        <label>Tipo</label>
+        <input type="text" id="inputTipo" list="list-tipo" placeholder="Ej: Tarea">
+      </div>
+      <div class="field">
+        <label>Ánimo</label>
+        <input type="text" id="inputAnimo" list="list-animo" placeholder="Ej: Estresada">
+      </div>
+    </div>
+    
+    <div class="field">
+      <label>Acción / Paso a seguir (Opcional)</label>
+      <input type="text" id="inputAccion" placeholder="Ej: Llamar mañana, Leer capítulo 2...">
+    </div>
+
+    <div class="field">
+      <label>Etiquetas</label>
+      <div id="modalTagCloud" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; max-height:90px; overflow-y:auto; padding:8px; background:#fff; border:1px solid var(--line); border-radius:var(--radius);"></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="tagInput" placeholder="Añadir nueva etiqueta (usa Enter)" style="flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:var(--radius);font-family:var(--font-sans);font-size:13px;outline:none" onkeydown="handleTagInput(event)">
+      </div>
+    </div>
+
+    <!-- Chat de IA Unificado -->
+    <div id="chatSection" style="display:none">
+      <div class="chat-box" id="chatBox"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chatInput" placeholder="Dile a la IA cómo ajustar... (ej. hazlo más formal, quita X)" onkeydown="if(event.key==='Enter') sendChatMsg()">
+        <button class="chat-send" onclick="sendChatMsg()">Ajustar</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal(false)">Cancelar</button>
+      <button class="btn-save" id="btnSave" onclick="saveIdea()">Guardar</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwTtMX0TMhGDW9aCmTi8UM5BXXjuiYT4o4jNVotPhjcuwW1_J9Zq_IsK19_U50CiCgHDg/exec';
+
+// ── Estado ───────────────────────────────────────────────────
+let allIdeas = []; let allTags = [];
+let currentView = 'todas'; let isMultiSelect = false;
+let filters = { proyectos: [], tipos: [], animos: [], etiquetas: [] };
+let selectedTags = [];
+let aiConversation = [];
+
+// ── Sidebar toggle ───────────────────────────────────────────
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const app = document.querySelector('.app');
+  sidebar.classList.toggle('collapsed');
+  app.classList.toggle('sidebar-hidden');
+}
+
+// ── Init ─────────────────────────────────────────────────────
+async function init() { await loadIdeas(); }
+
+async function loadIdeas() {
+  try {
+    const r = await fetch(`${GAS_URL}?action=getIdeas&t=${Date.now()}`);
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    allIdeas = d.ideas || [];
+    extractDynamicLists(); renderSidebarFilters(); renderIdeas();
+  } catch(e) { showToast('Error cargando ideas'); }
+}
+
+// ── Sidebar & Filtros (Solucionado General y Nota) ───────────
+function toggleMultiSelect() {
+  isMultiSelect = document.getElementById('multiSelectCb').checked;
+  if (!isMultiSelect) clearAllFilters();
+}
+
+function getCounts(key) {
+  const counts = {};
+  allIdeas.forEach(i => {
+     if (key === 'etiquetas') {
+       if (i.etiquetas) i.etiquetas.forEach(t => { const lower = t.toLowerCase(); counts[lower] = (counts[lower] || 0) + 1; });
+     } else {
+       // AQUI arreglamos que lea "nota" y "general" cuando esté vacío
+       let rawVal = i[key];
+       if (key === 'tipo' && (!rawVal || rawVal.trim() === '')) rawVal = 'nota';
+       if (key === 'proyecto' && (!rawVal || rawVal.trim() === '')) rawVal = 'general';
+       const val = (rawVal || '').toLowerCase().trim();
+       if (val) counts[val] = (counts[val] || 0) + 1;
+     }
+  });
+  return Object.entries(counts).sort((a, b) => a[0].localeCompare(b[0])); 
+}
+
+function renderSidebarFilters() {
+  const container = document.getElementById('dynamicSidebarFilters');
+  const catProyectos = getCounts('proyecto'); const catTipos = getCounts('tipo');
+  const catAnimos = getCounts('animo'); const catEtiquetas = getCounts('etiquetas');
+  let html = '';
+  const buildSection = (title, array, keyName) => {
+    if (array.length === 0) return '';
+    let sectionHtml = `<div class="sidebar-section">${title}</div><div style="padding:0 12px; margin-bottom:12px;">`;
+    array.forEach(([name, count]) => {
+      const isActive = filters[keyName].includes(name) ? 'active' : '';
+      sectionHtml += `<button class="filter-btn ${isActive}" onclick="toggleFilter('${keyName}', '${escHtml(name)}')"><span class="dot"></span> ${escHtml(name)} <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">${count}</span></button>`;
+    });
+    return sectionHtml + `</div>`;
+  };
+  html += buildSection('Proyectos', catProyectos, 'proyectos');
+  html += buildSection('Tipos', catTipos, 'tipos');
+  html += buildSection('Estados de Ánimo', catAnimos, 'animos');
+  html += buildSection('Etiquetas', catEtiquetas, 'etiquetas');
+  container.innerHTML = html;
+}
+
+function setView(view, el) { currentView = view; document.querySelectorAll('[data-view]').forEach(b => b.classList.remove('active')); el.classList.add('active'); renderIdeas(); }
+
+function toggleFilter(category, value) {
+  if (!isMultiSelect) {
+    const wasActive = filters[category].includes(value);
+    filters = { proyectos: [], tipos: [], animos: [], etiquetas: [] };
+    if (!wasActive) filters[category].push(value);
+  } else {
+    const arr = filters[category]; const idx = arr.indexOf(value);
+    if (idx > -1) arr.splice(idx, 1); else arr.push(value);
+  }
+  renderSidebarFilters(); renderIdeas();
+}
+
+function clearAllFilters() { filters = { proyectos: [], tipos: [], animos: [], etiquetas: [] }; renderSidebarFilters(); renderIdeas(); }
+
+// ── Render ideas ─────────────────────────────────────────────
+function renderIdeas() {
+  const grid = document.getElementById('ideasGrid');
+  const search = document.getElementById('searchInput').value.toLowerCase().trim();
+  let list = [...allIdeas].reverse();
+
+  if (currentView === 'favoritas') list = list.filter(i => i.favorita);
+
+  if (filters.proyectos.length > 0) list = list.filter(i => filters.proyectos.includes((i.proyecto || 'general').toLowerCase()));
+  if (filters.tipos.length > 0)     list = list.filter(i => filters.tipos.includes((i.tipo || 'nota').toLowerCase()));
+  if (filters.animos.length > 0)    list = list.filter(i => filters.animos.includes((i.animo || '').toLowerCase()));
+  if (filters.etiquetas.length > 0) list = list.filter(i => i.etiquetas && i.etiquetas.some(t => filters.etiquetas.includes(t.toLowerCase())));
+
+  if (search) {
+    list = list.filter(i => (i.contenido && i.contenido.toLowerCase().includes(search)) || (i.etiquetas && i.etiquetas.some(t => t.toLowerCase().includes(search))) || (i.animo && i.animo.toLowerCase().includes(search)) || (i.proyecto && i.proyecto.toLowerCase().includes(search)) || (i.tipo && i.tipo.toLowerCase().includes(search)) || (i.accion && i.accion.toLowerCase().includes(search)));
+  }
+
+  const isFiltered = filters.proyectos.length > 0 || filters.tipos.length > 0 || filters.animos.length > 0 || filters.etiquetas.length > 0;
+  document.getElementById('clearFiltersBtn').classList.toggle('visible', isFiltered);
+  document.getElementById('countBar').textContent = list.length === 1 ? '1 registro' : `${list.length} registros`;
+
+  if (list.length === 0) { grid.innerHTML = `<div class="empty"><div class="emoji">✦</div><p>No hay resultados para esta selección.</p></div>`; return; }
+
+  grid.innerHTML = list.map(idea => `
+    <div class="idea-card" data-id="${idea.id}">
+      <div class="card-top-meta">
+         <span class="proyecto">${escHtml(idea.proyecto || 'General')}</span>
+         <span>${escHtml(idea.tipo || 'Nota')}</span>
+      </div>
+      
+      <div class="card-text" id="text-${idea.id}" ondblclick="startEdit('${idea.id}')">${escHtml(idea.contenido)}</div>
+      
+${idea.leccion ? `
+      <details class="tutor-box" style="cursor:pointer; outline:none;">
+         <summary style="color:#0ea5e9; font-weight:500; margin-bottom:4px;">💡 Ver lección de inglés</summary>
+         <div style="margin-top:6px; cursor:text;">
+           <div class="original"><strong style="color:#ef4444;">❌ Escribiste:</strong> ${escHtml(idea.original)}</div>
+           <div><strong style="color:#0ea5e9;">📘 Lección:</strong> ${escHtml(idea.leccion)}</div>
+         </div>
+      </details>` : ''}
+
+      ${idea.accion ? `<div class="card-accion">👉 ${escHtml(idea.accion)}</div>` : ''}
+      
+      <div class="card-tags" style="margin-top: 6px;">
+        ${(idea.etiquetas || []).map(t => `<span class="tag-pill" onclick="toggleFilter('etiquetas', '${escHtml(t.toLowerCase())}')">${escHtml(t)}</span>`).join('')}
+      </div>
+      <div class="card-meta">
+        <span>${idea.fecha || ''} ${idea.animo ? '· ' + escHtml(idea.animo) : ''}</span>
+        <div class="card-actions">
+          <button class="icon-btn" onclick="startEdit('${idea.id}')" title="Editar">✏️</button>
+          <button class="icon-btn fav" onclick="toggleFav('${idea.id}', this)" title="Favorita">${idea.favorita ? '⭐' : '🔲'}</button>
+          <button class="icon-btn" onclick="deleteIdea('${idea.id}')" title="Eliminar">🗑</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function extractDynamicLists() {
+  const getUnique = (key) => [...new Set(allIdeas.map(i => i[key]).filter(v => v && v.trim() !== ''))].sort();
+  document.getElementById('list-proyecto').innerHTML = getUnique('proyecto').map(p => `<option value="${escHtml(p)}">`).join('');
+  document.getElementById('list-tipo').innerHTML     = getUnique('tipo').map(t => `<option value="${escHtml(t)}">`).join('');
+  document.getElementById('list-animo').innerHTML    = getUnique('animo').map(a => `<option value="${escHtml(a)}">`).join('');
+}
+
+// ── Favorita / Delete ─────────────────────────────────────────
+async function toggleFav(id, btn) {
+  const isFav = btn.textContent.trim() === '🔲'; btn.textContent = isFav ? '⭐' : '🔲';
+  const idea = allIdeas.find(i => i.id === id); if (idea) idea.favorita = isFav;
+  try { await postGAS({ action: 'toggleFav', id }); } catch(e) { btn.textContent = !isFav ? '⭐' : '🔲'; if (idea) idea.favorita = !isFav; }
+}
+async function deleteIdea(id) {
+  if (!confirm('¿Eliminar esta idea?')) return;
+  try { await postGAS({ action: 'deleteIdea', id }); allIdeas = allIdeas.filter(i => i.id !== id); renderSidebarFilters(); renderIdeas(); showToast('Eliminada'); } catch(e) {}
+}
+
+// ── Modal y Auto Completado Mágico IA (Ahora interactivo) ────────────
+function openModal() {
+  selectedTags = []; aiConversation = []; usingClaude = false;
+  ['inputContenido', 'inputAccion', 'inputProyecto', 'inputTipo', 'inputAnimo', 'tagInput', 'editIdeaId', 'inputOriginal', 'inputLeccion'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('modalTitle').textContent = 'Nueva Entrada';
+  
+  // Magia de Buscador: Si buscaste algo, lo pega aquí
+  const searchVal = document.getElementById('searchInput').value.trim();
+  if (searchVal) document.getElementById('inputContenido').value = searchVal;
+
+  document.getElementById('tutorPreview').style.display = 'none';
+  document.getElementById('chatSection').style.display = 'none';
+  document.getElementById('chatBox').innerHTML = '';
+  renderModalTagCloud();
+  document.getElementById('modalOverlay').style.display = 'flex';
+  setTimeout(() => document.getElementById('inputContenido').focus(), 100);
+}
+
+// Intercepta cierres accidentales
+function closeOnBackdrop(e) { if (e.target.id === 'modalOverlay') closeModal(false); }
+function closeModal(force) {
+  if (!force) {
+    const text = document.getElementById('inputContenido').value.trim();
+    if (text && !confirm('Tienes cambios sin guardar. ¿Seguro que quieres salir?')) return;
+  }
+  document.getElementById('modalOverlay').style.display = 'none';
+}
+
+async function requestAutoFill(fromChat = false, useClaude = false) {
+  const inputEl = document.getElementById('inputContenido');
+  const text = inputEl.value.trim();
+  if (!text && aiConversation.length === 0) { showToast('Escribe tu nota cruda primero'); return; }
+
+  const btn = document.getElementById('btnAutoFill'); const sp = document.getElementById('aiSpinner'); const txt = document.getElementById('aiText');
+  btn.disabled = true; sp.style.display = 'inline-block'; txt.textContent = 'Pensando...';
+  inputEl.classList.add('blinking-gold');
+
+  // Recolectar lo que YA escribiste para que la IA lo mejore
+  const currentContext = {
+    proyecto: document.getElementById('inputProyecto').value.trim(),
+    tipo: document.getElementById('inputTipo').value.trim(),
+    animo: document.getElementById('inputAnimo').value.trim(),
+    accion: document.getElementById('inputAccion').value.trim()
+  };
+
+ try {
+    // Extraemos tus categorías actuales para que la IA no invente
+    const existingProyectos = [...new Set(allIdeas.map(i => i.proyecto).filter(Boolean))];
+    const existingTipos = [...new Set(allIdeas.map(i => i.tipo).filter(Boolean))];
+    const existingAnimos = [...new Set(allIdeas.map(i => i.animo).filter(Boolean))];
+
+    const r = await postGAS({ 
+      action: 'autoFill', 
+      text: text, 
+      current: currentContext, 
+      conversacion: aiConversation,
+      existingTags: allTags.map(t => t.etiqueta),
+      existingProyectos: existingProyectos,
+      existingTipos: existingTipos,
+      existingAnimos: existingAnimos,
+      useClaude: useClaude
+    });
+
+    // ── Gemini sin créditos: preguntamos al usuario ──
+    if (!r.ok && r.quotaExceeded) {
+      btn.disabled = false; sp.style.display = 'none'; txt.textContent = '🪄 Asistente & Tutor IA';
+      inputEl.classList.remove('blinking-gold');
+      showQuotaDialog();
+      return;
+    }
+
+if (r.ok && r.data) {
+       // Llenar formulario con la magia
+       if (r.data.contenido) inputEl.value = r.data.contenido;
+       if (r.data.proyecto)  document.getElementById('inputProyecto').value = r.data.proyecto;
+       if (r.data.tipo)      document.getElementById('inputTipo').value = r.data.tipo;
+       if (r.data.animo)     document.getElementById('inputAnimo').value = r.data.animo;
+       if (r.data.accion)    document.getElementById('inputAccion').value = r.data.accion;
+       
+       if (r.data.original)  document.getElementById('inputOriginal').value = r.data.original;
+       if (r.data.leccion)   document.getElementById('inputLeccion').value = r.data.leccion;
+       
+       if (r.data.etiquetas && Array.isArray(r.data.etiquetas)) {
+          selectedTags = [...new Set([...selectedTags, ...r.data.etiquetas.map(t => t.toLowerCase().trim().replace(/\s+/g, '-'))])];
+          renderModalTagCloud();
+       }
+
+       if (r.data.leccion) {
+         const tp = document.getElementById('tutorPreview');
+         tp.style.display = 'block';
+         tp.innerHTML = `<strong>💡 Lección detectada:</strong> ${escHtml(r.data.leccion)}`;
+       } else { document.getElementById('tutorPreview').style.display = 'none'; }
+
+       const modelLabel = r.usedModel === 'claude' ? '✨ Listo (vía Claude)' : '✨ Listo';
+       showToast(modelLabel);
+       
+       document.getElementById('chatSection').style.display = 'block';
+       if (!fromChat && aiConversation.length === 0) {
+          aiConversation.push({ role: 'user', content: `Analiza esta nota:\n\n${text}` });
+       }
+       aiConversation.push({ role: 'assistant', content: r.rawAiResponse });
+       appendChatMsg('ai', "He ajustado los campos. Si quieres cambiar algo, dímelo aquí.");
+    } else {
+       throw new Error(r.error || 'Error desconocido');
+    }
+  } catch(e) {
+    // AHORA TE MOSTRARÁ EL ERROR REAL EN PANTALLA
+    showToast(e.message || 'Error en la IA'); 
+  }
+
+  btn.disabled = false; sp.style.display = 'none'; txt.textContent = '🪄 Asistente & Tutor IA';
+  inputEl.classList.remove('blinking-gold');
+}
+
+// ── Modal de cuota agotada ───────────────────────────────────
+function showQuotaDialog() {
+  // Crear overlay del diálogo
+  const overlay = document.createElement('div');
+  overlay.id = 'quotaOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,24,20,0.55);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;animation:fadeOverlay 0.15s ease;';
+  
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:420px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.18);animation:slideUp 0.2s ease;text-align:center;">
+      <div style="font-size:36px;margin-bottom:12px;">⚠️</div>
+      <div style="font-family:var(--font-serif);font-size:20px;color:var(--ink);margin-bottom:8px;">Gemini sin créditos</div>
+      <p style="font-size:13px;color:var(--ink-2);line-height:1.6;margin-bottom:24px;">
+        Se agotó la cuota gratuita de Gemini.<br>
+        Puedes usar <strong>Claude</strong> en su lugar (se cobrarán créditos de tu cuenta Anthropic), 
+        o esperar a que Gemini se recupere.
+      </p>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button onclick="closeQuotaDialog(false)" style="padding:10px 20px;border-radius:12px;background:none;border:1px solid var(--line);color:var(--ink-2);cursor:pointer;font-family:var(--font-sans);font-size:13px;">⏳ Esperar</button>
+        <button onclick="closeQuotaDialog(true)" style="padding:10px 22px;border-radius:12px;background:var(--ink);color:var(--cream);border:none;cursor:pointer;font-family:var(--font-sans);font-size:13px;font-weight:500;">⚡ Usar Claude</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function closeQuotaDialog(useClaude) {
+  const overlay = document.getElementById('quotaOverlay');
+  if (overlay) overlay.remove();
+  if (useClaude) {
+    usingClaude = true;
+    showToast('Usando Claude...');
+    requestAutoFill(false, true);
+  }
+}
+
+let usingClaude = false; // Recuerda si el usuario eligió Claude en esta sesión
+
+function sendChatMsg() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  appendChatMsg('user', msg);
+  aiConversation.push({ role: 'user', content: msg });
+  requestAutoFill(true, usingClaude); // Mantiene el proveedor elegido
+}
+
+function appendChatMsg(role, text) {
+  const box = document.getElementById('chatBox');
+  const div = document.createElement('div'); div.className = `chat-msg ${role}`; div.textContent = text;
+  box.appendChild(div); box.scrollTop = box.scrollHeight;
+}
+
+function renderModalTagCloud() {
+  const container = document.getElementById('modalTagCloud');
+  const allKnown = [...new Set([...getCounts('etiquetas').map(e=>e[0]), ...selectedTags])];
+  if (allKnown.length === 0) { container.innerHTML = '<span style="color:var(--ink-3);font-size:12px;">Sin etiquetas</span>'; return; }
+  container.innerHTML = allKnown.map(t => {
+    const isActive = selectedTags.includes(t);
+    return `<span class="selectable-tag ${isActive ? 'active' : ''}" onclick="toggleModalTag('${escHtml(t)}')">${escHtml(t)}</span>`;
+  }).join('');
+}
+
+function toggleModalTag(tag) {
+  const clean = tag.toLowerCase().trim(); const idx = selectedTags.indexOf(clean);
+  if (idx > -1) selectedTags.splice(idx, 1); else selectedTags.push(clean);
+  renderModalTagCloud();
+}
+
+function addTag(tag) { const clean = tag.toLowerCase().trim().replace(/\s+/g, '-'); if (clean && !selectedTags.includes(clean)) { selectedTags.push(clean); renderModalTagCloud(); } }
+function handleTagInput(e) { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); const v = document.getElementById('tagInput').value.trim(); if (v) { addTag(v); document.getElementById('tagInput').value = ''; } } }
+
+async function saveIdea() {
+  const contenido = document.getElementById('inputContenido').value.trim();
+  if (!contenido) { showToast('Escribe algo primero'); return; }
+  const tagInputVal = document.getElementById('tagInput').value.trim();
+  if (tagInputVal) addTag(tagInputVal);
+
+  const editId = document.getElementById('editIdeaId').value;
+  const body = {
+    contenido: contenido, etiquetas: selectedTags,
+    animo: document.getElementById('inputAnimo').value.trim(),
+    proyecto: document.getElementById('inputProyecto').value.trim(),
+    tipo: document.getElementById('inputTipo').value.trim(),
+    accion: document.getElementById('inputAccion').value.trim(),
+    original: document.getElementById('inputOriginal').value,
+    leccion: document.getElementById('inputLeccion').value
+  };
+
+  const btn = document.getElementById('btnSave'); btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    let r;
+    if (editId) {
+       body.action = 'updateIdea'; body.id = editId; body.text = contenido; 
+       r = await postGAS(body);
+    } else {
+       body.action = 'saveIdea'; r = await postGAS(body);
+    }
+    if (r.ok) { closeModal(true); showToast('Guardado ✦'); await loadIdeas(); } else showToast('Error');
+  } catch(e) { showToast('Error de red'); }
+  btn.disabled = false; btn.textContent = 'Guardar';
+}
+
+// ── Edición (Ahora abre el modal unificado) ──────────────────
+function startEdit(id) {
+  const idea = allIdeas.find(i => i.id === id);
+  if(!idea) return;
+  openModal();
+  document.getElementById('modalTitle').textContent = 'Editar Entrada';
+  document.getElementById('editIdeaId').value = idea.id;
+  document.getElementById('inputContenido').value = idea.contenido || '';
+  document.getElementById('inputProyecto').value = idea.proyecto || '';
+  document.getElementById('inputTipo').value = idea.tipo || '';
+  document.getElementById('inputAnimo').value = idea.animo || '';
+  document.getElementById('inputAccion').value = idea.accion || '';
+  document.getElementById('inputOriginal').value = idea.original || '';
+  document.getElementById('inputLeccion').value = idea.leccion || '';
+  selectedTags = [...(idea.etiquetas || [])];
+  
+  if(idea.leccion) {
+    const tp = document.getElementById('tutorPreview');
+    tp.style.display = 'block'; tp.innerHTML = `<strong>💡 Lección previa:</strong> ${escHtml(idea.leccion)}`;
+  }
+  renderModalTagCloud();
+}
+
+// Helpers
+async function postGAS(body) { const form = new FormData(); form.append('payload', JSON.stringify(body)); const r = await fetch(GAS_URL, { method: 'POST', body: form }); return r.json(); }
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+let toastTimer; function showToast(msg) { const existing = document.querySelector('.toast'); if (existing) existing.remove(); clearTimeout(toastTimer); const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); toastTimer = setTimeout(() => t.remove(), 2800); }
+
+init();
+</script>
+</body>
+</html>
