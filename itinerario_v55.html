@@ -406,10 +406,10 @@ body.drag-locked .cal-resize-handle { display: none; }
       <div style="position:relative">
         <button class="btn-mini" onclick="toggleMapaCatsMenu(event)">📂 Categorías ▾</button>
         <div class="mapa-cats" id="mapaCats">
-          <label><input type="checkbox" value="pendientes" checked onchange="mapaFoco=null; renderMapaGeneral()"> 📌 Lugares</label>
-          <label><input type="checkbox" value="transporte" checked onchange="mapaFoco=null; renderMapaGeneral()"> 🚆 Transporte</label>
-          <label><input type="checkbox" value="hospedaje" checked onchange="mapaFoco=null; renderMapaGeneral()"> 🏨 Hospedaje</label>
-          <label><input type="checkbox" value="restaurantes" checked onchange="mapaFoco=null; renderMapaGeneral()"> 🍴 Restaurantes</label>
+          <label><input type="checkbox" value="pendientes" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 📌 Lugares</label>
+          <label><input type="checkbox" value="transporte" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🚆 Transporte</label>
+          <label><input type="checkbox" value="hospedaje" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🏨 Hospedaje</label>
+          <label><input type="checkbox" value="restaurantes" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🍴 Restaurantes</label>
         </div>
       </div>
       <button class="btn-mini" id="btnFocoMapa" onclick="toggleFocoEventosPendientes()" style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;background:#ff7200;border:2px solid #fff;box-shadow:0 0 0 1px #ff7200;display:inline-block;flex-shrink:0"></span>Ver pendientes</button>
@@ -485,7 +485,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 // ── Config ───────────────────────────────────────────────────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
-const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
+const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
 const GASTOS_CAT_DEFAULT = '✈️ Viajes';
 let gastosVinculados = {}; // { [itemId]: [{ id, costo, moneda, ... }] } — persiste en GASTOS_VINCULOS sheet
 
@@ -750,7 +750,7 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId) {
   document.getElementById('gNotas').value = prev ? (prev.notas||'') : '';
   // Categoria por defecto según tipo de item
     const _esResto = tipo === 'pendiente' && (() => { const p = itinerario.pendientes.find(x=>x.id===itemId); return p && (p.esRestaurante || p.antojo); })();
-  const catPorTipo = tipo === 'hospedaje' ? '✈️ Viajes' : tipo === 'transporte' ? '🚆 Transporte' : _esResto ? '🍽️ Restaurante' : '🎌 Entretenimiento';
+  const catPorTipo = tipo === 'hospedaje' ? '🏨 Hospedaje' : tipo === 'transporte' ? '🚆 Transporte' : _esResto ? '🍽️ Restaurante' : '🎌 Entretenimiento';
   // Detectar si el place es un restaurante
   const datosObj = (() => { try { return typeof datosStr==='object' ? datosStr : JSON.parse(datosStr||'{}'); } catch(_){return {};} })();
   const esResto = datosObj.esRestaurante || datosObj.antojo;
@@ -936,8 +936,15 @@ async function gGuardar() {
   const tienda = document.getElementById('gTienda').value.trim();
   if(!conc && !tienda) { showToast('Escribe el concepto o la tienda'); return; }
   const concepto_final = tienda ? `${conc||''} — ${tienda}` : (conc||'');
+  // Si es edición, buscar el rowIndex del gasto para hacer updateGasto (evita duplicar)
+  let editRowIndex = null;
+  if (editId && gastosVinculados[itemId]) {
+    const gExist = gastosVinculados[itemId].find(g => g.id === editId);
+    if (gExist && gExist.rowIndex) editRowIndex = gExist.rowIndex;
+  }
   const body = {
-    action:'saveGasto',
+    action: editRowIndex ? 'updateGasto' : 'saveGasto',
+    rowIndex: editRowIndex || undefined,
     fecha:document.getElementById('gFecha').value,
     fecha_captura:document.getElementById('gCaptura').value,
     costo:costo||'0',
@@ -966,6 +973,7 @@ async function gGuardar() {
       // Objeto local para mostrar en memoria (moneda = moneda de pago)
       const nuevo = {
         id: body.gastoId,
+        rowIndex: editRowIndex || null,
         itemId, proyecto: currentProyecto || '',
         costo: costo||'0', moneda: document.getElementById('gMoneda').value,
         conversion: document.getElementById('gConversion').value,
@@ -2860,7 +2868,7 @@ function renderMapaGeneral() {
   const diaNombre = (id) => { const d = itinerario.dias.find(x => x.id === id); return d ? `${d.fecha}${d.zona ? ' · ' + d.zona : ''}` : ''; };
   const colorDeDia = (diaId) => { const idx = dias.findIndex(d => d.id === diaId); return DIA_COLORES[idx >= 0 ? idx % DIA_COLORES.length : 0]; };
   const cats = categoriasMapaActivas();
-  const verPendientes = cats.includes('pendientes'), verTransporte = cats.includes('transporte'), verHospedaje = cats.includes('hospedaje'), verResto = mapaRestoMode;
+  const verPendientes = cats.includes('pendientes'), verTransporte = cats.includes('transporte'), verHospedaje = cats.includes('hospedaje'), verResto = mapaRestoMode && cats.includes('restaurantes');
 
   // Modo foco: si viene de "Ver mapa" en un visor, todo lo demás se ve como marca de agua.
   // Modo "eventos pendientes": invierte qué se ve nítido (lo sin programar) vs marca de agua (lo programado).
@@ -2885,7 +2893,7 @@ function renderMapaGeneral() {
   const puntosProgramados = [];
   let puntoFoco = null;
 
-  if (verPendientes) {
+  if (verPendientes || verTransporte) {
     diasAMostrar.forEach((dia) => {
       const color = colorDeDia(dia.id);
       const hosp = hospedajeDelDia(dia.id);
@@ -2896,9 +2904,8 @@ function renderMapaGeneral() {
       const pendSinHora = todasPendDia.filter(p => !p.horaInicio);
 
       const puntosOrdenados = [];
-      pendDia.forEach((p, i) => {
+      if (verPendientes) pendDia.forEach((p, i) => {
         const o = op('pendiente', p.id, false);
-        // Restaurantes: cuadrado (shape='square') para diferenciarlos de lugares normales (círculo)
         const shape = (p.esRestaurante || p.antojo) ? 'hexagon' : 'circle';
         const m = mkr(p.lat, p.lng, shapeDivIcon(color, shape, i + 1, 22, o), o);
         bindEtiquetaMapa(m, p.nombre, () => abrirVisor('pendiente', p.id), o, o >= 0.9);
@@ -2908,7 +2915,7 @@ function renderMapaGeneral() {
         if (foco && foco.tipo === 'pendiente' && foco.id === p.id) { puntoFoco = [p.lat, p.lng]; }
       });
       // Sin hora asignada (tenga día o no): siempre gris, no entran en la ruta numerada.
-      pendSinHora.forEach(p => {
+      if (verPendientes) pendSinHora.forEach(p => {
         const m = mkr(p.lat, p.lng, shapeDivIcon(COLOR_SIN_HORA, 'circle', '', mapaModoPendientes ? 24 : 16, 1), 1);
         bindEtiquetaMapa(m, p.nombre, () => abrirVisor('pendiente', p.id), 1, true);
         puntos.push([p.lat, p.lng]);
@@ -4184,11 +4191,13 @@ function openTransporteForm(id, diaId) {
   modalEsFormulario = true;
   const t = id ? itinerario.transporte.find(x => x.id === id) : null;
   currentModosData = construirModosDataInicial(t);
+  const diaActualId = t ? t.diaId : (diaId || '');
+  const diaOptionsTrans = diasFiltrados().map(d => `<option value="${d.id}" ${diaActualId===d.id ? 'selected' : ''}>${d.fecha} ${d.zona ? '· ' + escHtml(d.zona) : ''}</option>`).join('');
   modalOpen(`
     <div class="modal-head"><span class="modal-title">${t ? 'Editar' : 'Nuevo'} transporte</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
       <input type="hidden" id="fTransId" value="${t ? t.id : ''}">
-      <input type="hidden" id="fTransDia" value="${diaId || ''}">
+      <input type="hidden" id="fTransDiaOriginal" value="${diaActualId}">
       <div class="row-2">
         <div class="field"><label>Tipo</label>
           <select id="fTransTipo">
@@ -4203,6 +4212,7 @@ function openTransporteForm(id, diaId) {
           </select>
         </div>
       </div>
+      <div class="field"><label>Día</label><select id="fTransDia">${diaOptionsTrans}</select></div>
 
       <div class="row-2">
         <div class="field autocomplete-wrap">
@@ -4377,6 +4387,13 @@ async function sugerirTransporteCompletoForm(btnEl) {
 
 async function guardarTransporte() {
   const id = document.getElementById('fTransId').value;
+  const diaNuevoId = document.getElementById('fTransDia').value;
+  const diaOriginalId = document.getElementById('fTransDiaOriginal').value;
+  if (id && diaNuevoId !== diaOriginalId) {
+    const fechaDe = (itinerario.dias.find(d => d.id === diaOriginalId) || {}).fecha || '(sin fecha)';
+    const fechaA = (itinerario.dias.find(d => d.id === diaNuevoId) || {}).fecha || '(sin fecha)';
+    if (!confirm(`Estás moviendo esto de ${fechaDe} a ${fechaA}. ¿Estás de acuerdo?`)) return;
+  }
   const elegido = (currentModosData && currentModosData._elegido) || {};
   const modoFinal = currentModosData.modos.find(m => m.modo === elegido.modo) || currentModosData.modos[0];
   const tipoFinal = modoFinal ? modoFinal.modo : document.getElementById('fTransTipo').value;
@@ -4958,6 +4975,16 @@ function toggleGastoSuma(id) {
   if (_gastosSumaSel.has(id)) _gastosSumaSel.delete(id); else _gastosSumaSel.add(id);
   actualizarSumaSeleccion();
 }
+function toggleSumarTodosGastos(marcar) {
+  // Selecciona/deselecciona TODOS los gastos reales (no cotizaciones)
+  Object.values(gastosVinculados).forEach(lista => lista.forEach(g => {
+    if (!g.cotizacion) {
+      if (marcar) _gastosSumaSel.add(g.id); else _gastosSumaSel.delete(g.id);
+    }
+  }));
+  actualizarSumaSeleccion();
+  renderTabla(); // re-render para actualizar los checkboxes individuales
+}
 function actualizarSumaSeleccion() {
   // Recolectar todos los gastos y sumar los seleccionados
   let suma = 0, n = 0;
@@ -5045,7 +5072,7 @@ function tablaGastosSeccion() {
         <input type="checkbox" ${_gastosSumaSel.has(f.id)?'checked':''} onchange="toggleGastoSuma('${f.id}')" style="cursor:pointer; width:15px; height:15px">
       </td>
     </tr>`).join('');
-    const tfootHtml = showTotals ? `<tfoot><tr><td colspan="${activeCols.length-1}" style="padding:7px 12px; font-weight:600">Total en ¥</td><td style="padding:7px 12px; font-weight:700; text-align:right">¥${rowsTotal.toLocaleString()}</td><td></td></tr></tfoot>` : '';
+    const tfootHtml = showTotals ? `<tfoot><tr><td colspan="${activeCols.length-1}" style="padding:7px 12px; font-weight:600">Total en ¥</td><td style="padding:7px 12px; font-weight:700; text-align:right">¥${rowsTotal.toLocaleString()}</td><td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" ${rows.length && rows.every(f=>_gastosSumaSel.has(f.id))?'checked':''} onchange="toggleSumarTodosGastos(this.checked)" title="Seleccionar/deseleccionar todos los gastos" style="cursor:pointer; width:15px; height:15px"></td></tr></tfoot>` : '';
     return `<div class="tabla-scroll"><table class="data-table"><thead><tr>${theadHtml}</tr></thead><tbody>${tbodyHtml}</tbody>${tfootHtml}</table></div>`;
   };
 
@@ -5308,7 +5335,7 @@ init();
         <label>Categoría</label>
         <select id="gCat" class="g-select">
           <option value="">— Sin categoría —</option>
-          <option>🍽️ Restaurante</option><option>🍜 Alimentos</option><option>🍺 Salidas / Bares</option><option>🛒 Supermercado</option>
+          <option>🍽️ Restaurante</option><option>🍜 Alimentos</option><option>🏨 Hospedaje</option><option>🍺 Salidas / Bares</option><option>🛒 Supermercado</option>
           <option>🎌 Entretenimiento</option><option>👗 Ropa / Compras</option><option>🚆 Transporte</option>
           <option>🏠 Hogar</option><option>💊 Salud</option><option>📱 Servicios / Tech</option>
           <option selected>✈️ Viajes</option><option>🎁 Regalos</option><option>📚 Educación</option>
