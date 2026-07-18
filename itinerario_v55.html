@@ -580,24 +580,6 @@ let modalEsFormulario = false; // true solo en formularios editables (no en viso
 let miniMap = null;
 let panelCollapsed = { notas: true, sinHora: true, transporte: true, hospedaje: true, despues: true, restaurantes: true, recomendaciones: true, mapa: false };
 let antojosMaestros = []; // lista maestra del Sheets, separada de los pendientes con antojo
-function scrollPanelATransporte(id) {
-  // Asegura que la sección Transporte esté desplegada, luego scrollea al elemento
-  if (panelCollapsed.transporte) {
-    panelCollapsed.transporte = false;
-    const body = document.getElementById('section-body-transporte');
-    const btn = document.getElementById('section-toggle-transporte');
-    if (body) body.style.display = '';
-    if (btn) btn.textContent = '▼';
-  }
-  requestAnimationFrame(() => {
-    const el = document.getElementById('trans-' + id);
-    if (el) {
-      el.style.boxShadow = '0 0 0 2px var(--route)';
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setTimeout(() => { el.style.boxShadow = ''; }, 2000);
-    }
-  });
-}
 function toggleSection(key) {
   panelCollapsed[key] = !panelCollapsed[key];
   const body = document.getElementById('section-body-' + key);
@@ -756,7 +738,7 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId) {
   const esResto = datosObj.esRestaurante || datosObj.antojo;
   const catAuto = esResto ? '🍽️ Restaurante' : catPorTipo;
   document.getElementById('gCat').value = prev ? (prev.categoria||catAuto) : catAuto;
-  document.getElementById('gChkCot').checked = !!(prev && prev.cotizacion);
+  document.getElementById('gChkCot').checked = prev ? !!prev.cotizacion : true;
   document.getElementById('gStoredPhoto').value = '';
   gTb64 = ''; gTMime = '';
   // Restablecer foto
@@ -1700,21 +1682,23 @@ function renderPoolPanel() {
         ? hospSorted.map((h, idx) => {
             const esElegido = !!h.elegido || (todosHosp.length === 1);
             const esDelDia = hospDelDia.some(x => x.id === h.id);
+            const esElegidoDelDia = hospDelDia.length <= 1 || esElegido;
             return `<div style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esElegido ? 'border-color:var(--route)' : ''}">
               <div style="display:flex; align-items:center; gap:5px; padding:5px 8px; background:${esElegido ? 'var(--route-light)' : 'var(--paper-2)'}">
                 <div style="display:flex;flex-direction:column;gap:1px">
                   <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','up')" ${idx===0?'disabled':''}>▲</button>
                   <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','down')" ${idx===hospSorted.length-1?'disabled':''}>▼</button>
                 </div>
+                <button class="icon-btn" onclick="marcarHospedajeElegido('${h.id}')" title="${esElegido ? 'Quitar como hotel elegido' : 'Marcar como el hotel elegido'}">${esElegido ? '⭐' : '☆'}</button>
                 <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorHospedaje('${h.id}')">${escHtml(h.nombre || '(sin nombre)')}</span>
                 <span style="font-size:10px; color:var(--ink-3)">${esDelDia ? '📅' : ''}</span>
                 <button class="icon-btn" onclick="openHospedajeForm('${h.id}','${h.diaIdInicio}')" title="Editar">✏️</button>
                 <button class="icon-btn" onclick="eliminarHospedaje('${h.id}')" title="Eliminar">🗑</button>
               </div>
               <div style="padding:4px 8px; font-size:11.5px; color:var(--ink-2); display:flex; align-items:center; gap:6px">
-                ${esDelDia ? `<span style="font-size:10px; font-weight:600; color:#fff; background:#16a34a; padding:1px 5px; border-radius:4px; flex-shrink:0">
+                ${esDelDia ? (esElegidoDelDia ? `<span style="font-size:10px; font-weight:600; color:#fff; background:#16a34a; padding:1px 5px; border-radius:4px; flex-shrink:0">
                   ${dia.id === h.diaIdInicio ? 'Check-in' : dia.id === h.diaIdFin ? 'Check-out' : '🏨 Activo'}
-                </span>` : ''}
+                </span>` : `<span style="font-size:10px; font-weight:600; color:var(--ink-2); background:var(--paper-2); border:1px solid var(--line); padding:1px 5px; border-radius:4px; flex-shrink:0">🤔 Candidato</span>`) : ''}
                 <div style="flex:1; line-height:1.5; min-width:0">
                   <div style="font-size:12px">📅 ${escHtml(h.diaIdInicio ? (itinerario.dias.find(d=>d.id===h.diaIdInicio)||{}).fecha||'-' : '-')} → ${escHtml(h.diaIdFin ? (itinerario.dias.find(d=>d.id===h.diaIdFin)||{}).fecha||'-' : '-')}</div>
                   ${(h.horaCheckIn||h.horaCheckOut) ? `<div style="font-size:11px; color:var(--ink-2)">${h.horaCheckIn?'🔑 '+escHtml(h.horaCheckIn):''}${h.horaCheckIn&&h.horaCheckOut?' · ':''}${h.horaCheckOut?'🚪 '+escHtml(h.horaCheckOut):''}</div>` : ''}
@@ -2085,7 +2069,9 @@ function startTransporteDrag(e, t) {
     ghost.remove();
     clearHighlights();
     if (!moved) { abrirVisor('transporte', t.id); return; }
-    if (esHorarioFijo && tieneSalida) { showToast('La hora está definida por el vuelo/tren. Edita para cambiarla.'); return; }
+    if (esHorarioFijo && tieneSalida) {
+      if (!confirm('Este transporte ya tiene el horario definido (vuelo/tren/ferry/bus). ¿Deseas moverlo de todas formas?')) return;
+    }
     const col = elFrom(ev, '.week-col');
     if (col && col.dataset.dia === t.diaId) {
       const iniMin = timeForCol(col, ev);
@@ -3323,22 +3309,8 @@ function attachWeekBlockDrag(el, b, diaId) {
 
     // Determinar si este bloque tiene duración bloqueada
     let resizeBloqueado = !!b.duracionBloqueada;
-    let movimientoBloqueado = false;
-
-    if (b.kind === 'transporte') {
-      const t = itinerario.transporte.find(x => x.id === b.id);
-      if (t) {
-        const esHorarioFijo = !MODOS_SIN_HORARIO.includes(t.tipo);
-        const opSel = (t.opciones || [])[t.opcionElegida || 0];
-        if (esHorarioFijo && opSel && opSel.salida) {
-          // Vuelo/tren/ferry/bus con horario definido: nada se puede mover ni redimensionar
-          showToast('La hora está definida por el horario. Edita para cambiarla.');
-          return;
-        }
-        // Transporte libre (caminando/carro/bici): puede moverse pero la duración siempre bloqueada
-        resizeBloqueado = true;
-      }
-    }
+    // La duración de un transporte no se ajusta arrastrando (con o sin horario fijo): se edita en el formulario
+    if (b.kind === 'transporte') resizeBloqueado = true;
 
     if ((e.target === topHandle || e.target === bottomHandle) && resizeBloqueado) {
       showToast('Duración bloqueada. Edita el evento para cambiarla.');
@@ -3350,15 +3322,12 @@ function attachWeekBlockDrag(el, b, diaId) {
   });
   el.addEventListener('click', (e) => {
     if (b.kind === 'transporte') {
-      // Transporte: click simple → scroll al panel (siempre), doble click → abrir visor
-      scrollPanelATransporte(b.id);
+      // Transporte: click simple abre directo la misma vista que la tarjeta de la barra lateral
+      abrirVisor(b.kind, b.id);
     } else {
       if (dragBloqueado) abrirVisor(b.kind, b.id);
     }
   });
-  if (b.kind === 'transporte') {
-    el.addEventListener('dblclick', () => abrirVisor(b.kind, b.id));
-  }
 }
 
 function startWeekMove(e, b, el, origDiaId) {
@@ -3403,6 +3372,14 @@ function startWeekMove(e, b, el, origDiaId) {
     if (dz) dz.style.background = '';
     if (shz) shz.style.background = '';
     if (!moved) { openBlockDetail(b); return; }
+    if (b.kind === 'transporte') {
+      const t = itinerario.transporte.find(x => x.id === b.id);
+      const esHorarioFijo = t && !MODOS_SIN_HORARIO.includes(t.tipo);
+      const opSel = t && (t.opciones || [])[t.opcionElegida || 0];
+      if (esHorarioFijo && opSel && opSel.salida) {
+        if (!confirm('Este transporte ya viene definido por el horario (vuelo/tren/ferry/bus). ¿Deseas moverlo de todas formas?')) { renderSemana(); return; }
+      }
+    }
     if (elFrom(ev, '#poolDespuesZone')) { unscheduleBlock(b, true); return; }
     if (elFrom(ev, '#poolSinHoraZone')) { unscheduleBlock(b, false); return; }
     const dy = (ev.clientY - startY) / pxPerMin();
@@ -4975,10 +4952,10 @@ function toggleGastoSuma(id) {
   if (_gastosSumaSel.has(id)) _gastosSumaSel.delete(id); else _gastosSumaSel.add(id);
   actualizarSumaSeleccion();
 }
-function toggleSumarTodosGastos(marcar) {
-  // Selecciona/deselecciona TODOS los gastos reales (no cotizaciones)
+function toggleSumarTodosGastos(marcar, esCot) {
+  // Selecciona/deselecciona TODOS los gastos reales, o todas las cotizaciones si esCot=true
   Object.values(gastosVinculados).forEach(lista => lista.forEach(g => {
-    if (!g.cotizacion) {
+    if (!!g.cotizacion === !!esCot) {
       if (marcar) _gastosSumaSel.add(g.id); else _gastosSumaSel.delete(g.id);
     }
   }));
@@ -5055,7 +5032,7 @@ function tablaGastosSeccion() {
     </div>
   </div>`;
 
-  const buildTable = (rows, showTotals) => {
+  const buildTable = (rows, showTotals, esCot) => {
     if (!rows.length) return `<div class="empty-mini">Sin registros</div>`;
     const rowsTotal = rows.reduce((s,f)=>s+(f.moneda==='JPY'?Number(f.costo||0):0),0);
     const theadHtml = activeCols.map(k => {
@@ -5072,7 +5049,7 @@ function tablaGastosSeccion() {
         <input type="checkbox" ${_gastosSumaSel.has(f.id)?'checked':''} onchange="toggleGastoSuma('${f.id}')" style="cursor:pointer; width:15px; height:15px">
       </td>
     </tr>`).join('');
-    const tfootHtml = showTotals ? `<tfoot><tr><td colspan="${activeCols.length-1}" style="padding:7px 12px; font-weight:600">Total en ¥</td><td style="padding:7px 12px; font-weight:700; text-align:right">¥${rowsTotal.toLocaleString()}</td><td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" ${rows.length && rows.every(f=>_gastosSumaSel.has(f.id))?'checked':''} onchange="toggleSumarTodosGastos(this.checked)" title="Seleccionar/deseleccionar todos los gastos" style="cursor:pointer; width:15px; height:15px"></td></tr></tfoot>` : '';
+    const tfootHtml = showTotals ? `<tfoot><tr><td colspan="${activeCols.length-1}" style="padding:7px 12px; font-weight:600">${esCot?'Total estimado en ¥':'Total en ¥'}</td><td style="padding:7px 12px; font-weight:700; text-align:right">¥${rowsTotal.toLocaleString()}</td><td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" ${rows.length && rows.every(f=>_gastosSumaSel.has(f.id))?'checked':''} onchange="toggleSumarTodosGastos(this.checked${esCot?', true':''})" title="Seleccionar/deseleccionar todos los ${esCot?'cotizaciones':'gastos'}" style="cursor:pointer; width:15px; height:15px"></td></tr></tfoot>` : '';
     return `<div class="tabla-scroll"><table class="data-table"><thead><tr>${theadHtml}</tr></thead><tbody>${tbodyHtml}</tbody>${tfootHtml}</table></div>`;
   };
 
@@ -5082,7 +5059,7 @@ function tablaGastosSeccion() {
       ${colSelector}
     </div>
     ${buildTable(reales, true)}
-    ${cots.length ? `<div class="tabla-head-row" style="margin-top:10px"><h3 class="tabla-title">💬 Cotizaciones</h3>${colSelector.replace('gastoColMenu','gastoColMenuCot').replace('id="gastoColSel"','id="gastoColSelCot"').replace('toggleGastoColSel()','toggleGastoColSel(true)')}</div>${buildTable(cots, false)}` : ''}
+    ${cots.length ? `<div class="tabla-head-row" style="margin-top:10px"><h3 class="tabla-title">💬 Cotizaciones</h3>${colSelector.replace('gastoColMenu','gastoColMenuCot').replace('id="gastoColSel"','id="gastoColSelCot"').replace('toggleGastoColSel()','toggleGastoColSel(true)')}</div>${buildTable(cots, true, true)}` : ''}
   </div>`;
 }
 
