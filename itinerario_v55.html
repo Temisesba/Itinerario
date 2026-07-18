@@ -1578,23 +1578,35 @@ function startResize(e, b, el, edge) {
 
 async function persistBlockTime(b, iniMin, finMin, diaId) {
   const horaInicio = minToHHMM(iniMin), horaFin = minToHHMM(finMin);
-  if (b.kind === 'pendiente') {
-    const p = itinerario.pendientes.find(x => x.id === b.id);
-    if (p) { p.horaInicio = horaInicio; p.horaFin = horaFin; if (diaId) p.diaId = diaId; }
-    const body = { action: 'updatePendiente', id: b.id, horaInicio, horaFin };
-    if (diaId) body.diaId = diaId;
-    await postGAS(body);
-  } else {
-    const t = itinerario.transporte.find(x => x.id === b.id);
-    if (!t) return;
-    const idx = t.opcionElegida || 0;
-    t.opciones = t.opciones && t.opciones.length ? t.opciones : [{}];
-    if (!t.opciones[idx]) t.opciones[idx] = {};
-    t.opciones[idx].salida = horaInicio; t.opciones[idx].llegada = horaFin;
-    if (diaId) t.diaId = diaId;
-    const body = { action: 'updateTransporte', id: b.id, opciones: t.opciones, opcionElegida: idx };
-    if (diaId) body.diaId = diaId;
-    await postGAS(body);
+  let r;
+  try {
+    if (b.kind === 'pendiente') {
+      const p = itinerario.pendientes.find(x => x.id === b.id);
+      if (p) { p.horaInicio = horaInicio; p.horaFin = horaFin; if (diaId) p.diaId = diaId; }
+      const body = { action: 'updatePendiente', id: b.id, horaInicio, horaFin };
+      if (diaId) body.diaId = diaId;
+      r = await postGAS(body);
+    } else {
+      const t = itinerario.transporte.find(x => x.id === b.id);
+      if (!t) return;
+      const idx = t.opcionElegida || 0;
+      t.opciones = t.opciones && t.opciones.length ? t.opciones : [{}];
+      if (!t.opciones[idx]) t.opciones[idx] = {};
+      t.opciones[idx].salida = horaInicio; t.opciones[idx].llegada = horaFin;
+      if (diaId) t.diaId = diaId;
+      const body = { action: 'updateTransporte', id: b.id, opciones: t.opciones, opcionElegida: idx };
+      if (diaId) body.diaId = diaId;
+      r = await postGAS(body);
+    }
+  } catch (e) {
+    showToast('⚠️ No se pudo guardar (sin conexión). Se restauró desde el servidor.');
+    await loadItinerario();
+    return;
+  }
+  if (!r || !r.ok) {
+    showToast('⚠️ El servidor rechazó el cambio. Se restauró desde el servidor.');
+    await loadItinerario();
+    return;
   }
   renderSpine();
   renderSemana();
@@ -2101,7 +2113,13 @@ async function fijarHorarioTransporteDesdeArrastre(transporteId, iniMin, dur) {
   renderSemana(); renderPoolPanel(); renderSpine();
   const body = { action: 'updateTransporte', id: transporteId, opciones, opcionElegida: idx };
   if (t.modosData) body.modosData = t.modosData;
-  await postGAS(body);
+  let r;
+  try { r = await postGAS(body); } catch (e) { r = null; }
+  if (!r || !r.ok) {
+    showToast('⚠️ No se pudo guardar la hora. Se restauró desde el servidor.');
+    await loadItinerario();
+    return;
+  }
   showToast('Hora fijada ✦');
 }
 
@@ -2218,6 +2236,7 @@ function abrirVisorPendiente(id) {
       ${p.duracionMin ? `<div class="visor-row">⏱ ~${formatDuracion(p.duracionMin)}</div>` : ''}
       ${p.antojo ? `<div class="visor-row">🍴 Antojo: ${escHtml(p.antojo)}</div>` : ''}
       ${p.direccion ? `<div class="visor-row">📍 ${escHtml(p.direccion)}</div>` : ''}
+      ${(p.horarioApertura || p.horarioCierre) ? `<div class="visor-row">🕐 Abre: ${escHtml(p.horarioApertura || '?')} · Cierra: ${escHtml(p.horarioCierre || '?')}</div>` : ''}
       ${coordsMini(p.lat, p.lng)}
       ${p.notasPrevias ? `<div class="visor-block"><b>📌 Notas</b><br>${escHtml(p.notasPrevias)}</div>` : ''}
       ${p.notasDiario ? `<div class="visor-block"><b>📓 Diario</b><br>${escHtml(p.notasDiario)}</div>` : ''}
@@ -2240,13 +2259,46 @@ function abrirVisorTransporte(id) {
   modalEsFormulario = false;
   const t = itinerario.transporte.find(x => x.id === id);
   if (!t) return;
-  const op = (t.opciones || [])[t.opcionElegida || 0];
+  const opciones = t.opciones || [];
+  const opSel = opciones[t.opcionElegida || 0];
+  const otrosModos = ((t.modosData && t.modosData.modos) || []).filter(m => m.modo !== t.tipo && m.aplica !== false && (m.opciones || []).length);
+  const horarioResumen = opSel ? formatOpcionTexto(opSel) : 'Sin horario';
+  const oculto = !!t.ocultarMapa;
+  const vId = 'visor-transporte-horarios-' + t.id;
   modalOpen(`
-    <div class="modal-head"><span class="modal-title">${TIPO_LABEL[t.tipo] || t.tipo}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-head">
+      <span class="modal-title">${TIPO_LABEL[t.tipo] || t.tipo}</span>
+      <div style="display:flex; align-items:center; gap:10px">
+        <button class="icon-btn" title="${oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
+        <button class="modal-close" onclick="modalClose()">✕</button>
+      </div>
+    </div>
     <div class="modal-body">
       <div class="visor-row" style="margin-bottom:8px">${reservadoToggleHtml('transporte', t.id, t.reservado)}</div>
       <div class="visor-row" style="font-size:14.5px; font-weight:500">${escHtml(t.origen || '')} → ${escHtml(t.destino || '')}</div>
-      <div class="visor-row">🕐 ${escHtml(formatOpcionTexto(op))}${op && op.notas ? ` · ${escHtml(op.notas)}` : ''}</div>
+      <div class="visor-block" style="background:var(--paper-2); border-radius:10px; padding:8px 10px; margin-bottom:10px">
+        <div style="font-size:13px; font-weight:500">🕐 ${escHtml(horarioResumen)}${opSel && opSel.notas ? ` · <span style="color:var(--ink-3)">${escHtml(opSel.notas)}</span>` : ''}</div>
+        ${opciones.length > 1 ? `
+        <button class="btn-mini horarios-toggle-btn" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${vId}', this)">▾ Ver más horarios</button>
+        <div id="${vId}" style="display:none; margin-top:6px">
+          ${opciones.map((o, i) => `
+            <div class="opcion-pill ${i === (t.opcionElegida || 0) ? 'elegida' : ''}" onclick="elegirOpcionTransporte('${t.id}', ${i})">
+              <b>${escHtml(formatOpcionTexto(o))}</b>
+              ${o.notas ? `<span class="notas-op">${escHtml(o.notas)}</span>` : ''}
+            </div>`).join('')}
+        </div>` : ''}
+        ${otrosModos.length ? `
+        <div class="otros-modos-toggle" style="margin-top:6px" onclick="toggleOtrosModos('${t.id}')">▾ Ver otros modos (${otrosModos.map(m => TIPO_LABEL[m.modo]?.split(' ').slice(1).join(' ') || m.modo).join(', ')})</div>
+        <div class="otros-modos-panel" id="otrosModos-${t.id}" style="display:none">
+          ${otrosModos.map(m => `
+            <div style="margin-top:6px">
+              <div class="empty-mini" style="padding:0 0 3px; font-weight:600">${escHtml(TIPO_LABEL[m.modo] || m.modo)}${m.tiempoTotal ? ' · ' + escHtml(m.tiempoTotal) : ''}</div>
+              <div class="opciones-row">
+                ${(m.opciones || []).map((o, i) => `<div class="opcion-pill" onclick="elegirModoEnCard('${t.id}','${m.modo}',${i})"><b>${escHtml(formatOpcionTexto(o))}</b>${o.notas ? `<span class="notas-op">${escHtml(o.notas)}</span>` : ''}</div>`).join('')}
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+      </div>
       <div class="visor-row">📅 ${escHtml(diaLabel(t.diaId))}</div>
       ${t.direccionOrigen ? `<div class="visor-row">📍 Origen: ${escHtml(t.direccionOrigen)}</div>` : ''}
       ${coordsMini(t.origenLat, t.origenLng)}
@@ -2472,8 +2524,16 @@ async function elegirModoEnCard(transporteId, modo, idx) {
   t.tipo = modo;
   t.opciones = m.opciones || [];
   t.opcionElegida = idx;
+  const body = { action: 'updateTransporte', id: transporteId, tipo: modo, opciones: t.opciones, opcionElegida: idx };
+  // Si este modo trae su propia parada/estación (ej. parada de bus vs estación de tren), usarla en vez de la dirección general
+  if (m.direccionOrigen) { t.direccionOrigen = m.direccionOrigen; body.direccionOrigen = m.direccionOrigen; }
+  if (m.origenLat) { t.origenLat = m.origenLat; body.origenLat = m.origenLat; }
+  if (m.origenLng) { t.origenLng = m.origenLng; body.origenLng = m.origenLng; }
+  if (m.direccionDestino) { t.direccionDestino = m.direccionDestino; body.direccionDestino = m.direccionDestino; }
+  if (m.destinoLat) { t.destinoLat = m.destinoLat; body.destinoLat = m.destinoLat; }
+  if (m.destinoLng) { t.destinoLng = m.destinoLng; body.destinoLng = m.destinoLng; }
   renderSemana(); renderPoolPanel(); renderSpine();
-  await postGAS({ action: 'updateTransporte', id: transporteId, tipo: modo, opciones: t.opciones, opcionElegida: idx });
+  await postGAS(body);
   showToast('Cambiado a ' + (TIPO_LABEL[modo] || modo));
 }
 async function eliminarTransporte(id) {
@@ -4307,7 +4367,12 @@ async function sugerirSoloHorariosForm(btnEl) {
   // Solo aplicar modos/horarios, sin tocar dirección ni coordenadas
   const tramosDesc = ((d.mixto && d.mixto.tramos) || []).map(tr => `${TIPO_LABEL[tr.modo] || tr.modo}${tr.detalle ? ', ' + tr.detalle : ''}`).join(' → ');
   currentModosData = {
-    modos: (d.modos || []).map(m => ({ modo: m.modo, aplica: m.aplica !== false, tiempoTotal: m.tiempoTotal || '', opciones: m.opciones || [] })),
+    modos: (d.modos || []).map(m => ({
+      modo: m.modo, aplica: m.aplica !== false, tiempoTotal: m.tiempoTotal || '', opciones: m.opciones || [],
+      // Parada/estación propia de este modo (si la IA la da distinta a la del modo principal, ej. parada de bus vs estación de tren)
+      direccionOrigen: m.origenDireccion || '', origenLat: m.origenLat || '', origenLng: m.origenLng || '',
+      direccionDestino: m.destinoDireccion || '', destinoLat: m.destinoLat || '', destinoLng: m.destinoLng || ''
+    })),
     mixto: { requiere: !!(d.mixto && d.mixto.requiere), descripcion: tramosDesc },
     _elegido: { modo: d.tipoSugerido || (currentModosData.modos[0] && currentModosData.modos[0].modo), idx: 0 }
   };
@@ -4352,7 +4417,12 @@ async function sugerirTransporteCompletoForm(btnEl) {
   // El desglose por modo (lo verde) reemplaza el editor: esto es ahora lo único que existe, y se guarda literal.
   const tramosDesc = ((d.mixto && d.mixto.tramos) || []).map(tr => `${TIPO_LABEL[tr.modo] || tr.modo}${tr.detalle ? ', ' + tr.detalle : ''}`).join(' → ');
   currentModosData = {
-    modos: (d.modos || []).map(m => ({ modo: m.modo, aplica: m.aplica !== false, tiempoTotal: m.tiempoTotal || '', opciones: m.opciones || [] })),
+    modos: (d.modos || []).map(m => ({
+      modo: m.modo, aplica: m.aplica !== false, tiempoTotal: m.tiempoTotal || '', opciones: m.opciones || [],
+      // Parada/estación propia de este modo (si la IA la da distinta a la del modo principal, ej. parada de bus vs estación de tren)
+      direccionOrigen: m.origenDireccion || '', origenLat: m.origenLat || '', origenLng: m.origenLng || '',
+      direccionDestino: m.destinoDireccion || '', destinoLat: m.destinoLat || '', destinoLng: m.destinoLng || ''
+    })),
     mixto: { requiere: !!(d.mixto && d.mixto.requiere), descripcion: tramosDesc },
     _elegido: { modo: d.tipoSugerido || (currentModosData.modos[0] && currentModosData.modos[0].modo), idx: 0 }
   };
@@ -4410,6 +4480,7 @@ async function guardarTransporte() {
   if (id) body.id = id;
   const r = await postGAS(body);
   if (r.ok) { modalClose(); showToast('Guardado ✦'); await loadItinerario(); }
+  else { showToast('⚠️ El servidor no guardó el cambio. Intenta de nuevo.'); }
 }
 
 // ── Form: hospedaje ───────────────────────────────────────────
@@ -4514,6 +4585,11 @@ function openPendienteForm(id, diaId) {
         </div>
       </div>
       <div class="field"><label>Sugerencias IA</label><textarea id="fPendSugIA" readonly style="background:var(--paper-2); font-size:12px; color:var(--ink-2); min-height:60px;">${escHtml(p ? p.sugerenciasIA : '')}</textarea></div>
+
+      <div class="row-2">
+        <div class="field"><label>🕐 Horario de apertura del lugar</label><input type="time" id="fPendHorarioApertura" value="${p && p.horarioApertura ? p.horarioApertura : ''}"></div>
+        <div class="field"><label>🕐 Horario de cierre del lugar</label><input type="time" id="fPendHorarioCierre" value="${p && p.horarioCierre ? p.horarioCierre : ''}"></div>
+      </div>
 
       <div class="row-3">
         <div class="field"><label>¿Programar a un día?</label>
@@ -4623,6 +4699,8 @@ async function guardarPendiente() {
     horaInicio: document.getElementById('fPendHoraIni').value,
     horaFin: document.getElementById('fPendHoraFin').value,
     duracionMin: document.getElementById('fPendDuracion').value,
+    horarioApertura: document.getElementById('fPendHorarioApertura').value,
+    horarioCierre: document.getElementById('fPendHorarioCierre').value,
     diaId: diaId, proyecto: currentProyecto,
     sugerenciasIA: document.getElementById('fPendSugIA').value,
     reservado: getReservadoVal('fPendReservado'),
