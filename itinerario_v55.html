@@ -2437,7 +2437,7 @@ function abrirVisorTransporte(id) {
       <span class="modal-title">${TIPO_LABEL[t.tipo] || t.tipo}</span>
       <div style="display:flex; align-items:center; gap:10px">
         <button class="icon-btn" title="${sinHora ? 'Sin hora fija — toca para ponerle una y que se vea en mapa/calendario' : oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
-        <button class="icon-btn" title="Ver en panel lateral" onclick="scrollPanelATransporte('${t.id}')">📌</button>
+        <button class="icon-btn" title="Ver en panel lateral" onclick="scrollPanelATransporte('${t.id}')">👉</button>
         <button class="modal-close" onclick="modalClose()">✕</button>
       </div>
     </div>
