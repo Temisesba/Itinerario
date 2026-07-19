@@ -3480,7 +3480,14 @@ function renderSemana() {
       <div class="week-col-header ${isToday ? 'today' : ''} ${d.id === currentDiaId ? 'active' : ''}" onclick="selectDay('${d.id}')" style="cursor:pointer">
         <span>${capitalize(headerTxt)}</span>
         ${d.zona ? `<span class="psub">${escHtml(d.zona)}</span>` : ''}
-        ${(() => { const h = hospedajeDelDia(d.id); return h ? `<span style="font-size:10px; color:var(--ink-3); font-weight:400">🏨 ${escHtml(h.nombre)}</span>` : ''; })()}
+        ${(() => {
+          const h = hospedajeDelDia(d.id);
+          if (!h) return '';
+          const entrada = d.id === h.diaIdInicio;
+          const salida = d.id === h.diaIdFin;
+          const flechas = (entrada ? '→' : '') + (entrada && salida ? ' ' : '') + (salida ? '←' : '');
+          return `<span style="font-size:9px; color:var(--ink-3); font-weight:400">🏨 ${escHtml(h.nombre)}${flechas ? ' ' + flechas : ''}</span>`;
+        })()}
       </div>
       <div class="week-col-body" style="height:${1440 * px}px">
         ${lines}${nowLine}
