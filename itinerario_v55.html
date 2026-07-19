@@ -3276,7 +3276,8 @@ function renderMapaGeneral() {
       });
 
       if (verTransporte) {
-        itinerario.transporte.filter(t => t.diaId === dia.id && !t.ocultarMapa).forEach(t => {
+        // Igual que en el calendario: si no tiene hora fija de salida, no se muestra (mapa y calendario deben coincidir).
+        itinerario.transporte.filter(t => t.diaId === dia.id && !t.ocultarMapa && ((t.opciones||[])[t.opcionElegida||0]||{}).salida).forEach(t => {
           const etiqueta = TIPO_LABEL[t.tipo] || t.tipo;
           const emoji = tipoEmoji(t.tipo);
           const opcion = (t.opciones || [])[t.opcionElegida || 0];
