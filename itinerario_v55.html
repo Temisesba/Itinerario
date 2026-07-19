@@ -3032,7 +3032,7 @@ function openEventoForm(id, diaId) {
       </div>
       <div class="field">
         <label>Programa (PDF o foto)</label>
-        <div id="fEventoProgramaActual" style="margin-bottom:6px; display:flex; gap:6px; flex-wrap:wrap">${ev && ev.programaUrl ? `<a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a>` : ''}</div>
+        <div id="fEventoProgramaActual" style="margin-bottom:6px; display:flex; gap:6px; flex-wrap:wrap">${ev && ev.programaUrl ? `<a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a> <button type="button" class="btn-mini ai" onclick="analizarProgramaEventoForm('${ev.id}')">🤖 Analizar programa con IA</button>` : ''}</div>
         ${ev ? `<input type="file" accept="application/pdf,image/*" onchange="subirProgramaEvento('${ev.id}', this)">` : `<div class="empty-mini">Guarda primero para poder subir el programa.</div>`}
       </div>
       <div class="field"><label>Notas</label><textarea id="fEventoNotas">${escHtml(ev ? ev.notas : '')}</textarea></div>
@@ -3096,12 +3096,12 @@ async function subirProgramaEvento(id, input) {
   try {
     const esImagen = file.type.startsWith('image/');
     const dataUrl = esImagen ? await resizeImage(file, 1600, 0.78) : await leerArchivoBase64(file);
-    currentEventoProgramaB64 = dataUrl; // se queda en memoria esta sesión para poder "Analizar con IA" sin re-subir
+    currentEventoProgramaB64 = dataUrl; // atajo: si analizas en esta misma sesión no hace falta re-leer Drive
     const r = await postGAS({ action: 'subirFoto', base64: dataUrl, nombre: file.name });
     if (r.ok) {
       const ev = itinerario.eventos.find(x => x.id === id);
-      if (ev) ev.programaUrl = r.url;
-      await postGAS({ action: 'updateEvento', id, programaUrl: r.url });
+      if (ev) { ev.programaUrl = r.url; ev.programaFileId = r.fileId || ''; }
+      await postGAS({ action: 'updateEvento', id, programaUrl: r.url, programaFileId: r.fileId || '' });
       const box = document.getElementById('fEventoProgramaActual');
       if (box) box.innerHTML = `<a href="${r.url}" target="_blank" class="btn-mini">📄 Ver programa</a> <button type="button" class="btn-mini ai" onclick="analizarProgramaEventoForm('${id}')">🤖 Analizar programa con IA</button>`;
       showToast('Programa subido ✦');
@@ -3110,12 +3110,15 @@ async function subirProgramaEvento(id, input) {
   input.value = '';
 }
 async function analizarProgramaEventoForm(id) {
-  if (!currentEventoProgramaB64) { showToast('Vuelve a subir el archivo para poder analizarlo'); return; }
   const ev = itinerario.eventos.find(x => x.id === id);
+  // Igual que en Gastos: si no tenemos el base64 en memoria de esta sesión, releemos el archivo de Drive
+  // por su fileId — así se puede analizar cuantas veces se quiera, no solo justo después de subirlo.
+  if (!currentEventoProgramaB64 && !(ev && ev.programaFileId)) { showToast('Este programa no tiene un archivo analizable — vuelve a subirlo'); return; }
   showToast('Leyendo el programa…');
   const r = await postGAS({
     action: 'analizarProgramaEvento',
-    base64: currentEventoProgramaB64,
+    base64: currentEventoProgramaB64 || undefined,
+    fileId: currentEventoProgramaB64 ? undefined : (ev ? ev.programaFileId : ''),
     nombreEvento: ev ? ev.nombre : '',
     fechaInicio: (document.getElementById('fEventoFechaInicio')||{}).value || (ev ? ev.fechaInicioReal : ''),
     fechaFin: (document.getElementById('fEventoFechaFin')||{}).value || (ev ? ev.fechaFinReal : '')
@@ -3218,7 +3221,7 @@ function abrirVisorEvento(id) {
       ${ev.ciudades ? `<div class="visor-row">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
       ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>📍 Sedes</b><br>${ev.sedes.map(s => `${escHtml(diaLabel(s.diaId) || 'Sin día')}: ${escHtml(s.direccion||'')}`).join('<br>')}</div>` : ''}
-      ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a></div>` : ''}
+      ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a> <button type="button" class="btn-mini ai" onclick="analizarProgramaEventoForm('${ev.id}')">🤖 Analizar programa con IA</button></div>` : ''}
       ${ev.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(ev.notas)}</div>` : ''}
       ${gastoVinculadoHtml('evento', ev.id, JSON.stringify({nombre:ev.nombre}))}
       <div class="modal-actions" style="justify-content:space-between">
