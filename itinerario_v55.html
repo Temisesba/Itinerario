@@ -3480,6 +3480,7 @@ function renderSemana() {
       <div class="week-col-header ${isToday ? 'today' : ''} ${d.id === currentDiaId ? 'active' : ''}" onclick="selectDay('${d.id}')" style="cursor:pointer">
         <span>${capitalize(headerTxt)}</span>
         ${d.zona ? `<span class="psub">${escHtml(d.zona)}</span>` : ''}
+        ${(() => { const h = hospedajeDelDia(d.id); return h ? `<span style="font-size:10px; color:var(--ink-3); font-weight:400">🏨 ${escHtml(h.nombre)}</span>` : ''; })()}
       </div>
       <div class="week-col-body" style="height:${1440 * px}px">
         ${lines}${nowLine}
