@@ -721,7 +721,7 @@ let gCurrentPayer = '', gCurrentType = '';
 
 function gConceptoGasto(tipo, datos) {
   const fechaDia = () => { const d = itinerario.dias.find(x => x.id === currentDiaId); return d ? d.fecha : fechaLocalISO(new Date()); };
-  if (tipo === 'transporte') return `Transporte ${datos.origen||''} → ${datos.destino||''} · ${fechaDia()}`;
+  if (tipo === 'transporte') return `${TIPO_LABEL[datos.tipo] || 'Transporte'}: ${datos.origen||''} → ${datos.destino||''} · ${fechaDia()}`;
   if (tipo === 'hospedaje') {
     const ini = datos.diaIdInicio ? (itinerario.dias.find(d=>d.id===datos.diaIdInicio)||{}).fecha||'' : '';
     const fin = datos.diaIdFin ? (itinerario.dias.find(d=>d.id===datos.diaIdFin)||{}).fecha||'' : '';
@@ -2423,7 +2423,7 @@ function abrirVisorTransporte(id) {
         <button class="btn-cancel" onclick="eliminarTransporte('${t.id}')" style="color:#b91c1c">🗑 Eliminar</button>
         <div style="display:flex; gap:8px">
           ${t.origenLat && t.origenLng ? `<button class="btn-cancel" onclick="verEnMapa('transporte','${t.id}','${t.diaId || ''}')">🗺️ Ver mapa</button>` : ''}
-          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastosForm('transporte','${t.id}',JSON.stringify({origen:'${t.origen||''}',destino:'${t.destino||''}',diaId:'${t.diaId||''}'}))">💴 ${(gastosVinculados[t.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[t.id]||[]).length>0?' ('+(gastosVinculados[t.id]||[]).length+')':''}</button>
+          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastosForm('transporte','${t.id}',JSON.stringify({origen:'${t.origen||''}',destino:'${t.destino||''}',diaId:'${t.diaId||''}',tipo:'${t.tipo||''}'}))">💴 ${(gastosVinculados[t.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[t.id]||[]).length>0?' ('+(gastosVinculados[t.id]||[]).length+')':''}</button>
           <button class="btn-save" onclick="openTransporteForm('${t.id}','${t.diaId}')">✏️ Editar</button>
         </div>
       </div>
