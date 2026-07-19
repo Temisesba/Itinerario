@@ -1294,9 +1294,9 @@ function hospedajesParaHeaderDia(diaId) {
   const ambos = candidatos.filter(h => h.diaIdInicio === diaId && h.diaIdFin === diaId);
   const activo = candidatos.filter(h => h.diaIdInicio !== diaId && h.diaIdFin !== diaId);
   const resultado = [];
-  const hCheckout = elegirDeGrupo(soloCheckout); if (hCheckout) resultado.push({ h: hCheckout, icono: '⬇️🛏️' });
-  const hCheckin = elegirDeGrupo(soloCheckin); if (hCheckin) resultado.push({ h: hCheckin, icono: '⬆️🛏️' });
-  const hAmbos = elegirDeGrupo(ambos); if (hAmbos) resultado.push({ h: hAmbos, icono: '⬆️🛏️⬇️🛏️' });
+  const hCheckout = elegirDeGrupo(soloCheckout); if (hCheckout) resultado.push({ h: hCheckout, icono: '🚪🔑' });
+  const hCheckin = elegirDeGrupo(soloCheckin); if (hCheckin) resultado.push({ h: hCheckin, icono: '🛎️🛏️' });
+  const hAmbos = elegirDeGrupo(ambos); if (hAmbos) resultado.push({ h: hAmbos, icono: '🛎️🛏️🚪🔑' });
   if (!resultado.length) {
     const hActivo = elegirDeGrupo(activo);
     if (hActivo) {
