@@ -580,6 +580,25 @@ let modalEsFormulario = false; // true solo en formularios editables (no en viso
 let miniMap = null;
 let panelCollapsed = { notas: true, sinHora: true, transporte: true, hospedaje: true, despues: true, restaurantes: true, recomendaciones: true, mapa: false };
 let antojosMaestros = []; // lista maestra del Sheets, separada de los pendientes con antojo
+function scrollPanelATransporte(id) {
+  modalClose();
+  // Asegura que la sección Transporte esté desplegada, luego scrollea al elemento
+  if (panelCollapsed.transporte) {
+    panelCollapsed.transporte = false;
+    const body = document.getElementById('section-body-transporte');
+    const btn = document.getElementById('section-toggle-transporte');
+    if (body) body.style.display = '';
+    if (btn) btn.textContent = '▼';
+  }
+  requestAnimationFrame(() => {
+    const el = document.getElementById('trans-' + id);
+    if (el) {
+      el.style.boxShadow = '0 0 0 2px var(--route)';
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => { el.style.boxShadow = ''; }, 2000);
+    }
+  });
+}
 function toggleSection(key) {
   panelCollapsed[key] = !panelCollapsed[key];
   const body = document.getElementById('section-body-' + key);
@@ -1204,8 +1223,18 @@ function selectDay(id) {
 // Lista de hospedajes ordenada tal como se muestra en el panel: primero los que cubren diaId
 // (respetando su orden guardado entre ellos), luego el resto (respetando su orden guardado).
 function hospedajeOrdenParaDia(diaId) {
+  const dias = diasFiltrados();
+  const idx = dias.findIndex(d => d.id === diaId);
   const todosHosp = itinerario.hospedaje.filter(h => (h.proyecto || currentProyecto) === currentProyecto || true).sort((a,b)=>(a.orden||0)-(b.orden||0));
-  const hospDelDia = todosHosp.filter(h => h.diaIdInicio && h.diaIdFin && diaId >= h.diaIdInicio && diaId <= h.diaIdFin);
+  // Comparar por POSICIÓN en la lista ordenada por fecha, no por el id (los ids son timestamps de creación,
+  // no de fecha del viaje — un día agregado después puede tener un id "mayor" aunque sea cronológicamente antes).
+  const hospDelDia = idx < 0 ? [] : todosHosp.filter(h => {
+    const i1 = dias.findIndex(d => d.id === h.diaIdInicio);
+    const i2 = dias.findIndex(d => d.id === h.diaIdFin);
+    if (i1 < 0) return false;
+    const fin = i2 < 0 ? i1 : i2;
+    return idx >= i1 && idx <= fin;
+  });
   const hospSorted = [
     ...todosHosp.filter(h => hospDelDia.some(x=>x.id===h.id)),
     ...todosHosp.filter(h => !hospDelDia.some(x=>x.id===h.id))
@@ -1682,7 +1711,8 @@ function renderPoolPanel() {
       `<button class="btn-mini" onclick="openPendienteForm(null,'${dia.id}')" title="Agregar">＋</button>`,
       `<div id="poolSinHoraZone">${listaConFlechas(sinHora, 'sinHora')}</div>`),
     transporte: sectionWrap('transporte', '🚆 Transporte', transDia.length,
-      `<button class="btn-mini" onclick="openTransporteForm(null,'${dia.id}')" title="Agregar">＋</button>`,
+      `<button class="btn-mini ai" onclick="sugerirTransportesDelDia('${dia.id}')" title="Sugerir transportes entre los eventos de este día">✨</button>
+       <button class="btn-mini" onclick="openTransporteForm(null,'${dia.id}')" title="Agregar">＋</button>`,
       transDia.length ? transDia.map((t, idx) => `
         <div style="display:flex; align-items:flex-start; gap:4px">
           <div style="display:flex; flex-direction:column; gap:2px; padding-top:6px">
@@ -2278,6 +2308,7 @@ function abrirVisorTransporte(id) {
       <span class="modal-title">${TIPO_LABEL[t.tipo] || t.tipo}</span>
       <div style="display:flex; align-items:center; gap:10px">
         <button class="icon-btn" title="${oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
+        <button class="icon-btn" title="Ver en panel lateral" onclick="scrollPanelATransporte('${t.id}')">📌</button>
         <button class="modal-close" onclick="modalClose()">✕</button>
       </div>
     </div>
@@ -2544,6 +2575,120 @@ async function elegirModoEnCard(transporteId, modo, idx) {
   await postGAS(body);
   showToast('Cambiado a ' + (TIPO_LABEL[modo] || modo));
 }
+
+// ── Sugerir transportes entre TODOS los eventos con hora de un día ──
+// Encadena: hotel del día → evento1 → evento2 → ... → hotel, y por cada hueco sin transporte ya
+// agendado, le pide a la IA una sugerencia (acotada a la ventana de tiempo disponible entre eventos).
+async function sugerirTransportesDelDia(diaId) {
+  const dia = itinerario.dias.find(d => d.id === diaId);
+  if (!dia) return;
+  const eventos = getCalendarBlocks(diaId)
+    .filter(b => b.kind === 'pendiente')
+    .sort((a, b) => a.ini - b.ini)
+    .map(b => itinerario.pendientes.find(p => p.id === b.id))
+    .filter(Boolean);
+  const hosp = hospedajeDelDia(diaId);
+  const stops = [];
+  if (hosp) stops.push({ nombre: hosp.nombre, direccion: hosp.direccion, lat: hosp.lat, lng: hosp.lng, horaFin: hosp.horaCheckOut || null });
+  eventos.forEach(p => stops.push({ nombre: p.nombre, direccion: p.direccion, lat: p.lat, lng: p.lng, horaInicio: p.horaInicio, horaFin: p.horaFin }));
+  if (hosp) stops.push({ nombre: hosp.nombre, direccion: hosp.direccion, lat: hosp.lat, lng: hosp.lng, horaInicio: hosp.horaCheckIn || null });
+
+  if (stops.length < 2) { showToast('Hace falta al menos un hotel + un evento, o 2 eventos con hora este día'); return; }
+
+  const transDia = itinerario.transporte.filter(t => t.diaId === diaId);
+  const segmentos = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const A = stops[i], B = stops[i + 1];
+    const finA = A.horaFin || null, iniB = B.horaInicio || null;
+    // ¿Ya hay un transporte agendado dentro de este hueco? — evita duplicar
+    const yaCubierto = transDia.some(t => {
+      const op = (t.opciones || [])[t.opcionElegida || 0];
+      if (!op || !op.salida) return false;
+      if (finA && op.salida < finA) return false;
+      if (iniB && op.salida > iniB) return false;
+      return true;
+    });
+    if (!yaCubierto) segmentos.push({ A, B, finA, iniB });
+  }
+  if (!segmentos.length) { showToast('Ya hay transporte entre todos los eventos de este día ✦'); return; }
+
+  const propuestas = [];
+  for (let i = 0; i < segmentos.length; i++) {
+    const s = segmentos[i];
+    showToast(`Pensando tramo ${i + 1} de ${segmentos.length}…`);
+    let pista = '';
+    if (s.finA && s.iniB) pista = `Debe salir después de las ${s.finA} y llegar antes de las ${s.iniB}`;
+    else if (s.finA) pista = `Debe salir después de las ${s.finA}`;
+    else if (s.iniB) pista = `Debe llegar antes de las ${s.iniB}`;
+    const r = await postGAS({ action: 'sugerirTransporteCompleto', origenTexto: s.A.nombre, destinoTexto: s.B.nombre, pista, zona: dia.zona || '', fecha: dia.fecha || '' });
+    if (r.ok && r.data) propuestas.push({ A: s.A, B: s.B, data: r.data, modos: normalizarModosIA(r.data.modos), chosenModo: r.data.tipoSugerido, chosenIdx: 0, incluir: true });
+  }
+  if (!propuestas.length) { showToast('No se pudo generar ninguna sugerencia'); return; }
+  _revisionTransportesDia = { dia, propuestas };
+  renderRevisionTransportesDia();
+}
+
+let _revisionTransportesDia = null;
+function renderRevisionTransportesDia() {
+  const { propuestas } = _revisionTransportesDia;
+  modalEsFormulario = true;
+  modalOpen(`
+    <div class="modal-head"><span class="modal-title">✨ Transportes sugeridos</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-body">
+      <div class="visor-row" style="margin-bottom:10px; color:var(--ink-2)">Revisa y desmarca lo que no quieras crear. Puedes cambiar el modo de cada tramo.</div>
+      ${propuestas.map((p, i) => {
+        const m = p.modos.find(x => x.modo === p.chosenModo) || {};
+        const op = (m.opciones || [])[p.chosenIdx] || {};
+        const horarioTexto = op.salida ? `${op.salida}–${op.llegada || '?'}` : (op.duracionMin != null ? `~${op.duracionMin} min` : 'sin horario');
+        return `<div style="margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line)">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; cursor:pointer">
+            <input type="checkbox" ${p.incluir ? 'checked' : ''} onchange="revTransToggleIncluir(${i}, this.checked)">
+            ${escHtml(p.A.nombre)} → ${escHtml(p.B.nombre)}
+          </label>
+          <div style="margin-left:26px; font-size:12.5px; color:var(--ink-2); margin-top:2px">${tipoEmoji(p.chosenModo)} ${TIPO_LABEL[p.chosenModo] || p.chosenModo} · ${horarioTexto}${op.notas ? ' · ' + escHtml(op.notas) : ''}</div>
+          <div style="margin-left:26px; margin-top:5px; display:flex; gap:5px; flex-wrap:wrap">
+            ${p.modos.filter(x => x.aplica !== false).map(x => `<button type="button" class="btn-mini" style="font-size:10px${x.modo === p.chosenModo ? ';background:var(--ok-light);border-color:var(--ok);color:#0d5c2a' : ''}" onclick="revTransCambiarModo(${i}, '${x.modo}')">${tipoEmoji(x.modo)} ${(TIPO_LABEL[x.modo] || x.modo).split(' ').slice(1).join(' ')}</button>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+      <div class="modal-actions" style="justify-content:flex-end">
+        <button class="btn-cancel" onclick="modalClose()">Cancelar</button>
+        <button class="btn-save" onclick="crearTransportesRevisados()">✅ Crear seleccionados</button>
+      </div>
+    </div>`);
+}
+function revTransToggleIncluir(i, val) { _revisionTransportesDia.propuestas[i].incluir = val; }
+function revTransCambiarModo(i, modo) { _revisionTransportesDia.propuestas[i].chosenModo = modo; _revisionTransportesDia.propuestas[i].chosenIdx = 0; renderRevisionTransportesDia(); }
+async function crearTransportesRevisados() {
+  const { dia, propuestas } = _revisionTransportesDia;
+  const seleccion = propuestas.filter(p => p.incluir);
+  if (!seleccion.length) { modalClose(); return; }
+  showToast(`Creando ${seleccion.length} transporte${seleccion.length > 1 ? 's' : ''}…`);
+  for (const p of seleccion) {
+    const m = p.modos.find(x => x.modo === p.chosenModo) || {};
+    const body = {
+      action: 'saveTransporte',
+      diaId: dia.id,
+      tipo: p.chosenModo,
+      origen: p.A.nombre, destino: p.B.nombre,
+      direccionOrigen: m.direccionOrigen || p.data.origenDireccion || p.A.direccion || '',
+      direccionDestino: m.direccionDestino || p.data.destinoDireccion || p.B.direccion || '',
+      origenLat: m.origenLat || p.data.origenLat || p.A.lat || '',
+      origenLng: m.origenLng || p.data.origenLng || p.A.lng || '',
+      destinoLat: m.destinoLat || p.data.destinoLat || p.B.lat || '',
+      destinoLng: m.destinoLng || p.data.destinoLng || p.B.lng || '',
+      opciones: m.opciones || [], opcionElegida: 0,
+      modosData: { modos: p.modos, mixto: { requiere: false, descripcion: '' } },
+      reservado: 'pendiente',
+      sugerenciasIAOrigen: p.data.notaRuta || ''
+    };
+    await postGAS(body);
+  }
+  modalClose();
+  showToast('Transportes creados ✦');
+  await loadItinerario();
+}
+
 async function eliminarTransporte(id) {
   if (!confirm('¿Eliminar este transporte?')) return;
   modalClose();
@@ -4358,6 +4503,16 @@ async function sugerirSoloDireccionForm(btnEl) {
   showToast('📍 Dirección y coordenadas actualizadas ✦');
 }
 
+// Normaliza el array "modos" que devuelve la IA (sugerirTransporteCompleto) a la forma que usa el resto
+// de la app (direccionOrigen/origenLat/... en vez de origenDireccion/origenLat/...), para que elegirModoEnCard
+// y demás lectores de modosData.modos[] encuentren siempre los mismos nombres de campo.
+function normalizarModosIA(modosRaw) {
+  return (modosRaw || []).map(m => ({
+    modo: m.modo, aplica: m.aplica !== false, tiempoTotal: m.tiempoTotal || '', opciones: m.opciones || [],
+    direccionOrigen: m.origenDireccion || '', origenLat: m.origenLat || '', origenLng: m.origenLng || '',
+    direccionDestino: m.destinoDireccion || '', destinoLat: m.destinoLat || '', destinoLng: m.destinoLng || ''
+  }));
+}
 async function sugerirSoloHorariosForm(btnEl) {
   // Igual que sugerir todo, pero SOLO aplica los horarios sugeridos, no toca dirección ni coordenadas existentes
   const origenTexto = document.getElementById('fTransOrigen').value;
@@ -4375,12 +4530,7 @@ async function sugerirSoloHorariosForm(btnEl) {
   // Solo aplicar modos/horarios, sin tocar dirección ni coordenadas
   const tramosDesc = ((d.mixto && d.mixto.tramos) || []).map(tr => `${TIPO_LABEL[tr.modo] || tr.modo}${tr.detalle ? ', ' + tr.detalle : ''}`).join(' → ');
   currentModosData = {
-    modos: (d.modos || []).map(m => ({
-      modo: m.modo, aplica: m.aplica !== false, tiempoTotal: m.tiempoTotal || '', opciones: m.opciones || [],
-      // Parada/estación propia de este modo (si la IA la da distinta a la del modo principal, ej. parada de bus vs estación de tren)
-      direccionOrigen: m.origenDireccion || '', origenLat: m.origenLat || '', origenLng: m.origenLng || '',
-      direccionDestino: m.destinoDireccion || '', destinoLat: m.destinoLat || '', destinoLng: m.destinoLng || ''
-    })),
+    modos: normalizarModosIA(d.modos),
     mixto: { requiere: !!(d.mixto && d.mixto.requiere), descripcion: tramosDesc },
     _elegido: { modo: d.tipoSugerido || (currentModosData.modos[0] && currentModosData.modos[0].modo), idx: 0 }
   };
@@ -4425,12 +4575,7 @@ async function sugerirTransporteCompletoForm(btnEl) {
   // El desglose por modo (lo verde) reemplaza el editor: esto es ahora lo único que existe, y se guarda literal.
   const tramosDesc = ((d.mixto && d.mixto.tramos) || []).map(tr => `${TIPO_LABEL[tr.modo] || tr.modo}${tr.detalle ? ', ' + tr.detalle : ''}`).join(' → ');
   currentModosData = {
-    modos: (d.modos || []).map(m => ({
-      modo: m.modo, aplica: m.aplica !== false, tiempoTotal: m.tiempoTotal || '', opciones: m.opciones || [],
-      // Parada/estación propia de este modo (si la IA la da distinta a la del modo principal, ej. parada de bus vs estación de tren)
-      direccionOrigen: m.origenDireccion || '', origenLat: m.origenLat || '', origenLng: m.origenLng || '',
-      direccionDestino: m.destinoDireccion || '', destinoLat: m.destinoLat || '', destinoLng: m.destinoLng || ''
-    })),
+    modos: normalizarModosIA(d.modos),
     mixto: { requiere: !!(d.mixto && d.mixto.requiere), descripcion: tramosDesc },
     _elegido: { modo: d.tipoSugerido || (currentModosData.modos[0] && currentModosData.modos[0].modo), idx: 0 }
   };
