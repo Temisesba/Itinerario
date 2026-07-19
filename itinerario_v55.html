@@ -1256,10 +1256,29 @@ function hospedajeDelDia(diaId) {
   return candidatos.find(h => h.elegido) || candidatos[0];
 }
 
+// ¿Comparten al menos un día estos dos hospedajes? (por posición cronológica, no por id)
+function hospedajesSeSolapan(hA, hB) {
+  const dias = diasFiltrados();
+  const iA1 = dias.findIndex(d => d.id === hA.diaIdInicio);
+  const iA2 = dias.findIndex(d => d.id === hA.diaIdFin);
+  const iB1 = dias.findIndex(d => d.id === hB.diaIdInicio);
+  const iB2 = dias.findIndex(d => d.id === hB.diaIdFin);
+  if (iA1 < 0 || iB1 < 0) return false;
+  const finA = iA2 < 0 ? iA1 : iA2;
+  const finB = iB2 < 0 ? iB1 : iB2;
+  return iA1 <= finB && iB1 <= finA;
+}
 async function marcarHospedajeElegido(id) {
-  const yaElegido = (itinerario.hospedaje.find(h=>h.id===id)||{}).elegido;
+  const h0 = itinerario.hospedaje.find(h => h.id === id);
+  if (!h0) return;
+  const yaElegido = !!h0.elegido;
+  // Solo "compite" (se desmarca) con hoteles que comparten fecha con este — un día de check-out/check-in
+  // puede tener dos hoteles distintos elegidos a la vez, uno para salir y otro para entrar.
   itinerario.hospedaje.forEach(h => {
-    const val = yaElegido ? false : (h.id === id);
+    let val;
+    if (h.id === id) val = !yaElegido;
+    else if (hospedajesSeSolapan(h0, h)) val = false;
+    else return;
     if (h.elegido !== val) {
       h.elegido = val;
       postGAS({ action: 'updateHospedaje', id: h.id, elegido: val });
@@ -3485,8 +3504,8 @@ function renderSemana() {
           if (!h) return '';
           const entrada = d.id === h.diaIdInicio;
           const salida = d.id === h.diaIdFin;
-          const flechas = (entrada ? '→' : '') + (entrada && salida ? ' ' : '') + (salida ? '←' : '');
-          return `<span style="font-size:9px; color:var(--ink-3); font-weight:400">🏨 ${escHtml(h.nombre)}${flechas ? ' ' + flechas : ''}</span>`;
+          const icono = (entrada ? '🔼' : '') + (salida ? '🔽' : '');
+          return `<span style="font-size:9px; color:var(--ink-3); font-weight:400">${icono ? icono + ' ' : ''}${escHtml(h.nombre)}</span>`;
         })()}
       </div>
       <div class="week-col-body" style="height:${1440 * px}px">
