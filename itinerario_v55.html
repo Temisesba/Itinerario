@@ -1281,7 +1281,7 @@ function hospedajesParaHeaderDia(diaId) {
   const hCheckout = elegirDeGrupo(soloCheckout); if (hCheckout) resultado.push({ h: hCheckout, icono: '🔽' });
   const hCheckin = elegirDeGrupo(soloCheckin); if (hCheckin) resultado.push({ h: hCheckin, icono: '🔼' });
   const hAmbos = elegirDeGrupo(ambos); if (hAmbos) resultado.push({ h: hAmbos, icono: '🔼🔽' });
-  if (!resultado.length) { const hActivo = elegirDeGrupo(activo); if (hActivo) resultado.push({ h: hActivo, icono: '' }); }
+  if (!resultado.length) { const hActivo = elegirDeGrupo(activo); if (hActivo) resultado.push({ h: hActivo, icono: '🛏️ estancia' }); }
   return resultado;
 }
 
@@ -3547,8 +3547,7 @@ function renderSemana() {
         <span>${capitalize(headerTxt)}</span>
         ${d.zona ? `<span class="psub">${escHtml(d.zona)}</span>` : ''}
         ${hospedajesParaHeaderDia(d.id).map(({ h, icono }) => {
-          const nombreCorto = (h.nombre || '').length > 18 ? h.nombre.slice(0, 18) + '…' : (h.nombre || '');
-          return `<span style="font-size:10px; color:var(--ink-3); font-weight:400; display:block">${icono ? icono + ' ' : ''}${escHtml(nombreCorto)}</span>`;
+          return `<span style="font-size:10px; color:var(--ink-3); font-weight:400; display:block; min-width:0; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${icono ? icono + ' ' : ''}${escHtml(h.nombre || '')}</span>`;
         }).join('')}
       </div>
       <div class="week-col-body" style="height:${1440 * px}px">
