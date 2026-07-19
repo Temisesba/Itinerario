@@ -2497,6 +2497,7 @@ function renderTransporteCard(t) {
       ${oculto ? `<span style="font-size:10px; color:var(--ink-3); background:var(--paper-2); border-radius:8px; padding:1px 6px">👁️ Oculto del visor/mapa</span>` : ''}
     </div>
     <div class="route-line">${escHtml(t.origen || '')} → ${escHtml(t.destino || '')}</div>
+    ${(opciones.length && !(opSel && opSel.salida)) ? `<div class="empty-mini" style="color:#b45309; background:#fef3c7; border-radius:6px; padding:3px 6px; margin-top:4px">⏰ Sin hora fija — por eso no aparece en el calendario. Arrástralo desde ⠿ para fijarle una hora.</div>` : ''}
     ${opciones.length ? `
     <div style="margin-top:4px">
       <div style="font-size:12px; font-weight:500; color:var(--ink-2)">${escHtml(horarioResumen)}${opSel && opSel.notas ? ` · <span style="color:var(--ink-3)">${escHtml(opSel.notas)}</span>` : ''}</div>
