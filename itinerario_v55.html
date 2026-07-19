@@ -1201,6 +1201,17 @@ function selectDay(id) {
 }
 
 // ── Helpers de relación ─────────────────────────────────────
+// Lista de hospedajes ordenada tal como se muestra en el panel: primero los que cubren diaId
+// (respetando su orden guardado entre ellos), luego el resto (respetando su orden guardado).
+function hospedajeOrdenParaDia(diaId) {
+  const todosHosp = itinerario.hospedaje.filter(h => (h.proyecto || currentProyecto) === currentProyecto || true).sort((a,b)=>(a.orden||0)-(b.orden||0));
+  const hospDelDia = todosHosp.filter(h => h.diaIdInicio && h.diaIdFin && diaId >= h.diaIdInicio && diaId <= h.diaIdFin);
+  const hospSorted = [
+    ...todosHosp.filter(h => hospDelDia.some(x=>x.id===h.id)),
+    ...todosHosp.filter(h => !hospDelDia.some(x=>x.id===h.id))
+  ];
+  return { todosHosp, hospDelDia, hospSorted };
+}
 function hospedajeDelDia(diaId) {
   const dias = diasFiltrados();
   const idx = dias.findIndex(d => d.id === diaId);
@@ -1229,8 +1240,8 @@ async function marcarHospedajeElegido(id) {
   showToast(yaElegido ? 'Hotel deseleccionado' : 'Hotel marcado como elegido ✓');
 }
 
-function moverHospedajeOrden(id, dir) {
-  const lista = [...itinerario.hospedaje].sort((a,b)=>(a.orden||0)-(b.orden||0));
+function moverHospedajeOrden(id, dir, diaId) {
+  const lista = diaId ? hospedajeOrdenParaDia(diaId).hospSorted : [...itinerario.hospedaje].sort((a,b)=>(a.orden||0)-(b.orden||0));
   const idx = lista.findIndex(h=>h.id===id);
   if(idx<0) return;
   const otro = dir==='up' ? idx-1 : idx+1;
@@ -1681,25 +1692,20 @@ function renderPoolPanel() {
           <div style="flex:1">${renderTransporteCard(t)}</div>
         </div>`).join('') : `<div class="empty-mini">Sin transporte agregado este día.</div>`),
     hospedaje: (function() {
-      const todosHosp = itinerario.hospedaje.filter(h => (h.proyecto || currentProyecto) === currentProyecto || true).sort((a,b)=>(a.orden||0)-(b.orden||0));
-      // Hoteles que cubren el día activo
-      const hospDelDia = todosHosp.filter(h => h.diaIdInicio && h.diaIdFin &&
-        dia.id >= h.diaIdInicio && dia.id <= h.diaIdFin);
-      // Ordenar: primero los del día, luego los demás
-      const hospSorted = [
-        ...todosHosp.filter(h => hospDelDia.some(x=>x.id===h.id)),
-        ...todosHosp.filter(h => !hospDelDia.some(x=>x.id===h.id))
-      ];
+      const { todosHosp, hospDelDia, hospSorted } = hospedajeOrdenParaDia(dia.id);
       const contenido = hospSorted.length
         ? hospSorted.map((h, idx) => {
             const esElegido = !!h.elegido || (todosHosp.length === 1);
             const esDelDia = hospDelDia.some(x => x.id === h.id);
             const esElegidoDelDia = hospDelDia.length <= 1 || esElegido;
+            const gastosH = gastosVinculados[h.id] || [];
+            const gRealesH = gastosH.filter(g => !g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
+            const gCotsH = gastosH.filter(g => g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
             return `<div style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esElegido ? 'border-color:var(--route)' : ''}">
               <div style="display:flex; align-items:center; gap:5px; padding:5px 8px; background:${esElegido ? 'var(--route-light)' : 'var(--paper-2)'}">
                 <div style="display:flex;flex-direction:column;gap:1px">
-                  <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','up')" ${idx===0?'disabled':''}>▲</button>
-                  <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','down')" ${idx===hospSorted.length-1?'disabled':''}>▼</button>
+                  <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','up','${dia.id}')" ${idx===0?'disabled':''}>▲</button>
+                  <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','down','${dia.id}')" ${idx===hospSorted.length-1?'disabled':''}>▼</button>
                 </div>
                 <button class="icon-btn" onclick="marcarHospedajeElegido('${h.id}')" title="${esElegido ? 'Quitar como hotel elegido' : 'Marcar como el hotel elegido'}">${esElegido ? '⭐' : '☆'}</button>
                 <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorHospedaje('${h.id}')">${escHtml(h.nombre || '(sin nombre)')}</span>
@@ -1715,6 +1721,7 @@ function renderPoolPanel() {
                   <div style="font-size:12px">📅 ${escHtml(h.diaIdInicio ? (itinerario.dias.find(d=>d.id===h.diaIdInicio)||{}).fecha||'-' : '-')} → ${escHtml(h.diaIdFin ? (itinerario.dias.find(d=>d.id===h.diaIdFin)||{}).fecha||'-' : '-')}</div>
                   ${(h.horaCheckIn||h.horaCheckOut) ? `<div style="font-size:11px; color:var(--ink-2)">${h.horaCheckIn?'🔑 '+escHtml(h.horaCheckIn):''}${h.horaCheckIn&&h.horaCheckOut?' · ':''}${h.horaCheckOut?'🚪 '+escHtml(h.horaCheckOut):''}</div>` : ''}
                   <div style="font-size:11px; color:var(--ink-3)">${RESERVADO_LABEL[h.reservado||'pendiente']||''}${h.notas?' · '+escHtml(h.notas.substring(0,85)):''}</div>
+                  ${(gRealesH>0||gCotsH>0) ? `<div style="font-size:10.5px; margin-top:2px">${gRealesH>0?`<span style="color:#15803d;font-weight:600">💴 ¥${gRealesH.toLocaleString()}</span>`:''}${gRealesH>0&&gCotsH>0?' · ':''}${gCotsH>0?`<span style="color:#b85c8a;font-weight:600">💬 ¥${gCotsH.toLocaleString()}</span>`:''}</div>` : ''}
                 </div>
               </div>
             </div>`;
@@ -2265,6 +2272,7 @@ function abrirVisorTransporte(id) {
   const horarioResumen = opSel ? formatOpcionTexto(opSel) : 'Sin horario';
   const oculto = !!t.ocultarMapa;
   const vId = 'visor-transporte-horarios-' + t.id;
+  const vOtrosId = 'visor-otros-modos-' + t.id;
   modalOpen(`
     <div class="modal-head">
       <span class="modal-title">${TIPO_LABEL[t.tipo] || t.tipo}</span>
@@ -2288,8 +2296,8 @@ function abrirVisorTransporte(id) {
             </div>`).join('')}
         </div>` : ''}
         ${otrosModos.length ? `
-        <div class="otros-modos-toggle" style="margin-top:6px" onclick="toggleOtrosModos('${t.id}')">▾ Ver otros modos (${otrosModos.map(m => TIPO_LABEL[m.modo]?.split(' ').slice(1).join(' ') || m.modo).join(', ')})</div>
-        <div class="otros-modos-panel" id="otrosModos-${t.id}" style="display:none">
+        <div class="otros-modos-toggle" style="margin-top:6px" onclick="toggleOtrosModos('${t.id}', '${vOtrosId}')">▾ Ver otros modos (${otrosModos.map(m => TIPO_LABEL[m.modo]?.split(' ').slice(1).join(' ') || m.modo).join(', ')})</div>
+        <div class="otros-modos-panel" id="${vOtrosId}" style="display:none">
           ${otrosModos.map(m => `
             <div style="margin-top:6px">
               <div class="empty-mini" style="padding:0 0 3px; font-weight:600">${escHtml(TIPO_LABEL[m.modo] || m.modo)}${m.tiempoTotal ? ' · ' + escHtml(m.tiempoTotal) : ''}</div>
@@ -2512,8 +2520,8 @@ async function elegirOpcionTransporte(id, idx) {
   renderSemana(); renderPoolPanel(); renderSpine();
   await postGAS({ action: 'elegirOpcion', id, opcionElegida: idx });
 }
-function toggleOtrosModos(id) {
-  const el = document.getElementById('otrosModos-' + id);
+function toggleOtrosModos(id, panelId) {
+  const el = document.getElementById(panelId || ('otrosModos-' + id));
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 async function elegirModoEnCard(transporteId, modo, idx) {
