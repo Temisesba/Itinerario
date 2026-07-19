@@ -2373,14 +2373,15 @@ function abrirVisorTransporte(id) {
   const opSel = opciones[t.opcionElegida || 0];
   const otrosModos = ((t.modosData && t.modosData.modos) || []).filter(m => m.modo !== t.tipo && m.aplica !== false && (m.opciones || []).length);
   const horarioResumen = opSel ? formatOpcionTexto(opSel) : 'Sin horario';
-  const oculto = !!t.ocultarMapa;
+  const sinHora = opciones.length > 0 && !(opSel && opSel.salida);
+  const oculto = !!t.ocultarMapa || sinHora;
   const vId = 'visor-transporte-horarios-' + t.id;
   const vOtrosId = 'visor-otros-modos-' + t.id;
   modalOpen(`
     <div class="modal-head">
       <span class="modal-title">${TIPO_LABEL[t.tipo] || t.tipo}</span>
       <div style="display:flex; align-items:center; gap:10px">
-        <button class="icon-btn" title="${oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
+        <button class="icon-btn" title="${sinHora ? 'Sin hora fija — toca para ponerle una y que se vea en mapa/calendario' : oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
         <button class="icon-btn" title="Ver en panel lateral" onclick="scrollPanelATransporte('${t.id}')">📌</button>
         <button class="modal-close" onclick="modalClose()">✕</button>
       </div>
@@ -2475,7 +2476,8 @@ function renderTransporteCard(t) {
   const opSel = opciones[t.opcionElegida || 0];
   const tipoEmojiBadge = tipoEmoji(t.tipo);
   const esLibre = MODOS_SIN_HORARIO.includes(t.tipo);
-  const oculto = !!t.ocultarMapa;
+  const sinHora = opciones.length > 0 && !(opSel && opSel.salida);
+  const oculto = !!t.ocultarMapa || sinHora;
   const horarioResumen = opSel ? formatOpcionTexto(opSel) : 'Sin horario';
   const tId = 'transporte-horarios-' + t.id;
 
@@ -2487,14 +2489,14 @@ function renderTransporteCard(t) {
         <span class="badge sky">${tipoEmojiBadge} ${TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo}</span>
       </div>
       <div class="icon-row">
-        <button class="icon-btn" title="${oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
+        <button class="icon-btn" title="${sinHora ? 'Sin hora fija — toca para ponerle una y que se vea en mapa/calendario' : oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
         <button class="icon-btn" onclick="openTransporteForm('${t.id}','${t.diaId}')" title="Editar">✏️</button>
         <button class="icon-btn" onclick="eliminarTransporte('${t.id}')" title="Eliminar">🗑</button>
       </div>
     </div>
     <div style="margin-bottom:4px; display:flex; align-items:center; gap:6px">
       <span style="font-size:16px">${tipoEmojiBadge}</span>${reservadoToggleHtml('transporte', t.id, t.reservado)}
-      ${oculto ? `<span style="font-size:10px; color:var(--ink-3); background:var(--paper-2); border-radius:8px; padding:1px 6px">👁️ Oculto del visor/mapa</span>` : ''}
+      ${t.ocultarMapa ? `<span style="font-size:10px; color:var(--ink-3); background:var(--paper-2); border-radius:8px; padding:1px 6px">🙈 Oculto del visor/mapa</span>` : ''}
     </div>
     <div class="route-line">${escHtml(t.origen || '')} → ${escHtml(t.destino || '')}</div>
     ${(opciones.length && !(opSel && opSel.salida)) ? `<div class="empty-mini" style="color:#b45309; background:#fef3c7; border-radius:6px; padding:3px 6px; margin-top:4px">⏰ Sin hora fija — por eso no aparece en el calendario. Arrástralo desde ⠿ para fijarle una hora.</div>` : ''}
@@ -2588,6 +2590,28 @@ function moverTransporte(id, diaId, dir) {
 async function toggleOcultarTransporte(id, btn) {
   const t = itinerario.transporte.find(x => x.id === id);
   if (!t) return;
+  const opciones = t.opciones || [];
+  const opSel = opciones[t.opcionElegida || 0];
+  const sinHora = opciones.length > 0 && !(opSel && opSel.salida);
+  if (sinHora) {
+    // Sin hora nunca se ve en mapa/calendario, sin importar el botón — pedir la hora es lo que de verdad lo arregla.
+    const horaTexto = prompt('Este transporte no tiene hora fija, por eso no se ve en el mapa ni en el calendario. ¿A qué hora sale? (HH:MM)', '');
+    if (!horaTexto) return;
+    const iniMin = hhmmToMin(horaTexto);
+    if (iniMin === null) { showToast('Hora inválida, usa el formato HH:MM'); return; }
+    const dur = (opSel && opSel.duracionMin != null && opSel.duracionMin !== '') ? Number(opSel.duracionMin) : 30;
+    const idx = t.opcionElegida || 0;
+    const nuevasOpciones = opciones.length ? [...opciones] : [{}];
+    if (!nuevasOpciones[idx]) nuevasOpciones[idx] = {};
+    nuevasOpciones[idx] = { ...nuevasOpciones[idx], salida: minToHHMM(iniMin), llegada: minToHHMM(iniMin + dur) };
+    t.opciones = nuevasOpciones;
+    t.ocultarMapa = false;
+    await postGAS({ action: 'updateTransporte', id, opciones: nuevasOpciones, opcionElegida: idx, ocultarMapa: false });
+    renderSemana(); renderPoolPanel(); renderSpine();
+    if (document.getElementById('viewMapa').style.display !== 'none') renderMapaGeneral();
+    showToast('Hora fijada — ahora sí se ve en mapa y calendario ✦');
+    return;
+  }
   t.ocultarMapa = !t.ocultarMapa;
   btn.textContent = t.ocultarMapa ? '🙈' : '👁️';
   btn.title = t.ocultarMapa ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa';
