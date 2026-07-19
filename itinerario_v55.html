@@ -410,6 +410,7 @@ body.drag-locked .cal-resize-handle { display: none; }
           <label><input type="checkbox" value="transporte" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🚆 Transporte</label>
           <label><input type="checkbox" value="hospedaje" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🏨 Hospedaje</label>
           <label><input type="checkbox" value="restaurantes" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🍴 Restaurantes</label>
+          <label><input type="checkbox" value="eventos" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🎪 Eventos</label>
         </div>
       </div>
       <button class="btn-mini" id="btnFocoMapa" onclick="toggleFocoEventosPendientes()" style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;background:#ff7200;border:2px solid #fff;box-shadow:0 0 0 1px #ff7200;display:inline-block;flex-shrink:0"></span>Ver pendientes</button>
@@ -566,7 +567,7 @@ function attachSplitter() {
 }
 
 // ── Estado ───────────────────────────────────────────────────
-let itinerario = { dias: [], transporte: [], hospedaje: [], pendientes: [] };
+let itinerario = { dias: [], transporte: [], hospedaje: [], pendientes: [], eventos: [] };
 let currentDiaId = null;
 let currentProyecto = null; // null = todavía no se ha decidido; '' = "Sin proyecto"
 let leafletMap = null;
@@ -578,7 +579,7 @@ let _gastosSumaSel = new Set(); // IDs de gastos seleccionados para sumar (cache
 let dragBloqueado = true;
 let modalEsFormulario = false; // true solo en formularios editables (no en visores de lectura)
 let miniMap = null;
-let panelCollapsed = { notas: true, sinHora: true, transporte: true, hospedaje: true, despues: true, restaurantes: true, recomendaciones: true, mapa: false };
+let panelCollapsed = { notas: true, sinHora: true, transporte: true, hospedaje: true, despues: true, restaurantes: true, recomendaciones: true, eventos: true, mapa: false };
 let antojosMaestros = []; // lista maestra del Sheets, separada de los pendientes con antojo
 function scrollPanelATransporte(id) {
   modalClose();
@@ -648,7 +649,7 @@ async function loadItinerario() {
   try {
     const r = await fetch(`${GAS_URL}?action=getItinerario&t=${Date.now()}`);
     const d = await r.json();
-    itinerario = { dias: d.dias || [], transporte: d.transporte || [], hospedaje: d.hospedaje || [], pendientes: d.pendientes || [] };
+    itinerario = { dias: d.dias || [], transporte: d.transporte || [], hospedaje: d.hospedaje || [], pendientes: d.pendientes || [], eventos: d.eventos || [] };
     itinerario.dias.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
     if (currentProyecto === null) currentProyecto = pickDefaultProyecto();
     if (!currentDiaId || !diasFiltrados().some(d => d.id === currentDiaId)) currentDiaId = pickTodayOrFirst();
@@ -737,6 +738,7 @@ function gConceptoGasto(tipo, datos) {
     const fin = datos.diaIdFin ? (itinerario.dias.find(d=>d.id===datos.diaIdFin)||{}).fecha||'' : '';
     return `${datos.nombre||''} · ${ini}${fin&&fin!==ini?' al '+fin:''}`;
   }
+  if (tipo === 'evento') return `🎪 ${datos.nombre||''} · ${fechaDia()}`;
   return `${datos.nombre||''} · ${fechaDia()}`;
 }
 
@@ -761,7 +763,7 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId) {
   document.getElementById('gNotas').value = prev ? (prev.notas||'') : '';
   // Categoria por defecto según tipo de item
     const _esResto = tipo === 'pendiente' && (() => { const p = itinerario.pendientes.find(x=>x.id===itemId); return p && (p.esRestaurante || p.antojo); })();
-  const catPorTipo = tipo === 'hospedaje' ? '🏨 Hospedaje' : tipo === 'transporte' ? '🚆 Transporte' : _esResto ? '🍽️ Restaurante' : '🎌 Entretenimiento';
+  const catPorTipo = tipo === 'hospedaje' ? '🏨 Hospedaje' : tipo === 'transporte' ? '🚆 Transporte' : tipo === 'evento' ? '🎪 Evento' : _esResto ? '🍽️ Restaurante' : '🎌 Entretenimiento';
   // Detectar si el place es un restaurante
   const datosObj = (() => { try { return typeof datosStr==='object' ? datosStr : JSON.parse(datosStr||'{}'); } catch(_){return {};} })();
   const esResto = datosObj.esRestaurante || datosObj.antojo;
@@ -1043,9 +1045,11 @@ async function editarGastoVisor(tipo, itemId, gastoId) {
   const p = itinerario.pendientes.find(x => x.id === itemId);
   const t = itinerario.transporte.find(x => x.id === itemId);
   const h = itinerario.hospedaje.find(x => x.id === itemId);
+  const ev = itinerario.eventos.find(x => x.id === itemId);
   if (p) datos = { nombre: p.nombre, antojo: p.antojo, direccion: p.direccion };
-  else if (t) datos = { origen: t.origen, destino: t.destino, diaId: t.diaId };
+  else if (t) datos = { origen: t.origen, destino: t.destino, diaId: t.diaId, tipo: t.tipo };
   else if (h) datos = { nombre: h.nombre, diaIdInicio: h.diaIdInicio, diaIdFin: h.diaIdFin };
+  else if (ev) datos = { nombre: ev.nombre };
   abrirGastosForm(tipo, itemId, datos, gastoId);
 }
 
@@ -1452,6 +1456,9 @@ async function cicloReservado(entidad, id, btn) {
   } else if (entidad === 'pendiente') {
     const p = itinerario.pendientes.find(x => x.id === id); if (p) p.reservado = nuevo;
     await postGAS({ action: 'updatePendiente', id, reservado: nuevo });
+  } else if (entidad === 'evento') {
+    const ev = itinerario.eventos.find(x => x.id === id); if (ev) ev.reservado = nuevo;
+    await postGAS({ action: 'updateEvento', id, reservado: nuevo });
   }
   renderSpine(); renderSemana(); renderPoolPanel();
   if (document.getElementById('viewTabla') && document.getElementById('viewTabla').style.display !== 'none') renderTabla();
@@ -1732,7 +1739,7 @@ function openBlockDetail(b) {
 }
 
 // ── Panel lateral: transporte, hospedaje, pendientes sin hora ──
-const POOL_KEYS = ['mapa', 'sinHora', 'despues', 'restaurantes', 'notas', 'transporte', 'hospedaje', 'recomendaciones'];
+const POOL_KEYS = ['mapa', 'sinHora', 'despues', 'restaurantes', 'notas', 'transporte', 'hospedaje', 'recomendaciones', 'eventos'];
 function getPoolOrder() {
   try {
     const saved = JSON.parse(localStorage.getItem('itin_poolOrder'));
@@ -1854,6 +1861,28 @@ function renderPoolPanel() {
         restos.length ? restos.map(p => poolItemHtml(p)).join('') : `<div class="empty-mini">Sin restaurantes. Agrega un lugar y márcalo como restaurante.</div>`);
     })(),
     recomendaciones: renderRecomendacionesGastronomicas(antojos, order),
+    eventos: (function() {
+      const dias = diasFiltrados();
+      const idx = dias.findIndex(d => d.id === dia.id);
+      const todosEventos = itinerario.eventos.filter(e => (e.proyecto || currentProyecto) === currentProyecto || true).sort((a,b)=>(a.orden||0)-(b.orden||0));
+      const eventosDelDia = idx < 0 ? [] : todosEventos.filter(e => {
+        const i1 = dias.findIndex(d => d.id === e.diaIdInicio);
+        const i2 = dias.findIndex(d => d.id === e.diaIdFin);
+        if (i1 < 0) return false;
+        const fin = i2 < 0 ? i1 : i2;
+        return idx >= i1 && idx <= fin;
+      });
+      const eventosSorted = [
+        ...todosEventos.filter(e => eventosDelDia.some(x=>x.id===e.id)),
+        ...todosEventos.filter(e => !eventosDelDia.some(x=>x.id===e.id))
+      ];
+      const contenido = eventosSorted.length
+        ? eventosSorted.map(ev => renderEventoCard(ev, eventosDelDia.some(x=>x.id===ev.id))).join('')
+        : `<div class="empty-mini">Sin eventos agregados.</div>`;
+      return sectionWrap('eventos', '🎪 Eventos/Festivales', eventosSorted.length,
+        `<button class="btn-mini" onclick="openEventoForm(null,'${dia.id}')" title="Agregar evento">＋</button>`,
+        contenido);
+    })(),
     mapa: sectionWrap('mapa', '🗺️ Mapa del día', 0, '',
       `<div id="miniMapBox" style="height:220px; border-radius:10px; overflow:hidden; border:1px solid var(--line)"></div>`)
   };
@@ -2337,6 +2366,7 @@ function abrirVisor(tipo, id) {
   if (tipo === 'pendiente') abrirVisorPendiente(id);
   else if (tipo === 'transporte') abrirVisorTransporte(id);
   else if (tipo === 'hospedaje') abrirVisorHospedaje(id);
+  else if (tipo === 'evento') abrirVisorEvento(id);
 }
 
 function abrirVisorPendiente(id) {
@@ -2892,6 +2922,194 @@ async function eliminarHospedaje(id) {
   renderPoolPanel(); renderSpine();
   await postGAS({ action: 'deleteHospedaje', id });
 }
+
+// ── Eventos / Festivales ───────────────────────────────────────
+function renderEventoCard(ev, esDelDia) {
+  const gastosE = gastosVinculados[ev.id] || [];
+  const gRealesE = gastosE.filter(g => !g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
+  const gCotsE = gastosE.filter(g => g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
+  const fIni = ev.diaIdInicio ? (itinerario.dias.find(d=>d.id===ev.diaIdInicio)||{}).fecha||'-' : '-';
+  const fFin = ev.diaIdFin ? (itinerario.dias.find(d=>d.id===ev.diaIdFin)||{}).fecha||'-' : '-';
+  const rango = (ev.diaIdFin && ev.diaIdFin !== ev.diaIdInicio) ? `${escHtml(fIni)} → ${escHtml(fFin)}` : escHtml(fIni);
+  return `<div style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esDelDia ? 'border-color:var(--route)' : ''}">
+    <div style="display:flex; align-items:center; gap:5px; padding:5px 8px; background:${esDelDia ? 'var(--route-light)' : 'var(--paper-2)'}">
+      <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorEvento('${ev.id}')">🎪 ${escHtml(ev.nombre || '(sin nombre)')}</span>
+      <button class="icon-btn" onclick="openEventoForm('${ev.id}')" title="Editar">✏️</button>
+      <button class="icon-btn" onclick="eliminarEvento('${ev.id}')" title="Eliminar">🗑</button>
+    </div>
+    <div style="padding:4px 8px; font-size:11.5px; color:var(--ink-2)">
+      <div style="font-size:12px">📅 ${rango}</div>
+      ${ev.ciudades ? `<div style="font-size:11px; color:var(--ink-3)">📍 ${escHtml(ev.ciudades)}</div>` : ''}
+      ${ev.categoria ? `<div style="font-size:11px; color:var(--ink-3)">🏷️ ${escHtml(ev.categoria)}</div>` : ''}
+      ${(gRealesE>0||gCotsE>0) ? `<div style="font-size:10.5px; margin-top:2px">${gRealesE>0?`<span style="color:#15803d;font-weight:600">💴 ¥${gRealesE.toLocaleString()}</span>`:''}${gRealesE>0&&gCotsE>0?' · ':''}${gCotsE>0?`<span style="color:#b85c8a;font-weight:600">💬 ¥${gCotsE.toLocaleString()}</span>`:''}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+let currentEventoSedes = [];
+function renderSedesEditor() {
+  const host = document.getElementById('sedesEventoHost');
+  if (!host) return;
+  host.innerHTML = currentEventoSedes.length ? currentEventoSedes.map((s, i) => `
+    <div style="border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:6px">
+      <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px">
+        <select id="sedeDia-${i}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+          <option value="">— Sin día asignado —</option>
+          ${diasFiltrados().map(d => `<option value="${d.id}" ${s.diaId===d.id?'selected':''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('')}
+        </select>
+        <button type="button" class="icon-btn" onclick="eliminarSedeEvento(${i})" title="Quitar sede">🗑</button>
+      </div>
+      <div class="autocomplete-wrap">
+        <input type="text" id="sedeDireccion-${i}" value="${escHtml(s.direccion||'')}" placeholder="Dirección / lugar de esta sede" autocomplete="off" style="width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+        <div class="autocomplete-list" id="sedeDireccionList-${i}"></div>
+      </div>
+      <input type="hidden" id="sedeLat-${i}" value="${s.lat||''}">
+      <input type="hidden" id="sedeLng-${i}" value="${s.lng||''}">
+    </div>`).join('') : `<div class="empty-mini">Sin sedes agregadas — agrega una si el evento tiene lugar/dirección.</div>`;
+  currentEventoSedes.forEach((s, i) => attachAutocomplete(`sedeDireccion-${i}`, `sedeDireccionList-${i}`, `sedeLat-${i}`, `sedeLng-${i}`, null));
+}
+function agregarSedeEvento() {
+  currentEventoSedes.push({ diaId: currentDiaId || '', direccion: '', lat: '', lng: '' });
+  renderSedesEditor();
+}
+function eliminarSedeEvento(i) {
+  currentEventoSedes.splice(i, 1);
+  renderSedesEditor();
+}
+
+function openEventoForm(id, diaId) {
+  modalEsFormulario = true;
+  const ev = id ? itinerario.eventos.find(x => x.id === id) : null;
+  currentEventoSedes = ev && ev.sedes && ev.sedes.length ? ev.sedes.map(s => ({ ...s })) : [];
+  const diaOptionsIni = '<option value="">— Sin fecha —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${(diaId===d.id)||(ev&&ev.diaIdInicio===d.id) ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
+  const diaOptionsFin = '<option value="">— Sin fecha —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${ev&&ev.diaIdFin===d.id ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
+  modalOpen(`
+    <div class="modal-head"><span class="modal-title">${ev ? 'Editar' : 'Nuevo'} evento/festival</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="fEventoId" value="${ev ? ev.id : ''}">
+      <div class="field"><label>Nombre del evento</label><input type="text" id="fEventoNombre" value="${escHtml(ev ? ev.nombre : '')}" placeholder="Ej: 16° Festival del Globo"></div>
+      <div class="row-2">
+        <div class="field"><label>Día inicio</label><select id="fEventoDiaInicio">${diaOptionsIni}</select></div>
+        <div class="field"><label>Día fin</label><select id="fEventoDiaFin">${diaOptionsFin}</select></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Categoría</label>
+          <select id="fEventoCategoria">
+            <option value="">— Selecciona —</option>
+            ${['Festival','Concierto','Deportivo','Cultural','Exposición','Otro'].map(c => `<option value="${c}" ${ev&&ev.categoria===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Reservado / boleto</label>${reservadoSelectHtml('fEventoReservado', ev ? ev.reservado : 'pendiente')}</div>
+      </div>
+      <div class="field"><label>Ciudades involucradas</label><input type="text" id="fEventoCiudades" value="${escHtml(ev ? ev.ciudades : '')}" placeholder="Ej: CDMX, Teotihuacán"></div>
+      <div class="field"><label>Página web</label><input type="url" id="fEventoWeb" value="${escHtml(ev ? ev.paginaWeb : '')}" placeholder="https://..."></div>
+      <div class="field">
+        <label>Sedes / ubicaciones <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(si el evento cambia de lugar según el día)</span></label>
+        <div id="sedesEventoHost"></div>
+        <button type="button" class="btn-mini" onclick="agregarSedeEvento()">＋ Agregar sede</button>
+      </div>
+      <div class="field">
+        <label>Programa (PDF o foto)</label>
+        <div id="fEventoProgramaActual" style="margin-bottom:6px">${ev && ev.programaUrl ? `<a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a>` : ''}</div>
+        ${ev ? `<input type="file" accept="application/pdf,image/*" onchange="subirProgramaEvento('${ev.id}', this)">` : `<div class="empty-mini">Guarda primero para poder subir el programa.</div>`}
+      </div>
+      <div class="field"><label>Notas</label><textarea id="fEventoNotas">${escHtml(ev ? ev.notas : '')}</textarea></div>
+      <div class="modal-actions" style="justify-content:space-between">
+        ${ev ? `<button class="btn-cancel" onclick="eliminarEvento('${ev.id}')" style="color:#b91c1c">🗑 Eliminar</button>` : '<span></span>'}
+        <div style="display:flex; gap:8px">
+          <button class="btn-cancel" onclick="modalClose()">Cancelar</button>
+          <button class="btn-save" onclick="guardarEvento()">Guardar</button>
+        </div>
+      </div>
+    </div>`);
+  renderSedesEditor();
+}
+
+async function guardarEvento() {
+  const id = document.getElementById('fEventoId').value;
+  const sedes = currentEventoSedes.map((_, i) => ({
+    diaId: (document.getElementById(`sedeDia-${i}`)||{}).value || '',
+    direccion: (document.getElementById(`sedeDireccion-${i}`)||{}).value || '',
+    lat: (document.getElementById(`sedeLat-${i}`)||{}).value || '',
+    lng: (document.getElementById(`sedeLng-${i}`)||{}).value || ''
+  })).filter(s => s.direccion || s.diaId);
+  const body = {
+    nombre: document.getElementById('fEventoNombre').value,
+    diaIdInicio: document.getElementById('fEventoDiaInicio').value,
+    diaIdFin: document.getElementById('fEventoDiaFin').value,
+    categoria: document.getElementById('fEventoCategoria').value,
+    reservado: getReservadoVal('fEventoReservado'),
+    ciudades: document.getElementById('fEventoCiudades').value,
+    paginaWeb: document.getElementById('fEventoWeb').value,
+    notas: document.getElementById('fEventoNotas').value,
+    sedes,
+    proyecto: currentProyecto
+  };
+  body.action = id ? 'updateEvento' : 'saveEvento';
+  if (id) body.id = id;
+  const r = await postGAS(body);
+  if (r.ok) { modalClose(); showToast('Evento guardado ✦'); await loadItinerario(); }
+}
+async function eliminarEvento(id) {
+  if (!confirm('¿Eliminar este evento?')) return;
+  modalClose();
+  itinerario.eventos = itinerario.eventos.filter(x => x.id !== id);
+  renderPoolPanel();
+  await postGAS({ action: 'deleteEvento', id });
+  showToast('Evento eliminado');
+}
+function leerArchivoBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+async function subirProgramaEvento(id, input) {
+  const file = input.files[0]; if (!file) return;
+  showToast('Subiendo programa…');
+  try {
+    const esImagen = file.type.startsWith('image/');
+    const dataUrl = esImagen ? await resizeImage(file, 1600, 0.78) : await leerArchivoBase64(file);
+    const r = await postGAS({ action: 'subirFoto', base64: dataUrl, nombre: file.name });
+    if (r.ok) {
+      const ev = itinerario.eventos.find(x => x.id === id);
+      if (ev) ev.programaUrl = r.url;
+      await postGAS({ action: 'updateEvento', id, programaUrl: r.url });
+      const box = document.getElementById('fEventoProgramaActual');
+      if (box) box.innerHTML = `<a href="${r.url}" target="_blank" class="btn-mini">📄 Ver programa</a>`;
+      showToast('Programa subido ✦');
+    } else showToast(r.error || 'Error al subir');
+  } catch (e) { showToast('Error al subir el programa'); }
+  input.value = '';
+}
+function abrirVisorEvento(id) {
+  modalEsFormulario = false;
+  const ev = itinerario.eventos.find(x => x.id === id);
+  if (!ev) return;
+  const rango = (!ev.diaIdFin || ev.diaIdInicio === ev.diaIdFin) ? diaLabel(ev.diaIdInicio) : `${diaLabel(ev.diaIdInicio)} a ${diaLabel(ev.diaIdFin)}`;
+  modalOpen(`
+    <div class="modal-head"><span class="modal-title">🎪 ${escHtml(ev.nombre || 'Evento')}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-body">
+      <div class="visor-row" style="margin-bottom:8px">${reservadoToggleHtml('evento', ev.id, ev.reservado)}</div>
+      <div class="visor-row">📅 ${escHtml(rango)}</div>
+      ${ev.categoria ? `<div class="visor-row">🏷️ ${escHtml(ev.categoria)}</div>` : ''}
+      ${ev.ciudades ? `<div class="visor-row">📍 ${escHtml(ev.ciudades)}</div>` : ''}
+      ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
+      ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>📍 Sedes</b><br>${ev.sedes.map(s => `${escHtml(diaLabel(s.diaId) || 'Sin día')}: ${escHtml(s.direccion||'')}`).join('<br>')}</div>` : ''}
+      ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a></div>` : ''}
+      ${ev.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(ev.notas)}</div>` : ''}
+      ${gastoVinculadoHtml('evento', ev.id, JSON.stringify({nombre:ev.nombre}))}
+      <div class="modal-actions" style="justify-content:space-between">
+        <button class="btn-cancel" onclick="eliminarEvento('${ev.id}')" style="color:#b91c1c">🗑 Eliminar</button>
+        <div style="display:flex; gap:8px">
+          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastosForm('evento','${ev.id}',JSON.stringify({nombre:${JSON.stringify(ev.nombre||'')}}))">💴 ${(gastosVinculados[ev.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[ev.id]||[]).length>0?' ('+(gastosVinculados[ev.id]||[]).length+')':''}</button>
+          <button class="btn-save" onclick="openEventoForm('${ev.id}')">✏️ Editar</button>
+        </div>
+      </div>
+    </div>`);
+}
 async function eliminarPendiente(id) {
   if (!confirm('¿Eliminar este pendiente?')) return;
   modalClose();
@@ -3255,7 +3473,7 @@ function renderMapaGeneral() {
   const diaNombre = (id) => { const d = itinerario.dias.find(x => x.id === id); return d ? `${d.fecha}${d.zona ? ' · ' + d.zona : ''}` : ''; };
   const colorDeDia = (diaId) => { const idx = dias.findIndex(d => d.id === diaId); return DIA_COLORES[idx >= 0 ? idx % DIA_COLORES.length : 0]; };
   const cats = categoriasMapaActivas();
-  const verPendientes = cats.includes('pendientes'), verTransporte = cats.includes('transporte'), verHospedaje = cats.includes('hospedaje'), verResto = mapaRestoMode && cats.includes('restaurantes');
+  const verPendientes = cats.includes('pendientes'), verTransporte = cats.includes('transporte'), verHospedaje = cats.includes('hospedaje'), verResto = mapaRestoMode && cats.includes('restaurantes'), verEventos = cats.includes('eventos');
 
   // Modo foco: si viene de "Ver mapa" en un visor, todo lo demás se ve como marca de agua.
   // Modo "eventos pendientes": invierte qué se ve nítido (lo sin programar) vs marca de agua (lo programado).
@@ -3332,6 +3550,19 @@ function renderMapaGeneral() {
             puntos.push([t.destinoLat, t.destinoLng]);
             puntosProgramados.push([t.destinoLat, t.destinoLng]);
           }
+        });
+      }
+
+      if (verEventos) {
+        itinerario.eventos.filter(ev => (ev.proyecto || currentProyecto) === currentProyecto).forEach(ev => {
+          (ev.sedes || []).filter(s => s.diaId === dia.id && s.lat && s.lng).forEach(s => {
+            const ot = op('evento', ev.id, false);
+            const m = mkr(s.lat, s.lng, shapeDivIcon(color, 'square', '🎪', 22, ot), ot);
+            bindEtiquetaMapa(m, ev.nombre, () => abrirVisor('evento', ev.id), ot, ot >= 0.9);
+            puntos.push([s.lat, s.lng]);
+            puntosProgramados.push([s.lat, s.lng]);
+            if (foco && foco.tipo === 'evento' && foco.id === ev.id) { puntoFoco = [s.lat, s.lng]; }
+          });
         });
       }
 
@@ -5763,7 +5994,7 @@ init();
         <select id="gCat" class="g-select">
           <option value="">— Sin categoría —</option>
           <option>🍽️ Restaurante</option><option>🍜 Alimentos</option><option>🏨 Hospedaje</option><option>🍺 Salidas / Bares</option><option>🛒 Supermercado</option>
-          <option>🎌 Entretenimiento</option><option>👗 Ropa / Compras</option><option>🚆 Transporte</option>
+          <option>🎌 Entretenimiento</option><option>🎪 Evento</option><option>👗 Ropa / Compras</option><option>🚆 Transporte</option>
           <option>🏠 Hogar</option><option>💊 Salud</option><option>📱 Servicios / Tech</option>
           <option selected>✈️ Viajes</option><option>🎁 Regalos</option><option>📚 Educación</option>
           <option>🌸 Belleza / Cuidado</option><option>💸 Transferencias / Finanzas</option><option>❓ Otro</option>
