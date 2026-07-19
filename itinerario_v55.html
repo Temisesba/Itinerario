@@ -4844,7 +4844,16 @@ function openHospedajeForm(id, diaId) {
       </div>
     </div>`);
   attachAutocomplete('fHospDireccion', 'fHospDireccionList', 'fHospLat', 'fHospLng', 'fHospCoordsTxt');
-  if (diaId) { document.getElementById('fHospInicio').value = diaId; document.getElementById('fHospFin').value = (h && h.diaIdFin) ? h.diaIdFin : diaId; }
+  if (diaId) {
+    document.getElementById('fHospInicio').value = diaId;
+    let finDefault = diaId;
+    if (!h) {
+      const dias = diasFiltrados();
+      const idx = dias.findIndex(d => d.id === diaId);
+      if (idx >= 0 && dias[idx + 1]) finDefault = dias[idx + 1].id;
+    }
+    document.getElementById('fHospFin').value = (h && h.diaIdFin) ? h.diaIdFin : finDefault;
+  }
   if (h) { if (h.diaIdInicio) document.getElementById('fHospInicio').value = h.diaIdInicio; if (h.diaIdFin) document.getElementById('fHospFin').value = h.diaIdFin; }
 }
 
