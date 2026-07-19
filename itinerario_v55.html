@@ -628,6 +628,16 @@ function sectionWrap(key, titulo, conteo, botones, contenido) {
 let chatConversation = [];
 
 const TIPO_LABEL = { vuelo: '✈️ Vuelo', tren: '🚆 Tren', bus: '🚌 Bus', caminando: '🚶 Caminando', carro: '🚕 Carro', ferry: '⛴️ Ferry', bicicleta: '🚲 Bicicleta', otro: '🚏 Otro' };
+const ETIQUETA_DIRECCION = {
+  vuelo: { origen: 'Aeropuerto de origen', destino: 'Aeropuerto de destino' },
+  tren: { origen: 'Estación de tren de origen', destino: 'Estación de tren de destino' },
+  bus: { origen: 'Parada de autobús de origen', destino: 'Parada de autobús de destino' },
+  ferry: { origen: 'Puerto de origen', destino: 'Puerto de destino' },
+  caminando: { origen: 'Punto de partida', destino: 'Punto de llegada' },
+  carro: { origen: 'Punto de partida', destino: 'Punto de llegada' },
+  bicicleta: { origen: 'Punto de partida', destino: 'Punto de llegada' },
+  otro: { origen: 'Dirección de origen', destino: 'Dirección de destino' }
+};
 
 // ── Init ─────────────────────────────────────────────────────
 async function init() { document.body.classList.toggle('drag-locked', dragBloqueado); await loadItinerario(); }
@@ -4557,6 +4567,17 @@ function agregarModoBloque() {
 function marcarModoElegido(modo, idx) {
   currentModosData._elegido = { modo, idx };
   document.getElementById('fTransTipo').value = modo;
+  actualizarEtiquetasDireccion();
+}
+// Las etiquetas de dirección cambian según el modo: aeropuerto, estación, parada, puerto, o punto genérico.
+function actualizarEtiquetasDireccion() {
+  const sel = document.getElementById('fTransTipo');
+  const tipo = sel ? sel.value : 'otro';
+  const et = ETIQUETA_DIRECCION[tipo] || ETIQUETA_DIRECCION.otro;
+  const lo = document.getElementById('lblDireccionOrigen');
+  const ld = document.getElementById('lblDireccionDestino');
+  if (lo) lo.textContent = et.origen;
+  if (ld) ld.textContent = et.destino;
 }
 
 function openTransporteForm(id, diaId) {
@@ -4572,7 +4593,7 @@ function openTransporteForm(id, diaId) {
       <input type="hidden" id="fTransDiaOriginal" value="${diaActualId}">
       <div class="row-2">
         <div class="field"><label>Tipo</label>
-          <select id="fTransTipo">
+          <select id="fTransTipo" onchange="actualizarEtiquetasDireccion()">
             ${['vuelo', 'tren', 'bus', 'caminando', 'carro', 'ferry', 'bicicleta', 'otro'].map(v => `<option value="${v}" ${(t ? t.tipo === v : v === 'otro') ? 'selected' : ''}>${TIPO_LABEL[v]}</option>`).join('')}
           </select>
         </div>
@@ -4601,7 +4622,7 @@ function openTransporteForm(id, diaId) {
 
       <div class="row-2">
         <div class="field autocomplete-wrap">
-          <label>Dirección de origen</label>
+          <label id="lblDireccionOrigen">Dirección de origen</label>
           <input type="text" id="fTransDireccionOrigen" value="${escHtml(t ? t.direccionOrigen : '')}" autocomplete="off" placeholder="Se llena con Sugiere, o búscala aquí">
           <div class="autocomplete-list" id="fTransDireccionOrigenList"></div>
           <div style="display:flex; gap:4px; margin-top:3px">
@@ -4610,7 +4631,7 @@ function openTransporteForm(id, diaId) {
           </div>
         </div>
         <div class="field autocomplete-wrap">
-          <label>Dirección de destino</label>
+          <label id="lblDireccionDestino">Dirección de destino</label>
           <input type="text" id="fTransDireccionDestino" value="${escHtml(t ? t.direccionDestino : '')}" autocomplete="off" placeholder="Se llena con Sugiere, o búscala aquí">
           <div class="autocomplete-list" id="fTransDireccionDestinoList"></div>
           <div style="display:flex; gap:4px; margin-top:3px">
@@ -4650,6 +4671,7 @@ function openTransporteForm(id, diaId) {
       </div>
     </div>`);
   renderModosEditor();
+  actualizarEtiquetasDireccion();
   attachLugarPicker('fTransOrigen', 'fTransOrigenLugarList');
   attachLugarPicker('fTransDestino', 'fTransDestinoLugarList');
   attachAutocomplete('fTransDireccionOrigen', 'fTransDireccionOrigenList', 'fTransOrigenLat', 'fTransOrigenLng', 'fTransOrigenCoordsTxt');
@@ -4671,10 +4693,10 @@ async function sugerirSoloDireccionForm(btnEl) {
   if (!r.ok || !r.data) { showToast(r.error || 'No se pudo obtener la dirección'); return; }
   const d = r.data;
   // Solo aplicar dirección y coordenadas
-  if (d.origenDireccion) { document.getElementById('fTransDireccionOrigen').value = d.origenDireccion; }
+  if (d.origenDireccion) { document.getElementById('fTransDireccionOrigen').value = formatearDireccionConNombre(d.origenNombre, d.origenDireccion); }
   if (d.origenLat) { document.getElementById('fTransOrigenLat').value = d.origenLat; const el=document.getElementById('fTransOrigenCoordsTxt'); if(el) el.textContent=d.origenLat+', '+d.origenLng; }
   if (d.origenLng) document.getElementById('fTransOrigenLng').value = d.origenLng;
-  if (d.destinoDireccion) { document.getElementById('fTransDireccionDestino').value = d.destinoDireccion; }
+  if (d.destinoDireccion) { document.getElementById('fTransDireccionDestino').value = formatearDireccionConNombre(d.destinoNombre, d.destinoDireccion); }
   if (d.destinoLat) { document.getElementById('fTransDestinoLat').value = d.destinoLat; const el=document.getElementById('fTransDestinoCoordsTxt'); if(el) el.textContent=d.destinoLat+', '+d.destinoLng; }
   if (d.destinoLng) document.getElementById('fTransDestinoLng').value = d.destinoLng;
   let texto = '';
@@ -4685,14 +4707,20 @@ async function sugerirSoloDireccionForm(btnEl) {
   showToast('📍 Dirección y coordenadas actualizadas ✦');
 }
 
+// Combina el nombre del lugar (ej. "Aeropuerto Benito Juárez") con su dirección detallada,
+// para saber de un vistazo QUÉ es ese punto (aeropuerto/estación/parada) y no solo la calle.
+function formatearDireccionConNombre(nombre, direccion) {
+  if (!direccion) return nombre || '';
+  return nombre ? `${nombre} (${direccion})` : direccion;
+}
 // Normaliza el array "modos" que devuelve la IA (sugerirTransporteCompleto) a la forma que usa el resto
 // de la app (direccionOrigen/origenLat/... en vez de origenDireccion/origenLat/...), para que elegirModoEnCard
 // y demás lectores de modosData.modos[] encuentren siempre los mismos nombres de campo.
 function normalizarModosIA(modosRaw) {
   return (modosRaw || []).map(m => ({
     modo: m.modo, aplica: m.aplica !== false, tiempoTotal: m.tiempoTotal || '', opciones: m.opciones || [],
-    direccionOrigen: m.origenDireccion || '', origenLat: m.origenLat || '', origenLng: m.origenLng || '',
-    direccionDestino: m.destinoDireccion || '', destinoLat: m.destinoLat || '', destinoLng: m.destinoLng || ''
+    direccionOrigen: formatearDireccionConNombre(m.origenNombre, m.origenDireccion), origenLat: m.origenLat || '', origenLng: m.origenLng || '',
+    direccionDestino: formatearDireccionConNombre(m.destinoNombre, m.destinoDireccion), destinoLat: m.destinoLat || '', destinoLng: m.destinoLng || ''
   }));
 }
 async function sugerirSoloHorariosForm(btnEl) {
@@ -4716,7 +4744,7 @@ async function sugerirSoloHorariosForm(btnEl) {
     mixto: { requiere: !!(d.mixto && d.mixto.requiere), descripcion: tramosDesc },
     _elegido: { modo: d.tipoSugerido || (currentModosData.modos[0] && currentModosData.modos[0].modo), idx: 0 }
   };
-  if (d.tipoSugerido) document.getElementById('fTransTipo').value = d.tipoSugerido;
+  if (d.tipoSugerido) { document.getElementById('fTransTipo').value = d.tipoSugerido; actualizarEtiquetasDireccion(); }
   renderModosEditor();
   showToast('⏰ Horarios actualizados — toca el círculo del que quieras usar');
 }
@@ -4736,10 +4764,10 @@ async function sugerirTransporteCompletoForm(btnEl) {
   const d = r.data;
 
   // Origen/Destino (el nombre) se quedan tal como tú los pusiste — solo se llena la dirección y coordenadas.
-  if (d.origenDireccion) document.getElementById('fTransDireccionOrigen').value = d.origenDireccion;
+  if (d.origenDireccion) document.getElementById('fTransDireccionOrigen').value = formatearDireccionConNombre(d.origenNombre, d.origenDireccion);
   if (d.origenLat) document.getElementById('fTransOrigenLat').value = d.origenLat;
   if (d.origenLng) document.getElementById('fTransOrigenLng').value = d.origenLng;
-  if (d.destinoDireccion) document.getElementById('fTransDireccionDestino').value = d.destinoDireccion;
+  if (d.destinoDireccion) document.getElementById('fTransDireccionDestino').value = formatearDireccionConNombre(d.destinoNombre, d.destinoDireccion);
   if (d.destinoLat) document.getElementById('fTransDestinoLat').value = d.destinoLat;
   if (d.destinoLng) document.getElementById('fTransDestinoLng').value = d.destinoLng;
 
@@ -4761,7 +4789,7 @@ async function sugerirTransporteCompletoForm(btnEl) {
     mixto: { requiere: !!(d.mixto && d.mixto.requiere), descripcion: tramosDesc },
     _elegido: { modo: d.tipoSugerido || (currentModosData.modos[0] && currentModosData.modos[0].modo), idx: 0 }
   };
-  if (d.tipoSugerido) document.getElementById('fTransTipo').value = d.tipoSugerido;
+  if (d.tipoSugerido) { document.getElementById('fTransTipo').value = d.tipoSugerido; actualizarEtiquetasDireccion(); }
   renderModosEditor();
 
   showToast('✨ Listo — toca el círculo del horario que quieras usar');
