@@ -121,6 +121,8 @@ body.drag-locked .cal-resize-handle { display: none; }
 .cal-block.comida { background: #dcf5e3; border-color: #7fc99a; color: #14532d; }
 .cal-block.prioritaria { background: #fff3c4; border-color: #e8c44a; color: #7a5d00; border-width: 2px; }
 .cal-block.comida.prioritaria { background: #c5ecd1; border-color: #e8c44a; color: #7a5d00; border-width: 3px; }
+.cal-block.realizado { background: #e9e9e6; border-color: #c7c7c0; color: #8a8a82; opacity: 0.75; }
+.cal-block.realizado .cbtitle { text-decoration: line-through; }
 .cbnota { font-size: 9.5px; opacity: 0.8; margin-top: 1px; line-height: 1.25; }
 .cal-block.dragging { opacity: 0.75; z-index: 20; box-shadow: 0 4px 14px rgba(0,0,0,0.18); cursor: grabbing; }
 .cal-block .cbtitle { font-weight: 500; line-height: 1.25; }
@@ -1292,9 +1294,9 @@ function hospedajesParaHeaderDia(diaId) {
   const ambos = candidatos.filter(h => h.diaIdInicio === diaId && h.diaIdFin === diaId);
   const activo = candidatos.filter(h => h.diaIdInicio !== diaId && h.diaIdFin !== diaId);
   const resultado = [];
-  const hCheckout = elegirDeGrupo(soloCheckout); if (hCheckout) resultado.push({ h: hCheckout, icono: '🔽' });
-  const hCheckin = elegirDeGrupo(soloCheckin); if (hCheckin) resultado.push({ h: hCheckin, icono: '🔼' });
-  const hAmbos = elegirDeGrupo(ambos); if (hAmbos) resultado.push({ h: hAmbos, icono: '🔼🔽' });
+  const hCheckout = elegirDeGrupo(soloCheckout); if (hCheckout) resultado.push({ h: hCheckout, icono: '⬇️🛏️' });
+  const hCheckin = elegirDeGrupo(soloCheckin); if (hCheckin) resultado.push({ h: hCheckin, icono: '⬆️🛏️' });
+  const hAmbos = elegirDeGrupo(ambos); if (hAmbos) resultado.push({ h: hAmbos, icono: '⬆️🛏️⬇️🛏️' });
   if (!resultado.length) {
     const hActivo = elegirDeGrupo(activo);
     if (hActivo) {
@@ -1487,7 +1489,8 @@ function getCalendarBlocks(diaId) {
     const icono = RESERVADO_ICON[p.reservado || 'pendiente'];
     const comida = p.tipoComida ? (TIPO_COMIDA_ICON[p.tipoComida] || '') + ' ' : '';
     const estrella = p.prioritaria ? '⭐ ' : '';
-    blocks.push({ id: p.id, kind: 'pendiente', esComida: !!p.tipoComida, esPrioritaria: !!p.prioritaria, duracionBloqueada: !!p.duracionBloqueada, notaPrevia: p.notasPrevias || '', sugerenciasIA: p.sugerenciasIA || '', title: `${estrella}${comida}📅${icono} ` + (p.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+    const check = p.realizado ? '✅ ' : '';
+    blocks.push({ id: p.id, kind: 'pendiente', esComida: !!p.tipoComida, esPrioritaria: !!p.prioritaria, esRealizado: !!p.realizado, duracionBloqueada: !!p.duracionBloqueada, notaPrevia: p.notasPrevias || '', sugerenciasIA: p.sugerenciasIA || '', title: `${check}${estrella}${comida}📅${icono} ` + (p.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
   });
   itinerario.transporte.forEach(t => {
     if (t.diaId !== diaId) return;
@@ -2068,11 +2071,11 @@ function poolItemHtml(p) {
   const estrella = p.prioritaria ? `<span title="Prioritaria" style="margin-left:4px">⭐</span>` : '';
   const yaAsignado = (p.diaId && p.horaInicio) ? `<div class="psub" style="color:var(--ok)">✅ Ya asignado: ${escHtml(diaLabel(p.diaId))} · ${escHtml(p.horaInicio)}–${escHtml(p.horaFin || '')}</div>` : '';
   const etiquetaFecha = (p.diaId && !p.horaInicio) ? `<span class="fecha-badge" title="Tiene día asignado, sin hora todavía">📅 ${escHtml(diaLabel(p.diaId))}</span>` : '';
-  return `<div class="pool-item-mini" id="pool-${p.id}">
+  return `<div class="pool-item-mini" id="pool-${p.id}" style="${p.realizado ? 'opacity:.6; background:var(--paper-2)' : ''}">
     <span class="handle">⠿</span>
     <div style="flex:1; min-width:0">
       <div style="margin-bottom:3px; display:flex; align-items:center">${reservadoToggleHtml('pendiente', p.id, p.reservado)}${comida}${estrella}</div>
-      <div class="pname">${escHtml(p.nombre || '')}</div>
+      <div class="pname" style="${p.realizado ? 'text-decoration:line-through' : ''}">${p.realizado ? '✅ ' : ''}${escHtml(p.nombre || '')}</div>
       ${p.direccion ? `<div class="psub">${escHtml(p.direccion)}</div>` : ''}
       ${yaAsignado}
       ${p.notasPrevias ? `<div class="psub">📌 ${escHtml(p.notasPrevias)}</div>` : ''}
@@ -2320,6 +2323,17 @@ async function toggleDuracionBloqueadaPendiente(id, btnEl) {
   await postGAS({ action: 'updatePendiente', id, duracionBloqueada: p.duracionBloqueada });
   renderSemana();
 }
+async function toggleRealizadoPendiente(id, btnEl) {
+  const p = itinerario.pendientes.find(x => x.id === id);
+  if (!p) return;
+  p.realizado = !p.realizado;
+  if (btnEl) {
+    btnEl.textContent = p.realizado ? '✅ Realizado' : '⬜ Marcar como realizado';
+    btnEl.style.cssText = p.realizado ? 'background:var(--ok-light);border-color:var(--ok);color:#0d5c2a' : '';
+  }
+  await postGAS({ action: 'updatePendiente', id, realizado: p.realizado });
+  renderSemana(); renderPoolPanel();
+}
 async function desasignarDia(id) {
   modalClose();
   const p = itinerario.pendientes.find(x => x.id === id);
@@ -2374,9 +2388,10 @@ function abrirVisorPendiente(id) {
   const p = itinerario.pendientes.find(x => x.id === id);
   if (!p) return;
   modalOpen(`
-    <div class="modal-head"><span class="modal-title">${p.prioritaria ? '⭐ ' : ''}${escHtml(p.nombre || '(sin nombre)')}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-head"><span class="modal-title">${p.realizado ? '✅ ' : ''}${p.prioritaria ? '⭐ ' : ''}${escHtml(p.nombre || '(sin nombre)')}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
+        <button class="btn-mini" style="${p.realizado ? 'background:var(--ok-light);border-color:var(--ok);color:#0d5c2a' : ''}" onclick="toggleRealizadoPendiente('${p.id}', this)">${p.realizado ? '✅ Realizado' : '⬜ Marcar como realizado'}</button>
         <button class="btn-mini" onclick="togglePrioridadPendiente('${p.id}', this)" data-pri="${p.prioritaria ? '1' : '0'}">${p.prioritaria ? '⭐ Prioritaria' : '☆ Marcar como prioritaria'}</button>
         <button class="btn-mini" id="btnDurLock-${p.id}" onclick="toggleDuracionBloqueadaPendiente('${p.id}', this)" title="Si está bloqueada, la duración no cambia al arrastrar en el calendario">${p.duracionBloqueada ? '⏱🔒 Duración fija' : '⏱🔓 Duración libre'}</button>
         ${reservadoToggleHtml('pendiente', p.id, p.reservado)}
@@ -3926,7 +3941,7 @@ function weekBlockHtml(b, px) {
   const widthPct = 100 / totalCols;
   const leftPct = col * widthPct;
   const notaTxt = (height > 38) ? (b.notaPrevia ? `<div class="cbnota">📌 ${escHtml(b.notaPrevia)}</div>` : (b.sugerenciasIA ? `<div class="cbnota">✨ ${escHtml(b.sugerenciasIA)}</div>` : '')) : '';
-  return `<div class="cal-block ${b.kind}${b.esComida ? ' comida' : ''}${b.esPrioritaria ? ' prioritaria' : ''} week-block" id="wb-${b.id}" style="top:${top}px;height:${height}px;left:${leftPct}%;right:auto;width:calc(${widthPct}% - 3px)">
+  return `<div class="cal-block ${b.kind}${b.esComida ? ' comida' : ''}${b.esPrioritaria ? ' prioritaria' : ''}${b.esRealizado ? ' realizado' : ''} week-block" id="wb-${b.id}" style="top:${top}px;height:${height}px;left:${leftPct}%;right:auto;width:calc(${widthPct}% - 3px)">
     <div class="cal-resize-handle top"></div>
     <div class="cbtitle">${escHtml(b.title)}</div>
     <div class="cbtime">${minToHHMM(b.ini)}–${minToHHMM(b.fin)}</div>
@@ -5207,6 +5222,9 @@ function openPendienteForm(id, diaId) {
       <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin-bottom:14px;">
         <input type="checkbox" id="fPendPrioritaria" ${p && p.prioritaria ? 'checked' : ''}> ⭐ Marcar como prioritaria (si tengo poco tiempo, esto va primero)
       </label>
+      <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin-bottom:14px;">
+        <input type="checkbox" id="fPendRealizado" ${p && p.realizado ? 'checked' : ''}> ✅ Ya lo realicé
+      </label>
 
       <div class="field"><label>Duración aprox. en minutos (si no pones hora) — ej. 60 = 1h, 15 = algo corto</label><input type="number" id="fPendDuracion" min="5" step="5" placeholder="60" value="${p && p.duracionMin ? p.duracionMin : ''}"></div>
       <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin-bottom:14px;">
@@ -5310,6 +5328,7 @@ async function guardarPendiente() {
     tipoComida: document.getElementById('fPendComida').value,
     antojo: document.getElementById('fPendAntojo').value.trim(),
     prioritaria: document.getElementById('fPendPrioritaria').checked,
+    realizado: document.getElementById('fPendRealizado').checked,
     duracionBloqueada: document.getElementById('fPendDurBloqueada').checked,
     esRestaurante: document.getElementById('fPendEsRestaurante').checked
   };
