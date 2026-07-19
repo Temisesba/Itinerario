@@ -1256,6 +1256,35 @@ function hospedajeDelDia(diaId) {
   return candidatos.find(h => h.elegido) || candidatos[0];
 }
 
+// Para el encabezado del día en el calendario: puede haber hasta DOS hoteles relevantes el mismo día
+// (uno saliendo, otro entrando, en un día de relevo) — a diferencia de hospedajeDelDia, que solo da uno.
+// Si un rol (checkin/checkout/activo) tiene varios candidatos sin ninguno elegido, no se muestra nada
+// para ese rol (evita "adivinar" cuál es, igual que el badge Candidato en la barra lateral).
+function hospedajesParaHeaderDia(diaId) {
+  const dias = diasFiltrados();
+  const idx = dias.findIndex(d => d.id === diaId);
+  if (idx < 0) return [];
+  const candidatos = itinerario.hospedaje.filter(h => {
+    const i1 = dias.findIndex(d => d.id === h.diaIdInicio);
+    const i2 = dias.findIndex(d => d.id === h.diaIdFin);
+    if (i1 < 0) return false;
+    const fin = i2 < 0 ? i1 : i2;
+    return idx >= i1 && idx <= fin;
+  });
+  if (!candidatos.length) return [];
+  const elegirDeGrupo = (grupo) => grupo.length === 1 ? grupo[0] : (grupo.find(h => h.elegido) || null);
+  const soloCheckout = candidatos.filter(h => h.diaIdFin === diaId && h.diaIdInicio !== diaId);
+  const soloCheckin = candidatos.filter(h => h.diaIdInicio === diaId && h.diaIdFin !== diaId);
+  const ambos = candidatos.filter(h => h.diaIdInicio === diaId && h.diaIdFin === diaId);
+  const activo = candidatos.filter(h => h.diaIdInicio !== diaId && h.diaIdFin !== diaId);
+  const resultado = [];
+  const hCheckout = elegirDeGrupo(soloCheckout); if (hCheckout) resultado.push({ h: hCheckout, icono: '🔽' });
+  const hCheckin = elegirDeGrupo(soloCheckin); if (hCheckin) resultado.push({ h: hCheckin, icono: '🔼' });
+  const hAmbos = elegirDeGrupo(ambos); if (hAmbos) resultado.push({ h: hAmbos, icono: '🔼🔽' });
+  if (!resultado.length) { const hActivo = elegirDeGrupo(activo); if (hActivo) resultado.push({ h: hActivo, icono: '' }); }
+  return resultado;
+}
+
 // ¿Comparten al menos un día estos dos hospedajes de forma que REALMENTE compiten? (por posición
 // cronológica, no por id). Un solo día compartido que es checkout de uno y checkin del otro es un
 // simple relevo (te vas de uno, entras al otro) — no es competencia, ambos pueden estar elegidos.
@@ -3517,14 +3546,10 @@ function renderSemana() {
       <div class="week-col-header ${isToday ? 'today' : ''} ${d.id === currentDiaId ? 'active' : ''}" onclick="selectDay('${d.id}')" style="cursor:pointer">
         <span>${capitalize(headerTxt)}</span>
         ${d.zona ? `<span class="psub">${escHtml(d.zona)}</span>` : ''}
-        ${(() => {
-          const h = hospedajeDelDia(d.id);
-          if (!h) return '';
-          const entrada = d.id === h.diaIdInicio;
-          const salida = d.id === h.diaIdFin;
-          const icono = (entrada ? '🔼' : '') + (salida ? '🔽' : '');
-          return `<span style="font-size:9px; color:var(--ink-3); font-weight:400">${icono ? icono + ' ' : ''}${escHtml(h.nombre)}</span>`;
-        })()}
+        ${hospedajesParaHeaderDia(d.id).map(({ h, icono }) => {
+          const nombreCorto = (h.nombre || '').length > 18 ? h.nombre.slice(0, 18) + '…' : (h.nombre || '');
+          return `<span style="font-size:10px; color:var(--ink-3); font-weight:400; display:block">${icono ? icono + ' ' : ''}${escHtml(nombreCorto)}</span>`;
+        }).join('')}
       </div>
       <div class="week-col-body" style="height:${1440 * px}px">
         ${lines}${nowLine}
