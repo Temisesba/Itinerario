@@ -2943,9 +2943,8 @@ function renderEventoCard(ev, esDelDia) {
   const gastosE = gastosVinculados[ev.id] || [];
   const gRealesE = gastosE.filter(g => !g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
   const gCotsE = gastosE.filter(g => g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
-  const fIni = ev.diaIdInicio ? (itinerario.dias.find(d=>d.id===ev.diaIdInicio)||{}).fecha||'-' : '-';
-  const fFin = ev.diaIdFin ? (itinerario.dias.find(d=>d.id===ev.diaIdFin)||{}).fecha||'-' : '-';
-  const rango = (ev.diaIdFin && ev.diaIdFin !== ev.diaIdInicio) ? `${escHtml(fIni)} → ${escHtml(fFin)}` : escHtml(fIni);
+  const rangoReal = ev.fechaInicioReal ? `${escHtml(ev.fechaInicioReal)}${ev.fechaFinReal && ev.fechaFinReal !== ev.fechaInicioReal ? ' → ' + escHtml(ev.fechaFinReal) : ''}` : '';
+  const asignado = ev.diaIdInicio ? diaLabel(ev.diaIdInicio) + (ev.diaIdFin && ev.diaIdFin !== ev.diaIdInicio ? ' a ' + diaLabel(ev.diaIdFin) : '') : '';
   return `<div style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esDelDia ? 'border-color:var(--route)' : ''}">
     <div style="display:flex; align-items:center; gap:5px; padding:5px 8px; background:${esDelDia ? 'var(--route-light)' : 'var(--paper-2)'}">
       <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorEvento('${ev.id}')">🎪 ${escHtml(ev.nombre || '(sin nombre)')}</span>
@@ -2953,7 +2952,8 @@ function renderEventoCard(ev, esDelDia) {
       <button class="icon-btn" onclick="eliminarEvento('${ev.id}')" title="Eliminar">🗑</button>
     </div>
     <div style="padding:4px 8px; font-size:11.5px; color:var(--ink-2)">
-      <div style="font-size:12px">📅 ${rango}</div>
+      ${rangoReal ? `<div style="font-size:12px">📅 ${rangoReal}</div>` : ''}
+      ${asignado ? `<div style="font-size:11px; color:var(--route)">✅ Asignado: ${escHtml(asignado)}</div>` : `<div style="font-size:11px; color:var(--ink-3)">⬜ Sin día asignado todavía</div>`}
       ${ev.ciudades ? `<div style="font-size:11px; color:var(--ink-3)">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.categoria ? `<div style="font-size:11px; color:var(--ink-3)">🏷️ ${escHtml(ev.categoria)}</div>` : ''}
       ${(gRealesE>0||gCotsE>0) ? `<div style="font-size:10.5px; margin-top:2px">${gRealesE>0?`<span style="color:#15803d;font-weight:600">💴 ¥${gRealesE.toLocaleString()}</span>`:''}${gRealesE>0&&gCotsE>0?' · ':''}${gCotsE>0?`<span style="color:#b85c8a;font-weight:600">💬 ¥${gCotsE.toLocaleString()}</span>`:''}</div>` : ''}
@@ -2962,6 +2962,7 @@ function renderEventoCard(ev, esDelDia) {
 }
 
 let currentEventoSedes = [];
+let currentEventoProgramaB64 = null;
 function renderSedesEditor() {
   const host = document.getElementById('sedesEventoHost');
   if (!host) return;
@@ -2996,16 +2997,22 @@ function openEventoForm(id, diaId) {
   modalEsFormulario = true;
   const ev = id ? itinerario.eventos.find(x => x.id === id) : null;
   currentEventoSedes = ev && ev.sedes && ev.sedes.length ? ev.sedes.map(s => ({ ...s })) : [];
-  const diaOptionsIni = '<option value="">— Sin fecha —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${(diaId===d.id)||(ev&&ev.diaIdInicio===d.id) ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
-  const diaOptionsFin = '<option value="">— Sin fecha —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${ev&&ev.diaIdFin===d.id ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
+  currentEventoProgramaB64 = null;
+  const diaOptionsIni = '<option value="">— Sin asignar —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${(diaId===d.id)||(ev&&ev.diaIdInicio===d.id) ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
+  const diaOptionsFin = '<option value="">— Sin asignar —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${ev&&ev.diaIdFin===d.id ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
   modalOpen(`
     <div class="modal-head"><span class="modal-title">${ev ? 'Editar' : 'Nuevo'} evento/festival</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
       <input type="hidden" id="fEventoId" value="${ev ? ev.id : ''}">
       <div class="field"><label>Nombre del evento</label><input type="text" id="fEventoNombre" value="${escHtml(ev ? ev.nombre : '')}" placeholder="Ej: 16° Festival del Globo"></div>
       <div class="row-2">
-        <div class="field"><label>Día inicio</label><select id="fEventoDiaInicio">${diaOptionsIni}</select></div>
-        <div class="field"><label>Día fin</label><select id="fEventoDiaFin">${diaOptionsFin}</select></div>
+        <div class="field"><label>Fecha de inicio real del evento</label><input type="date" id="fEventoFechaInicio" value="${escHtml(ev ? ev.fechaInicioReal||'' : '')}"></div>
+        <div class="field"><label>Fecha de fin real del evento</label><input type="date" id="fEventoFechaFin" value="${escHtml(ev ? ev.fechaFinReal||'' : '')}"></div>
+      </div>
+      <div class="field" style="margin-top:-6px; margin-bottom:14px; font-size:11px; color:var(--ink-3)">La fecha real puede ser distinta a los días de tu viaje (ej. el festival dura más, o ya empezó antes de que llegues).</div>
+      <div class="row-2">
+        <div class="field"><label>Día asignado — inicio <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><select id="fEventoDiaInicio">${diaOptionsIni}</select></div>
+        <div class="field"><label>Día asignado — fin <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><select id="fEventoDiaFin">${diaOptionsFin}</select></div>
       </div>
       <div class="row-2">
         <div class="field"><label>Categoría</label>
@@ -3025,7 +3032,7 @@ function openEventoForm(id, diaId) {
       </div>
       <div class="field">
         <label>Programa (PDF o foto)</label>
-        <div id="fEventoProgramaActual" style="margin-bottom:6px">${ev && ev.programaUrl ? `<a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a>` : ''}</div>
+        <div id="fEventoProgramaActual" style="margin-bottom:6px; display:flex; gap:6px; flex-wrap:wrap">${ev && ev.programaUrl ? `<a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a>` : ''}</div>
         ${ev ? `<input type="file" accept="application/pdf,image/*" onchange="subirProgramaEvento('${ev.id}', this)">` : `<div class="empty-mini">Guarda primero para poder subir el programa.</div>`}
       </div>
       <div class="field"><label>Notas</label><textarea id="fEventoNotas">${escHtml(ev ? ev.notas : '')}</textarea></div>
@@ -3050,6 +3057,8 @@ async function guardarEvento() {
   })).filter(s => s.direccion || s.diaId);
   const body = {
     nombre: document.getElementById('fEventoNombre').value,
+    fechaInicioReal: document.getElementById('fEventoFechaInicio').value,
+    fechaFinReal: document.getElementById('fEventoFechaFin').value,
     diaIdInicio: document.getElementById('fEventoDiaInicio').value,
     diaIdFin: document.getElementById('fEventoDiaFin').value,
     categoria: document.getElementById('fEventoCategoria').value,
@@ -3087,28 +3096,124 @@ async function subirProgramaEvento(id, input) {
   try {
     const esImagen = file.type.startsWith('image/');
     const dataUrl = esImagen ? await resizeImage(file, 1600, 0.78) : await leerArchivoBase64(file);
+    currentEventoProgramaB64 = dataUrl; // se queda en memoria esta sesión para poder "Analizar con IA" sin re-subir
     const r = await postGAS({ action: 'subirFoto', base64: dataUrl, nombre: file.name });
     if (r.ok) {
       const ev = itinerario.eventos.find(x => x.id === id);
       if (ev) ev.programaUrl = r.url;
       await postGAS({ action: 'updateEvento', id, programaUrl: r.url });
       const box = document.getElementById('fEventoProgramaActual');
-      if (box) box.innerHTML = `<a href="${r.url}" target="_blank" class="btn-mini">📄 Ver programa</a>`;
+      if (box) box.innerHTML = `<a href="${r.url}" target="_blank" class="btn-mini">📄 Ver programa</a> <button type="button" class="btn-mini ai" onclick="analizarProgramaEventoForm('${id}')">🤖 Analizar programa con IA</button>`;
       showToast('Programa subido ✦');
     } else showToast(r.error || 'Error al subir');
   } catch (e) { showToast('Error al subir el programa'); }
   input.value = '';
 }
+async function analizarProgramaEventoForm(id) {
+  if (!currentEventoProgramaB64) { showToast('Vuelve a subir el archivo para poder analizarlo'); return; }
+  const ev = itinerario.eventos.find(x => x.id === id);
+  showToast('Leyendo el programa…');
+  const r = await postGAS({
+    action: 'analizarProgramaEvento',
+    base64: currentEventoProgramaB64,
+    nombreEvento: ev ? ev.nombre : '',
+    fechaInicio: (document.getElementById('fEventoFechaInicio')||{}).value || (ev ? ev.fechaInicioReal : ''),
+    fechaFin: (document.getElementById('fEventoFechaFin')||{}).value || (ev ? ev.fechaFinReal : '')
+  });
+  if (!r.ok || !r.data || !r.data.actividades) { showToast(r.error || 'No se pudo leer el programa'); return; }
+  if (!r.data.actividades.length) { showToast('No se encontraron actividades con fecha/hora en el programa'); return; }
+  abrirRevisionProgramaEvento(r.data.actividades);
+}
+
+// ── Ventana flotante para revisar las actividades extraídas del programa (mismo patrón que transportes sugeridos) ──
+let _revisionProgramaEvento = null;
+function abrirRevisionProgramaEvento(actividades) {
+  _revisionProgramaEvento = { items: actividades.map(a => ({ ...a, incluir: true })) };
+  renderRevisionProgramaEvento();
+}
+function renderRevisionProgramaEvento() {
+  const { items } = _revisionProgramaEvento;
+  let panel = document.getElementById('revProgramaPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'revProgramaPanel';
+    panel.style.cssText = 'position:fixed; top:70px; right:24px; width:360px; max-width:calc(100vw - 32px); max-height:80vh; display:flex; flex-direction:column; background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 8px 32px rgba(0,0,0,.28); z-index:1500;';
+    document.body.appendChild(panel);
+  }
+  const dias = diasFiltrados();
+  panel.innerHTML = `
+    <div id="revProgramaHeader" style="padding:12px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; cursor:move; background:var(--paper-2); border-radius:14px 14px 0 0; flex-shrink:0">
+      <span style="font-family:var(--font-serif); font-size:15px">🤖 Actividades del programa</span>
+      <button class="modal-close" onclick="cerrarRevisionProgramaEvento()">✕</button>
+    </div>
+    <div style="padding:14px; overflow-y:auto">
+      <div class="visor-row" style="margin-bottom:10px; color:var(--ink-2); font-size:11.5px">Arrastra desde el título para mover esta ventana. Desmarca lo que no quieras crear — si la fecha coincide con un día de tu viaje se agenda ahí directo, si no va a "Para después" para que la arrastres cuando quieras.</div>
+      ${items.map((it, i) => {
+        const diaMatch = dias.find(d => d.fecha === it.fecha);
+        return `<div style="margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--line)">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
+            <input type="checkbox" ${it.incluir ? 'checked' : ''} onchange="revProgramaToggleIncluir(${i}, this.checked)">
+            <input type="text" value="${escHtml(it.nombre||'')}" oninput="revProgramaEditar(${i},'nombre',this.value)" style="flex:1; border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-size:12.5px; font-weight:600">
+          </label>
+          <div style="margin-left:26px; margin-top:4px; display:flex; gap:5px">
+            <input type="date" value="${it.fecha||''}" onchange="revProgramaEditar(${i},'fecha',this.value); renderRevisionProgramaEvento()" style="border:1px solid var(--line); border-radius:6px; padding:3px 5px; font-size:11.5px">
+            <input type="time" value="${it.hora||''}" oninput="revProgramaEditar(${i},'hora',this.value)" style="border:1px solid var(--line); border-radius:6px; padding:3px 5px; font-size:11.5px">
+          </div>
+          <div style="margin-left:26px; margin-top:3px; font-size:10.5px; color:${diaMatch ? '#15803d' : 'var(--ink-3)'}">${diaMatch ? '📅 Coincide con ' + escHtml(diaMatch.fecha) + ' de tu viaje' : '📋 Sin coincidencia — irá a "Para después"'}</div>
+          ${it.notas ? `<div style="margin-left:26px; margin-top:2px; font-size:10.5px; color:var(--ink-3)">${escHtml(it.notas)}</div>` : ''}
+        </div>`;
+      }).join('')}
+      <div class="modal-actions" style="justify-content:flex-end; margin-top:10px">
+        <button class="btn-cancel" onclick="cerrarRevisionProgramaEvento()">Cancelar</button>
+        <button class="btn-save" onclick="crearActividadesPrograma()">✅ Crear seleccionadas</button>
+      </div>
+    </div>`;
+  makeDraggable(panel, document.getElementById('revProgramaHeader'));
+}
+function revProgramaToggleIncluir(i, val) { _revisionProgramaEvento.items[i].incluir = val; }
+function revProgramaEditar(i, campo, val) { _revisionProgramaEvento.items[i][campo] = val; }
+function cerrarRevisionProgramaEvento() {
+  const panel = document.getElementById('revProgramaPanel');
+  if (panel) panel.remove();
+  _revisionProgramaEvento = null;
+}
+async function crearActividadesPrograma() {
+  const { items } = _revisionProgramaEvento;
+  const seleccion = items.filter(it => it.incluir && it.nombre);
+  if (!seleccion.length) { cerrarRevisionProgramaEvento(); return; }
+  const dias = diasFiltrados();
+  showToast(`Creando ${seleccion.length} actividad${seleccion.length > 1 ? 'es' : ''}…`);
+  for (const it of seleccion) {
+    const diaMatch = dias.find(d => d.fecha === it.fecha);
+    const horaInicio = diaMatch ? (it.hora || '') : '';
+    const iniMin = horaInicio ? hhmmToMin(horaInicio) : null;
+    const horaFin = iniMin !== null ? minToHHMM(Math.min(1439, iniMin + 60)) : '';
+    await postGAS({
+      action: 'savePendiente',
+      nombre: it.nombre,
+      diaId: diaMatch ? diaMatch.id : '',
+      horaInicio, horaFin,
+      notasPrevias: [it.notas, (!diaMatch && (it.fecha || it.hora)) ? `Del programa: ${it.fecha || ''} ${it.hora || ''}`.trim() : ''].filter(Boolean).join(' · '),
+      proyecto: currentProyecto,
+      reservado: 'pendiente'
+    });
+  }
+  cerrarRevisionProgramaEvento();
+  showToast('Actividades creadas ✦');
+  await loadItinerario();
+}
 function abrirVisorEvento(id) {
   modalEsFormulario = false;
   const ev = itinerario.eventos.find(x => x.id === id);
   if (!ev) return;
-  const rango = (!ev.diaIdFin || ev.diaIdInicio === ev.diaIdFin) ? diaLabel(ev.diaIdInicio) : `${diaLabel(ev.diaIdInicio)} a ${diaLabel(ev.diaIdFin)}`;
+  const rangoReal = ev.fechaInicioReal ? `${ev.fechaInicioReal}${ev.fechaFinReal && ev.fechaFinReal !== ev.fechaInicioReal ? ' → ' + ev.fechaFinReal : ''}` : '';
+  const asignado = ev.diaIdInicio ? diaLabel(ev.diaIdInicio) + (ev.diaIdFin && ev.diaIdFin !== ev.diaIdInicio ? ' a ' + diaLabel(ev.diaIdFin) : '') : '';
   modalOpen(`
     <div class="modal-head"><span class="modal-title">🎪 ${escHtml(ev.nombre || 'Evento')}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
       <div class="visor-row" style="margin-bottom:8px">${reservadoToggleHtml('evento', ev.id, ev.reservado)}</div>
-      <div class="visor-row">📅 ${escHtml(rango)}</div>
+      ${rangoReal ? `<div class="visor-row">📅 ${escHtml(rangoReal)}</div>` : ''}
+      <div class="visor-row">${asignado ? `✅ Día asignado: ${escHtml(asignado)}` : '⬜ Sin día asignado todavía — edítalo para asignarle uno de tu viaje'}</div>
       ${ev.categoria ? `<div class="visor-row">🏷️ ${escHtml(ev.categoria)}</div>` : ''}
       ${ev.ciudades ? `<div class="visor-row">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
@@ -3882,10 +3987,15 @@ function renderSemana() {
       </div>`;
 
   // Sincronizar la altura del spacer del gutter con la del header real de columna
+  // (usa la más alta de todas las columnas visibles — si una tiene hotel/relevo y otra no,
+  // no todas miden lo mismo, y medir solo la primera desalinea el resto).
   const sincronizarGutter = () => {
-    const hdr = host.querySelector('.week-col-header');
+    const hdrs = [...host.querySelectorAll('.week-col-header')];
     const gHdr = document.getElementById('weekGutterHdr');
-    if (hdr && gHdr) gHdr.style.height = hdr.getBoundingClientRect().height + 'px';
+    if (hdrs.length && gHdr) {
+      const maxH = Math.max(...hdrs.map(h => h.getBoundingClientRect().height));
+      gHdr.style.height = maxH + 'px';
+    }
   };
   requestAnimationFrame(() => { sincronizarGutter(); requestAnimationFrame(sincronizarGutter); });
   if (!window._gutterResizeWired) {
