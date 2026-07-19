@@ -1281,7 +1281,14 @@ function hospedajesParaHeaderDia(diaId) {
   const hCheckout = elegirDeGrupo(soloCheckout); if (hCheckout) resultado.push({ h: hCheckout, icono: '🔽' });
   const hCheckin = elegirDeGrupo(soloCheckin); if (hCheckin) resultado.push({ h: hCheckin, icono: '🔼' });
   const hAmbos = elegirDeGrupo(ambos); if (hAmbos) resultado.push({ h: hAmbos, icono: '🔼🔽' });
-  if (!resultado.length) { const hActivo = elegirDeGrupo(activo); if (hActivo) resultado.push({ h: hActivo, icono: '🛏️ estancia' }); }
+  if (!resultado.length) {
+    const hActivo = elegirDeGrupo(activo);
+    if (hActivo) {
+      const iInicio = dias.findIndex(d => d.id === hActivo.diaIdInicio);
+      const numeroDia = iInicio >= 0 ? (idx - iInicio + 1) : null;
+      resultado.push({ h: hActivo, icono: '🛏️', sufijo: numeroDia ? ` (día ${numeroDia})` : '' });
+    }
+  }
   return resultado;
 }
 
@@ -2795,6 +2802,23 @@ async function crearTransportesRevisados() {
   showToast(`Creando ${seleccion.length} transporte${seleccion.length > 1 ? 's' : ''}…`);
   for (const p of seleccion) {
     const m = p.modos.find(x => x.modo === p.chosenModo) || {};
+    let opciones = m.opciones || [];
+    // Los modos sin horario fijo (caminando/carro/bici/otro) llegan de la IA solo con duracionMin, sin
+    // salida/llegada — sin eso no aparecen en el calendario y se van al fondo de la lista (ordena "sin hora"
+    // al final). Les anclamos una hora real dentro del hueco disponible entre los dos eventos.
+    if (opciones.length && !opciones[0].salida) {
+      let baseMin = p.finA ? hhmmToMin(p.finA) : null;
+      let ancladoDesdeFin = false;
+      if (baseMin === null && p.iniB) { const finMin = hhmmToMin(p.iniB); if (finMin !== null) { ancladoDesdeFin = true; baseMin = finMin; } }
+      if (baseMin !== null) {
+        opciones = opciones.map(o => {
+          const dur = (o.duracionMin != null && o.duracionMin !== '') ? Number(o.duracionMin) : 30;
+          return ancladoDesdeFin
+            ? { ...o, salida: minToHHMM(baseMin - dur), llegada: minToHHMM(baseMin) }
+            : { ...o, salida: minToHHMM(baseMin), llegada: minToHHMM(baseMin + dur) };
+        });
+      }
+    }
     const body = {
       action: 'saveTransporte',
       diaId: dia.id,
@@ -2806,7 +2830,7 @@ async function crearTransportesRevisados() {
       origenLng: m.origenLng || p.data.origenLng || p.A.lng || '',
       destinoLat: m.destinoLat || p.data.destinoLat || p.B.lat || '',
       destinoLng: m.destinoLng || p.data.destinoLng || p.B.lng || '',
-      opciones: m.opciones || [], opcionElegida: 0,
+      opciones, opcionElegida: 0,
       modosData: { modos: p.modos, mixto: { requiere: false, descripcion: '' } },
       reservado: 'pendiente',
       sugerenciasIAOrigen: p.data.notaRuta || ''
@@ -3546,8 +3570,8 @@ function renderSemana() {
       <div class="week-col-header ${isToday ? 'today' : ''} ${d.id === currentDiaId ? 'active' : ''}" onclick="selectDay('${d.id}')" style="cursor:pointer">
         <span>${capitalize(headerTxt)}</span>
         ${d.zona ? `<span class="psub">${escHtml(d.zona)}</span>` : ''}
-        ${hospedajesParaHeaderDia(d.id).map(({ h, icono }) => {
-          return `<span style="font-size:10px; color:var(--ink-3); font-weight:400; display:block; min-width:0; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${icono ? icono + ' ' : ''}${escHtml(h.nombre || '')}</span>`;
+        ${hospedajesParaHeaderDia(d.id).map(({ h, icono, sufijo }) => {
+          return `<span style="font-size:10px; color:var(--ink-3); font-weight:400; display:block; min-width:0; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${icono ? icono + ' ' : ''}${escHtml(h.nombre || '')}${sufijo ? escHtml(sufijo) : ''}</span>`;
         }).join('')}
       </div>
       <div class="week-col-body" style="height:${1440 * px}px">
