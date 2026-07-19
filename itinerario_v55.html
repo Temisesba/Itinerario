@@ -1256,7 +1256,9 @@ function hospedajeDelDia(diaId) {
   return candidatos.find(h => h.elegido) || candidatos[0];
 }
 
-// ¿Comparten al menos un día estos dos hospedajes? (por posición cronológica, no por id)
+// ¿Comparten al menos un día estos dos hospedajes de forma que REALMENTE compiten? (por posición
+// cronológica, no por id). Un solo día compartido que es checkout de uno y checkin del otro es un
+// simple relevo (te vas de uno, entras al otro) — no es competencia, ambos pueden estar elegidos.
 function hospedajesSeSolapan(hA, hB) {
   const dias = diasFiltrados();
   const iA1 = dias.findIndex(d => d.id === hA.diaIdInicio);
@@ -1266,7 +1268,14 @@ function hospedajesSeSolapan(hA, hB) {
   if (iA1 < 0 || iB1 < 0) return false;
   const finA = iA2 < 0 ? iA1 : iA2;
   const finB = iB2 < 0 ? iB1 : iB2;
-  return iA1 <= finB && iB1 <= finA;
+  if (iA1 > finB || iB1 > finA) return false;
+  const inicioComun = Math.max(iA1, iB1), finComun = Math.min(finA, finB);
+  if (finComun === inicioComun) {
+    const esRelevoAaB = finA === inicioComun && iB1 === inicioComun;
+    const esRelevoBaA = finB === inicioComun && iA1 === inicioComun;
+    if (esRelevoAaB || esRelevoBaA) return false;
+  }
+  return true;
 }
 async function marcarHospedajeElegido(id) {
   const h0 = itinerario.hospedaje.find(h => h.id === id);
@@ -1746,7 +1755,16 @@ function renderPoolPanel() {
         ? hospSorted.map((h, idx) => {
             const esElegido = !!h.elegido || (todosHosp.length === 1);
             const esDelDia = hospDelDia.some(x => x.id === h.id);
-            const esElegidoDelDia = hospDelDia.length <= 1 || esElegido;
+            // Candidato real solo si hay OTRO hotel ese mismo día que NO sea un simple relevo
+            // (checkout de uno = checkin del otro no es competencia, es una transición normal).
+            const esCheckinAqui = dia.id === h.diaIdInicio;
+            const esCheckoutAqui = dia.id === h.diaIdFin;
+            const hayConflictoReal = hospDelDia.some(x => {
+              if (x.id === h.id) return false;
+              const esHandoff = (esCheckoutAqui && x.diaIdInicio === dia.id) || (esCheckinAqui && x.diaIdFin === dia.id);
+              return !esHandoff;
+            });
+            const esElegidoDelDia = !hayConflictoReal || esElegido;
             const gastosH = gastosVinculados[h.id] || [];
             const gRealesH = gastosH.filter(g => !g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
             const gCotsH = gastosH.filter(g => g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
