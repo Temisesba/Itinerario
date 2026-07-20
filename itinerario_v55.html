@@ -101,6 +101,11 @@ button, input, textarea, select { font-family: var(--font-sans); font-size: 13px
   }
   .cal-backdrop { display: none; }
   .cal-backdrop.show { display: block; position: fixed; inset: 0; background: rgba(26,24,20,0.35); z-index: 65; }
+  /* El menú flotante de abajo (#mobileTabFloat) ya cubre Itinerario/Tabla/Mapa con solo íconos —
+     ocultamos el logo de texto y las pestañas verticales de arriba para que el carril de días
+     tenga más ancho y entren más chips completos. */
+  .logo { display: none; }
+  .tab-btn { display: none; }
 }
 
 .cal-zoom-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
@@ -126,6 +131,11 @@ body.drag-locked .cal-resize-handle { display: none; }
 .cal-block.realizado .cbtitle { text-decoration: line-through; }
 .cbnota { font-size: 9.5px; opacity: 0.8; margin-top: 1px; line-height: 1.25; }
 .cal-block.dragging { opacity: 0.75; z-index: 20; box-shadow: 0 4px 14px rgba(0,0,0,0.18); cursor: grabbing; }
+.drag-arm-fill { position: absolute; left: 0; bottom: 0; height: 4px; width: 0; background: rgba(255,255,255,0.9); transition: width 2.2s linear; border-radius: 0 0 6px 6px; pointer-events: none; z-index: 2; }
+.drop-confirm { position: absolute; left: 50%; bottom: -38px; transform: translateX(-50%); z-index: 50; display: flex; gap: 6px; background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 4px 6px; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+.drop-confirm button { border: none; background: var(--paper-2); font-size: 16px; line-height: 1; cursor: pointer; padding: 4px 10px; border-radius: 14px; }
+.drop-confirm button.ok { background: var(--ok-light); color: #0d5c2a; }
+.drop-confirm button.cancel { background: #fee2e2; color: #b91c1c; }
 .cal-block .cbtitle { font-weight: 500; line-height: 1.25; }
 .cal-block .cbtime { font-size: 10px; opacity: 0.85; }
 .cal-resize-handle { position: absolute; left: 0; right: 0; height: 9px; cursor: ns-resize; }
@@ -404,12 +414,16 @@ body.drag-locked .cal-resize-handle { display: none; }
 
   <div class="map-wrap" id="viewMapa" style="display:none">
     <div class="mapa-controls">
-      <label style="display:flex; align-items:center; gap:5px; font-size:12px; cursor:pointer; border:1px solid var(--line); border-radius:20px; padding:6px 12px; background:#fff;">
-        <input type="checkbox" id="mapaVerTodos" checked onchange="onToggleMapaVerTodos(this)"> Ver todos los días
-      </label>
-      <button class="btn-mini" id="btnMapaMultiSel" onclick="toggleMapaMultiSel()" title="Elegir más de un día a la vez en el mapa">🗂 Varios días</button>
       <div style="position:relative">
-        <button class="btn-mini" onclick="toggleMapaCatsMenu(event)">📂 Categorías ▾</button>
+        <button class="btn-mini" onclick="toggleMapaMenu('mapaVistaMenu', event)">🗓️ Vista ▾</button>
+        <div class="mapa-cats" id="mapaVistaMenu">
+          <label><input type="radio" name="mapaVista" value="dia" onchange="setMapaVista('dia')"> Por día</label>
+          <label><input type="radio" name="mapaVista" value="multi" onchange="setMapaVista('multi')"> Más de un día</label>
+          <label><input type="radio" name="mapaVista" value="todos" checked onchange="setMapaVista('todos')"> Todos</label>
+        </div>
+      </div>
+      <div style="position:relative">
+        <button class="btn-mini" onclick="toggleMapaMenu('mapaCats', event)">📂 Ver ▾</button>
         <div class="mapa-cats" id="mapaCats">
           <label><input type="checkbox" value="pendientes" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 📌 Lugares</label>
           <label><input type="checkbox" value="transporte" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🚆 Transporte</label>
@@ -418,11 +432,16 @@ body.drag-locked .cal-resize-handle { display: none; }
           <label><input type="checkbox" value="eventos" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🎪 Eventos</label>
         </div>
       </div>
-      <button class="btn-mini" id="btnFocoMapa" onclick="toggleFocoEventosPendientes()" style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;background:#ff7200;border:2px solid #fff;box-shadow:0 0 0 1px #ff7200;display:inline-block;flex-shrink:0"></span>Ver pendientes</button>
-      <button class="btn-mini" id="btnRestoMapa" onclick="toggleMapaRestaurantes()" style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:#7c3aed;display:inline-block;flex-shrink:0;clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%)"></span>Ver restaurantes</button>
-      <button class="btn-mini" id="btnFocoHoteles" onclick="toggleFocoHoteles()" style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:#0c5f8c;border:1.5px solid #fff;box-shadow:0 0 0 1px #0c5f8c;display:inline-block;flex-shrink:0;transform:rotate(45deg)"></span>Ver hoteles</button>
+      <div style="position:relative">
+        <button class="btn-mini" onclick="toggleMapaMenu('mapaVerTodosMenu', event)">👁️ Ver todos ▾</button>
+        <div class="mapa-cats" id="mapaVerTodosMenu">
+          <label><input type="checkbox" onchange="toggleFocoEventosPendientes()"> <span style="width:12px;height:12px;border-radius:50%;background:#ff7200;border:2px solid #fff;box-shadow:0 0 0 1px #ff7200;display:inline-block;flex-shrink:0"></span> Pendientes</label>
+          <label><input type="checkbox" checked onchange="toggleMapaRestaurantes()"> <span style="width:11px;height:11px;background:#7c3aed;display:inline-block;flex-shrink:0;clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%)"></span> Restaurantes</label>
+          <label><input type="checkbox" onchange="toggleFocoHoteles()"> <span style="width:10px;height:10px;background:#0c5f8c;border:1.5px solid #fff;box-shadow:0 0 0 1px #0c5f8c;display:inline-block;flex-shrink:0;transform:rotate(45deg)"></span> Hoteles</label>
+        </div>
+      </div>
       <button class="btn-mini" id="btnToggleEtiquetas" onclick="toggleEtiquetasMapa()">🏷️ Ocultar etiquetas</button>
-      <span class="empty-mini" style="padding:0">El día activo (arriba) filtra el mapa. Marca "Ver todos los días" para verlos todos.</span>
+      <span class="empty-mini" style="padding:0">El día activo (arriba) filtra el mapa. En "Vista" elegí "Todos" para verlos todos.</span>
     </div>
     <div id="mapBox"></div>
     <div class="legend" style="position:absolute;bottom:8px;left:14px;z-index:1100;background:rgba(245,243,239,0.92);padding:5px 10px;border-radius:8px;border:1px solid var(--line);font-size:11px;display:flex;gap:12px;flex-wrap:wrap;">
@@ -578,8 +597,8 @@ let currentProyecto = null; // null = todavía no se ha decidido; '' = "Sin proy
 let leafletMap = null;
 let mapaModoPendientes = false;
 let mapaHotelesMode = false; // cuando true, todos los hoteles se ven en el mapa
-let mapaDiasSel = new Set(); // días elegidos a mano en el mapa (cuando "Ver todos" está desmarcado)
-let mapaMultiSelActivo = false; // true = clic en chip suma/quita día; false = clic reemplaza (modo clásico)
+let mapaDiasSel = new Set(); // días elegidos a mano en el mapa (cuando la Vista no es "Todos")
+let mapaVistaModo = 'todos'; // 'dia' | 'multi' | 'todos' — reemplaza al viejo checkbox + botón "Varios días"
 let mapaRestoMode = true;    // restaurantes visibles por defecto
 let _mapaPreservarVista = false;
 let _gastosSumaSel = new Set(); // IDs de gastos seleccionados para sumar (cache de sesión) // si true, renderMapaGeneral no hace fitBounds (mantiene zoom/centro actual)
@@ -1166,10 +1185,9 @@ function renderSpine() {
   const hoy = fechaLocalISO(new Date());
   const dias = diasFiltrados();
   const enMapa = document.getElementById('viewMapa') && document.getElementById('viewMapa').style.display !== 'none';
-  const chkTodos = document.getElementById('mapaVerTodos');
-  const verTodosMapa = enMapa && chkTodos && chkTodos.checked;
-  // En modo "Varios días" cada chip elegido toma el mismo color que "Ver todos".
-  const multiSelMapa = enMapa && !verTodosMapa && mapaMultiSelActivo;
+  const verTodosMapa = enMapa && mapaVistaModo === 'todos';
+  // En modo "Más de un día" cada chip elegido toma el mismo color que "Todos".
+  const multiSelMapa = enMapa && mapaVistaModo === 'multi';
   track.innerHTML = dias.map((d, idx) => {
     const date = d.fecha ? new Date(d.fecha + 'T00:00:00') : null;
     const dnum = date ? date.getDate() : '–';
@@ -1264,20 +1282,20 @@ async function guardarRangoDiasProyecto() {
 
 
 function selectDay(id) {
-  const chkTodos = document.getElementById('mapaVerTodos');
   const enMapa = document.getElementById('viewMapa').style.display !== 'none';
-  if (chkTodos && enMapa) {
-    chkTodos.checked = false;
+  if (enMapa) {
     mapaFoco = null;
     currentDiaId = id;
-    if (mapaMultiSelActivo) {
-      // Modo "Varios días": el clic suma/quita ese día de la selección.
+    if (mapaVistaModo === 'multi') {
+      // Vista "Más de un día": el clic suma/quita ese día de la selección.
       if (mapaDiasSel.has(id)) mapaDiasSel.delete(id); else mapaDiasSel.add(id);
-      if (!mapaDiasSel.size) chkTodos.checked = true; // nada seleccionado = volver a "ver todos"
+      if (!mapaDiasSel.size) mapaVistaModo = 'todos'; // nada seleccionado = volver a "Todos"
     } else {
-      // Modo clásico: el clic reemplaza la selección por ese único día.
+      // Vista "Por día" (o veníamos de "Todos"): el clic filtra a ese único día.
+      mapaVistaModo = 'dia';
       mapaDiasSel = new Set([id]);
     }
+    syncVistaRadios();
     renderMapaGeneral();
     renderSpine();
     return;
@@ -2573,10 +2591,10 @@ function verEnMapa(tipo, id, diaId) {
   mapaFoco = { tipo, id };
   setTab('mapa', true);
   setTimeout(() => {
-    const chk = document.getElementById('mapaVerTodos');
-    if (chk) chk.checked = false;
+    mapaVistaModo = 'dia';
     if (diaId) { currentDiaId = diaId; mapaDiasSel = new Set([diaId]); }
     else if (!mapaDiasSel.size && currentDiaId) mapaDiasSel = new Set([currentDiaId]);
+    syncVistaRadios();
     renderMapaGeneral();
     renderSpine();
   }, 80);
@@ -3581,43 +3599,24 @@ let mapResizeObsAttached = false;
 let mapaEtiquetasVisibles = true;
 function toggleFocoEventosPendientes() {
   mapaModoPendientes = !mapaModoPendientes;
-  const btn = document.getElementById('btnFocoMapa');
-  if (btn) {
-    btn.style.background = mapaModoPendientes ? '#ff7200' : '';
-    btn.style.color = mapaModoPendientes ? '#fff' : '';
-    btn.style.borderColor = mapaModoPendientes ? '#cc5a00' : '';
-    btn.style.fontWeight = mapaModoPendientes ? '700' : '';
-  }
   mapaFoco = null;
   renderMapaGeneral();
 }
 function toggleFocoHoteles() {
   _mapaPreservarVista = true;
   mapaHotelesMode = !mapaHotelesMode;
-  const btn = document.getElementById('btnFocoHoteles');
-  if (btn) {
-    btn.style.background = mapaHotelesMode ? '#0c5f8c' : '';
-    btn.style.color = mapaHotelesMode ? '#fff' : '';
-    btn.style.borderColor = mapaHotelesMode ? '#084a6e' : '';
-    btn.style.fontWeight = mapaHotelesMode ? '700' : '';
-  }
   renderMapaGeneral();
 }
 function toggleMapaRestaurantes() {
   _mapaPreservarVista = true;
   mapaRestoMode = !mapaRestoMode;
-  const btn = document.getElementById('btnRestoMapa');
-  if (btn) {
-    btn.style.background   = mapaRestoMode ? '#7c3aed' : '';
-    btn.style.color        = mapaRestoMode ? '#fff' : '';
-    btn.style.borderColor  = mapaRestoMode ? '#5b21b6' : '';
-    btn.style.fontWeight   = mapaRestoMode ? '700' : '';
-  }
   renderMapaGeneral();
 }
-function toggleMapaCatsMenu(e) {
+function toggleMapaMenu(id, e) {
   if (e) e.stopPropagation();
-  const menu = document.getElementById('mapaCats');
+  const menu = document.getElementById(id);
+  if (!menu) return;
+  document.querySelectorAll('.mapa-cats.show').forEach(m => { if (m.id !== id) m.classList.remove('show'); });
   menu.classList.toggle('show');
   if (menu.classList.contains('show')) {
     document.addEventListener('click', function cerrar(ev) {
@@ -3661,32 +3660,25 @@ function bindEtiquetaMapa(marker, texto, onEditar, opacidad, enFrente) {
     });
   }
 }
-function onToggleMapaVerTodos(chk) {
+// Vista del mapa: 'todos' | 'multi' | 'dia' — un solo estado en vez del viejo checkbox + botón.
+function setMapaVista(modo) {
+  mapaVistaModo = modo;
   mapaFoco = null;
-  if (!chk.checked && mapaDiasSel.size === 0) {
-    const id = currentDiaId || pickTodayOrFirst();
-    if (id) mapaDiasSel.add(id);
-  }
-  renderMapaGeneral();
-  renderSpine();
-}
-function toggleMapaMultiSel() {
-  mapaMultiSelActivo = !mapaMultiSelActivo;
-  const btn = document.getElementById('btnMapaMultiSel');
-  if (btn) {
-    btn.style.background = mapaMultiSelActivo ? '#0c5f8c' : '';
-    btn.style.color = mapaMultiSelActivo ? '#fff' : '';
-    btn.style.borderColor = mapaMultiSelActivo ? '#084a6e' : '';
-    btn.style.fontWeight = mapaMultiSelActivo ? '700' : '';
-  }
-  if (!mapaMultiSelActivo) {
-    // Al apagarlo, colapsar a un solo día para volver limpio al modo clásico.
+  if (modo === 'multi') {
+    if (!mapaDiasSel.size) {
+      const id = currentDiaId || pickTodayOrFirst();
+      if (id) mapaDiasSel.add(id);
+    }
+  } else if (modo === 'dia') {
     const id = currentDiaId || [...mapaDiasSel][0] || pickTodayOrFirst();
     mapaDiasSel = id ? new Set([id]) : new Set();
     currentDiaId = id;
   }
   renderMapaGeneral();
   renderSpine();
+}
+function syncVistaRadios() {
+  document.querySelectorAll('input[name="mapaVista"]').forEach(r => { r.checked = (r.value === mapaVistaModo); });
 }
 function categoriasMapaActivas() {
   return [...document.querySelectorAll('#mapaCats input[type=checkbox]:checked')].map(c => c.value);
@@ -3710,8 +3702,7 @@ function renderMapaGeneral() {
   }
 
   const dias = diasFiltrados();
-  const verTodos = document.getElementById('mapaVerTodos');
-  _mapaEnModoTodos = !!(verTodos && verTodos.checked);
+  _mapaEnModoTodos = mapaVistaModo === 'todos';
   const diasAMostrar = _mapaEnModoTodos ? dias : dias.filter(d => mapaDiasSel.has(d.id));
   const diaIds = new Set(diasAMostrar.map(d => d.id));
   const diaNombre = (id) => { const d = itinerario.dias.find(x => x.id === id); return d ? `${d.fecha}${d.zona ? ' · ' + d.zona : ''}` : ''; };
@@ -4224,19 +4215,50 @@ function attachWeekBlockDrag(el, b, diaId) {
   });
 }
 
+// Mantener presionado ~2.2s "arma" el arrastre (con una franja que se va llenando como aviso);
+// soltar antes de eso, o moverse mucho antes de que termine de llenarse, cancela sin mover nada
+// (y si fue un toque simple, abre el detalle, igual que antes). Recién armado sigue al dedo, y al
+// soltar no se guarda directo: aparece un ✓/✗ para confirmar o volver a su lugar.
 function startWeekMove(e, b, el, origDiaId) {
   e.preventDefault();
-  const startY = e.clientY;
+  const startY = e.clientY, startX = e.clientX;
   const origIni = b.ini, dur = b.fin - b.ini;
-  let moved = false;
-  el.setPointerCapture(e.pointerId);
+  const HOLD_MS = 2200;
+
+  const fill = document.createElement('div');
+  fill.className = 'drag-arm-fill';
+  el.appendChild(fill);
+  requestAnimationFrame(() => { fill.style.width = '100%'; });
+
+  const armTimer = setTimeout(() => {
+    document.removeEventListener('pointermove', onArmandoMove);
+    document.removeEventListener('pointerup', onArmandoUp);
+    fill.remove();
+    el.classList.add('dragging');
+    el.setPointerCapture(e.pointerId);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  }, HOLD_MS);
+
+  function cancelarArmado() {
+    clearTimeout(armTimer);
+    fill.remove();
+    document.removeEventListener('pointermove', onArmandoMove);
+    document.removeEventListener('pointerup', onArmandoUp);
+  }
+  function onArmandoMove(ev) {
+    if (Math.abs(ev.clientY - startY) > 10 || Math.abs(ev.clientX - startX) > 10) cancelarArmado();
+  }
+  function onArmandoUp() {
+    cancelarArmado();
+    openBlockDetail(b); // se soltó antes de armarse: toque simple, igual que antes abre el detalle
+  }
+  document.addEventListener('pointermove', onArmandoMove);
+  document.addEventListener('pointerup', onArmandoUp);
 
   function onMove(ev) {
     const px = pxPerMin();
     const dy = (ev.clientY - startY) / px;
-    if (Math.abs(dy) > 4 || Math.abs(ev.clientX - e.clientX) > 4) moved = true;
-    if (!moved) return;
-    el.classList.add('dragging');
     const newIni = Math.max(0, Math.min(1439 - dur, snap15(origIni + dy)));
     el.style.top = (newIni * px) + 'px';
     el.querySelector('.cbtime').textContent = `${minToHHMM(newIni)}–${minToHHMM(newIni + dur)}`;
@@ -4256,7 +4278,6 @@ function startWeekMove(e, b, el, origDiaId) {
   }
   function onUp(ev) {
     el.releasePointerCapture(e.pointerId);
-    el.classList.remove('dragging');
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
     document.querySelectorAll('.week-col').forEach(c => c.classList.remove('drop-target'));
@@ -4265,25 +4286,47 @@ function startWeekMove(e, b, el, origDiaId) {
     const shz = document.getElementById('poolSinHoraZone');
     if (dz) dz.style.background = '';
     if (shz) shz.style.background = '';
-    if (!moved) { openBlockDetail(b); return; }
+
     if (b.kind === 'transporte') {
       const t = itinerario.transporte.find(x => x.id === b.id);
       const esHorarioFijo = t && !MODOS_SIN_HORARIO.includes(t.tipo);
       const opSel = t && (t.opciones || [])[t.opcionElegida || 0];
       if (esHorarioFijo && opSel && opSel.salida) {
-        if (!confirm('Este transporte ya viene definido por el horario (vuelo/tren/ferry/bus). ¿Deseas moverlo de todas formas?')) { renderSemana(); return; }
+        if (!confirm('Este transporte ya viene definido por el horario (vuelo/tren/ferry/bus). ¿Deseas moverlo de todas formas?')) { el.classList.remove('dragging'); renderSemana(); return; }
       }
     }
-    if (elFrom(ev, '#poolDespuesZone')) { unscheduleBlock(b, true); return; }
-    if (elFrom(ev, '#poolSinHoraZone')) { unscheduleBlock(b, false); return; }
+
+    const aPoolDespues = !!elFrom(ev, '#poolDespuesZone');
+    const aPoolSinHora = !!elFrom(ev, '#poolSinHoraZone');
     const dy = (ev.clientY - startY) / pxPerMin();
     const newIni = Math.max(0, Math.min(1439 - dur, snap15(origIni + dy)));
     const col = elFrom(ev, '.week-col');
     const newDiaId = col ? col.dataset.dia : origDiaId;
-    persistBlockTime(b, newIni, newIni + dur, newDiaId !== origDiaId ? newDiaId : undefined);
+
+    if (!aPoolDespues && !aPoolSinHora && newIni === origIni && newDiaId === origDiaId) {
+      el.classList.remove('dragging'); // se armó pero no se movió a ningún lado: no hay nada que confirmar
+      return;
+    }
+    mostrarConfirmarDrop(el,
+      () => {
+        if (aPoolDespues) return unscheduleBlock(b, true);
+        if (aPoolSinHora) return unscheduleBlock(b, false);
+        persistBlockTime(b, newIni, newIni + dur, newDiaId !== origDiaId ? newDiaId : undefined);
+      },
+      () => renderSemana()
+    );
   }
-  document.addEventListener('pointermove', onMove);
-  document.addEventListener('pointerup', onUp);
+}
+function mostrarConfirmarDrop(el, onOk, onCancel) {
+  document.querySelectorAll('.drop-confirm').forEach(p => p.remove());
+  const pill = document.createElement('div');
+  pill.className = 'drop-confirm';
+  pill.innerHTML = `<button type="button" class="ok" title="Dejar acá">✓</button><button type="button" class="cancel" title="Volver a su lugar">✗</button>`;
+  el.appendChild(pill);
+  const limpiar = () => { pill.remove(); el.classList.remove('dragging'); };
+  const timer = setTimeout(() => { limpiar(); onCancel(); }, 8000);
+  pill.querySelector('.ok').addEventListener('click', (ev) => { ev.stopPropagation(); clearTimeout(timer); limpiar(); onOk(); });
+  pill.querySelector('.cancel').addEventListener('click', (ev) => { ev.stopPropagation(); clearTimeout(timer); limpiar(); onCancel(); });
 }
 
 function navSemana(dir) {
@@ -5566,20 +5609,23 @@ function _showGasSaving(on) {
 // cuando hay que elegir entre cambios hechos sin conexión desde los dos lados.
 function quienSoy() { try { return localStorage.getItem('itin_quienSoy') || ''; } catch (e) { return ''; } }
 function elOtro() { const yo = quienSoy(); return yo === 'Lot' ? 'Temis' : (yo === 'Temis' ? 'Lot' : ''); }
-function preguntarQuienSoy() {
-  if (quienSoy()) return;
-  modalEsFormulario = false;
+function preguntarQuienSoy(forzar) {
+  if (quienSoy() && !forzar) return;
+  modalEsFormulario = true;
   modalOpen(`
     <div class="modal-head"><span class="modal-title">¿Quién sos?</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
-      <div class="empty-mini" style="margin-bottom:10px">Es solo para poder avisarte de quién es cada cambio si algún día hay que elegir entre versiones distintas hechas sin conexión.</div>
-      <div style="display:flex; gap:8px">
-        <button class="btn-save" style="flex:1" onclick="elegirQuienSoy('Temis')">Temis</button>
-        <button class="btn-save" style="flex:1" onclick="elegirQuienSoy('Lot')">Lot</button>
+      <div class="empty-mini" style="margin-bottom:10px">Es solo para poder avisarte de quién es cada cambio si algún día hay que elegir entre versiones distintas hechas sin conexión — por si alguna vez lo comparten con alguien más.</div>
+      <div class="field"><label>Tu nombre</label><input type="text" id="fQuienSoy" value="${escHtml(quienSoy())}" placeholder="Ej: Temis" onkeydown="if(event.key==='Enter')guardarQuienSoy()"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="modalClose()">Cerrar</button>
+        <button class="btn-save" onclick="guardarQuienSoy()">Guardar</button>
       </div>
     </div>`);
 }
-function elegirQuienSoy(nombre) {
+function guardarQuienSoy() {
+  const nombre = (document.getElementById('fQuienSoy').value || '').trim();
+  if (!nombre) { showToast('Escribí un nombre'); return; }
   try { localStorage.setItem('itin_quienSoy', nombre); } catch (e) {}
   modalClose();
 }
@@ -6265,6 +6311,13 @@ function openDevInfo() {
   modalOpen(`
     <div class="modal-head"><span class="modal-title">🔧 Info técnica</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
+      <div class="field">
+        <label>Tu nombre <span style="text-transform:none;font-weight:400;font-size:11px;color:var(--ink-3)">(para la pantalla de conflictos sin conexión)</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input readonly style="flex:1" value="${escHtml(quienSoy() || '(sin definir)')}">
+          <button class="btn-mini" onclick="modalClose(); preguntarQuienSoy(true)">✏️ Cambiar</button>
+        </div>
+      </div>
       <div class="field"><label>URL del Web App (Apps Script)</label><textarea readonly style="font-size:10.5px">${GAS_URL}</textarea></div>
       <div class="field"><label>Proyecto / viaje activo</label><input readonly value="${escHtml(currentProyecto || '(sin proyecto)')}"></div>
       <div class="field"><label>Conteo de datos cargados</label><textarea readonly style="font-size:11.5px; min-height:84px">Días: ${itinerario.dias.length}\nTransporte: ${itinerario.transporte.length}\nHospedaje: ${itinerario.hospedaje.length}\nPendientes: ${itinerario.pendientes.length}</textarea></div>
