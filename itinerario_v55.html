@@ -283,7 +283,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 .fab-chat { position: fixed; right: 18px; bottom: 22px; width: 52px; height: 52px; border-radius: 50%; background: var(--ink); color: var(--paper); border:none; cursor:pointer; font-size:20px; box-shadow: 0 6px 18px rgba(0,0,0,0.18); z-index: 60; }
 .mobile-tab-float { display: none; }
 @media (max-width: 759px) {
-  .mobile-tab-float { display: flex; position: fixed; left: 14px; bottom: 22px; gap: 4px; background: var(--paper); border: 1px solid var(--line); border-radius: 30px; padding: 5px; box-shadow: 0 6px 18px rgba(0,0,0,0.18); z-index: 61; touch-action: none; cursor: grab; }
+  .mobile-tab-float { display: flex; position: fixed; left: 14px; bottom: 22px; gap: 4px; background: var(--paper); border: 1px solid var(--line); border-radius: 30px; padding: 5px; box-shadow: 0 6px 18px rgba(0,0,0,0.18); z-index: 2200; touch-action: none; cursor: grab; }
   .mobile-tab-float.mtf-dragging { cursor: grabbing; opacity: 0.85; }
   .mtf-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; font-size: 17px; cursor: pointer; display:flex; align-items:center; justify-content:center; }
   .mtf-btn.active { background: var(--ink); }
@@ -377,11 +377,11 @@ body.drag-locked .cal-resize-handle { display: none; }
       <!-- Logo + Proyecto compacto -->
       <div style="display:flex; flex-direction:column; gap:1px; flex-shrink:0; min-width:80px">
         <div style="display:flex; align-items:center; gap:4px">
-          <span class="logo" style="font-size:21px; letter-spacing:-0.5px; font-weight:600">Itinerario <span>✦</span></span>
           <button class="dev-btn" onclick="openDevInfo()" title="Info técnica">⚙</button>
           <button id="btnConexion" onclick="sincronizarPendientes()" style="display:none; border:none; cursor:pointer; font-size:10px; padding:2px 8px; white-space:nowrap; background:#fef3c7; border-radius:10px; color:#92400e"></button>
         </div>
         <button class="btn-mini" id="btnProyecto" onclick="openProyectoSelector()" style="font-size:10px; padding:2px 7px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;">📁 Viaje ▾</button>
+        <span class="logo" style="font-size:8.5px; letter-spacing:0; font-weight:500; opacity:0.5; white-space:nowrap">Itinerario <span>✦</span> <!-- ← subir en 1 cada vez que se publica --> v1</span>
       </div>
       <!-- Spine inline (días) -->
       <div class="spine-wrap" style="flex:1; min-width:0">
