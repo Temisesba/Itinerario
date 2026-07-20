@@ -511,7 +511,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 6; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 7; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
@@ -1581,11 +1581,12 @@ function getCalendarBlocks(diaId) {
     blocks.push({ id: t.id, kind: 'transporte', title: `${emoji} 📅${icono} ` + (TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''), ini, fin: Math.max(fin, ini + 15) });
   });
   itinerario.eventos.forEach(ev => {
-    if (ev.diaIdInicio !== diaId) return;
-    const ini = hhmmToMin(ev.horaInicio), fin = hhmmToMin(ev.horaFin);
-    if (ini === null || fin === null) return;
-    const icono = RESERVADO_ICON[ev.reservado || 'pendiente'];
-    blocks.push({ id: ev.id, kind: 'evento', title: `🎪${icono} ` + (ev.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+    (ev.sedes || []).forEach(act => {
+      if (act.diaId !== diaId) return;
+      const ini = hhmmToMin(act.horaInicio), fin = hhmmToMin(act.horaFin);
+      if (ini === null || fin === null) return;
+      blocks.push({ id: act.id, eventoId: ev.id, kind: 'eventoActividad', title: '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+    });
   });
   return blocks;
 }
@@ -1742,11 +1743,12 @@ async function unscheduleBlock(b, fullyUnassign) {
     if (fullyUnassign) p.diaId = '';
     await postGAS({ action: 'updatePendiente', id: b.id, horaInicio: '', horaFin: '', diaId: fullyUnassign ? '' : p.diaId });
     showToast(fullyUnassign ? 'Movido a "para después" ✦' : 'Sin hora, sigue hoy ✦');
-  } else if (b.kind === 'evento') {
-    const ev = itinerario.eventos.find(x => x.id === b.id); if (!ev) return;
-    ev.horaInicio = ''; ev.horaFin = '';
-    if (fullyUnassign) { ev.diaIdInicio = ''; ev.diaIdFin = ''; }
-    await postGAS({ action: 'updateEvento', id: b.id, horaInicio: '', horaFin: '', diaIdInicio: fullyUnassign ? '' : ev.diaIdInicio, diaIdFin: fullyUnassign ? '' : ev.diaIdFin });
+  } else if (b.kind === 'eventoActividad') {
+    const ev = itinerario.eventos.find(x => x.id === b.eventoId); if (!ev) return;
+    const act = (ev.sedes || []).find(x => x.id === b.id); if (!act) return;
+    act.horaInicio = ''; act.horaFin = '';
+    if (fullyUnassign) act.diaId = '';
+    await postGAS({ action: 'updateEvento', id: ev.id, sedes: ev.sedes });
     showToast(fullyUnassign ? 'Movido a "para después" ✦' : 'Sin hora, sigue hoy ✦');
   } else {
     const t = itinerario.transporte.find(x => x.id === b.id); if (!t) return;
@@ -1799,18 +1801,14 @@ async function persistBlockTime(b, iniMin, finMin, diaId) {
       const body = { action: 'updatePendiente', id: b.id, horaInicio, horaFin };
       if (diaId) body.diaId = diaId;
       r = await postGAS(body);
-    } else if (b.kind === 'evento') {
-      const ev = itinerario.eventos.find(x => x.id === b.id);
+    } else if (b.kind === 'eventoActividad') {
+      const ev = itinerario.eventos.find(x => x.id === b.eventoId);
       if (!ev) return;
-      ev.horaInicio = horaInicio; ev.horaFin = horaFin;
-      const body = { action: 'updateEvento', id: b.id, horaInicio, horaFin };
-      if (diaId) {
-        // Si no era multi-día (o no tenía fin), lo movemos entero al nuevo día.
-        if (!ev.diaIdFin || ev.diaIdFin === ev.diaIdInicio) body.diaIdFin = diaId;
-        ev.diaIdInicio = diaId;
-        body.diaIdInicio = diaId;
-      }
-      r = await postGAS(body);
+      const act = (ev.sedes || []).find(x => x.id === b.id);
+      if (!act) return;
+      act.horaInicio = horaInicio; act.horaFin = horaFin;
+      if (diaId) act.diaId = diaId;
+      r = await postGAS({ action: 'updateEvento', id: ev.id, sedes: ev.sedes });
     } else {
       const t = itinerario.transporte.find(x => x.id === b.id);
       if (!t) return;
@@ -1839,6 +1837,7 @@ async function persistBlockTime(b, iniMin, finMin, diaId) {
 }
 
 function openBlockDetail(b) {
+  if (b.kind === 'eventoActividad') { abrirVisorEvento(b.eventoId); return; }
   abrirVisor(b.kind, b.id);
 }
 
@@ -2015,11 +2014,10 @@ function renderPoolPanel() {
   });
 
   itinerario.eventos.forEach(ev => {
-    const el = document.getElementById('evento-' + ev.id);
-    if (!el) return;
-    el.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.icon-btn')) return;
-      startEventoDrag(e, ev);
+    (ev.sedes || []).forEach(act => {
+      const el = document.getElementById('actividad-' + act.id);
+      if (!el) return;
+      el.addEventListener('pointerdown', (e) => startActividadDrag(e, ev.id, act));
     });
   });
 }
@@ -2400,14 +2398,16 @@ async function schedulePendiente(id, diaId, iniMin, finMin) {
   renderSpine(); renderSemana(); renderPoolPanel();
 }
 
-// ── Arrastrar un evento/festival desde el panel lateral al calendario, para ponerle hora ──
-function startEventoDrag(e, ev) {
+// ── Arrastrar una actividad de un evento/festival desde el panel lateral al calendario ──
+// (el evento en sí no se agenda — son sus actividades, cada una con su propio lugar/hora,
+// igual que transporte tiene varias "opciones" adentro de un mismo transporte)
+function startActividadDrag(e, eventoId, actividad) {
   e.preventDefault();
   const startX = e.clientX, startY = e.clientY;
   let moved = false;
   const ghost = document.createElement('div');
   ghost.className = 'drag-ghost';
-  ghost.textContent = ev.nombre || 'Mover';
+  ghost.textContent = actividad.nombre || 'Mover';
   document.body.appendChild(ghost);
   positionGhost(ghost, e.clientX, e.clientY);
   const dur = 60;
@@ -2436,43 +2436,40 @@ function startEventoDrag(e, ev) {
       return;
     }
     const chip = elFrom(e2, '.day-chip');
-    if (chip) { chip.classList.add('drop-hover'); ghost.textContent = ev.nombre || 'Mover'; }
+    if (chip) { chip.classList.add('drop-hover'); ghost.textContent = actividad.nombre || 'Mover'; }
   }
   async function onUp(e2) {
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
     ghost.remove();
     clearHighlights();
-    if (!moved) { abrirVisor('evento', ev.id); return; }
+    if (!moved) { abrirVisorEvento(eventoId); return; }
     const col = elFrom(e2, '.week-col');
     if (col) {
       const diaId = col.dataset.dia;
       const iniMin = timeForCol(col, e2);
       if (iniMin === null) return;
-      await scheduleEvento(ev.id, diaId, iniMin, iniMin + dur);
+      await scheduleActividad(eventoId, actividad.id, diaId, iniMin, iniMin + dur);
       return;
     }
     const chip = elFrom(e2, '.day-chip');
-    if (chip) { await scheduleEvento(ev.id, chip.dataset.dia, null, null); return; }
+    if (chip) { await scheduleActividad(eventoId, actividad.id, chip.dataset.dia, null, null); return; }
   }
   document.addEventListener('pointermove', onMove);
   document.addEventListener('pointerup', onUp);
 }
-async function scheduleEvento(id, diaId, iniMin, finMin) {
-  const ev = itinerario.eventos.find(x => x.id === id); if (!ev) return;
-  const eraMonoDia = !ev.diaIdFin || ev.diaIdFin === ev.diaIdInicio;
-  ev.diaIdInicio = diaId;
-  if (eraMonoDia) ev.diaIdFin = diaId;
+async function scheduleActividad(eventoId, actividadId, diaId, iniMin, finMin) {
+  const ev = itinerario.eventos.find(x => x.id === eventoId); if (!ev) return;
+  const act = (ev.sedes || []).find(x => x.id === actividadId); if (!act) return;
+  act.diaId = diaId;
   if (iniMin !== null) {
-    ev.horaInicio = minToHHMM(iniMin);
-    ev.horaFin = minToHHMM(finMin);
+    act.horaInicio = minToHHMM(iniMin);
+    act.horaFin = minToHHMM(finMin);
   } else {
-    ev.horaInicio = '';
-    ev.horaFin = '';
+    act.horaInicio = '';
+    act.horaFin = '';
   }
-  const body = { action: 'updateEvento', id, diaIdInicio: diaId, horaInicio: ev.horaInicio, horaFin: ev.horaFin };
-  if (eraMonoDia) body.diaIdFin = diaId;
-  await postGAS(body);
+  await postGAS({ action: 'updateEvento', id: eventoId, sedes: ev.sedes });
   showToast('Ubicado ✦');
   renderSpine(); renderSemana(); renderPoolPanel();
 }
@@ -3138,8 +3135,17 @@ function renderEventoCard(ev, esDelDia) {
   const gRealesE = gastosE.filter(g => !g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
   const gCotsE = gastosE.filter(g => g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
   const rangoReal = ev.fechaInicioReal ? `${escHtml(ev.fechaInicioReal)}${ev.fechaFinReal && ev.fechaFinReal !== ev.fechaInicioReal ? ' → ' + escHtml(ev.fechaFinReal) : ''}` : '';
-  const asignado = ev.diaIdInicio ? diaLabel(ev.diaIdInicio) + (ev.diaIdFin && ev.diaIdFin !== ev.diaIdInicio ? ' a ' + diaLabel(ev.diaIdFin) : '') : '';
-  return `<div id="evento-${ev.id}" style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esDelDia ? 'border-color:var(--route)' : ''}; ${ev.diaIdInicio ? 'cursor:grab' : ''}">
+  const actividades = ev.sedes || [];
+  const actividadesHtml = actividades.length
+    ? actividades.map(act => {
+        const agendada = act.diaId && act.horaInicio;
+        return `<div id="actividad-${act.id}" style="display:flex; align-items:center; gap:5px; padding:3px 6px; margin-top:3px; border-radius:6px; background:${agendada ? 'var(--route-light)' : 'var(--paper-2)'}; ${agendada ? 'cursor:grab' : ''}">
+          <span style="flex:1; font-size:11px">🎪 ${escHtml(act.nombre || '(sin nombre)')}</span>
+          <span style="font-size:10px; color:${agendada ? 'var(--route)' : 'var(--ink-3)'}; white-space:nowrap">${agendada ? `✅ ${escHtml(diaLabel(act.diaId))} · 🕐 ${escHtml(act.horaInicio)}` : '⬜ sin agendar'}</span>
+        </div>`;
+      }).join('')
+    : `<div class="empty-mini">Sin actividades — editá el evento para agregar una (ej. la carrera, los fuegos artificiales), cada una con su propio lugar y hora.</div>`;
+  return `<div style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esDelDia ? 'border-color:var(--route)' : ''}">
     <div style="display:flex; align-items:center; gap:5px; padding:5px 8px; background:${esDelDia ? 'var(--route-light)' : 'var(--paper-2)'}">
       <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorEvento('${ev.id}')">🎪 ${escHtml(ev.nombre || '(sin nombre)')}</span>
       <button class="icon-btn" onclick="openEventoForm('${ev.id}')" title="Editar">✏️</button>
@@ -3147,10 +3153,10 @@ function renderEventoCard(ev, esDelDia) {
     </div>
     <div style="padding:4px 8px; font-size:11.5px; color:var(--ink-2)">
       ${rangoReal ? `<div style="font-size:12px">📅 ${rangoReal}</div>` : ''}
-      ${asignado ? `<div style="font-size:11px; color:var(--route)">✅ Asignado: ${escHtml(asignado)}${ev.horaInicio ? ` · 🕐 ${escHtml(ev.horaInicio)}–${escHtml(ev.horaFin||'')}` : ''}</div>` : `<div style="font-size:11px; color:var(--ink-3)">⬜ Sin día asignado todavía</div>`}
       ${ev.ciudades ? `<div style="font-size:11px; color:var(--ink-3)">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.categoria ? `<div style="font-size:11px; color:var(--ink-3)">🏷️ ${escHtml(ev.categoria)}</div>` : ''}
       ${(gRealesE>0||gCotsE>0) ? `<div style="font-size:10.5px; margin-top:2px">${gRealesE>0?`<span style="color:#15803d;font-weight:600">💴 ¥${gRealesE.toLocaleString()}</span>`:''}${gRealesE>0&&gCotsE>0?' · ':''}${gCotsE>0?`<span style="color:#b85c8a;font-weight:600">💬 ¥${gCotsE.toLocaleString()}</span>`:''}</div>` : ''}
+      ${actividadesHtml}
     </div>
   </div>`;
 }
@@ -3163,23 +3169,29 @@ function renderSedesEditor() {
   host.innerHTML = currentEventoSedes.length ? currentEventoSedes.map((s, i) => `
     <div style="border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:6px">
       <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px">
+        <input type="text" id="sedeNombre-${i}" value="${escHtml(s.nombre||'')}" placeholder="Nombre de la actividad (ej. Carrera de botes dragón)" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+        <button type="button" class="icon-btn" onclick="eliminarSedeEvento(${i})" title="Quitar actividad">🗑</button>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px">
         <select id="sedeDia-${i}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
           <option value="">— Sin día asignado —</option>
           ${diasFiltrados().map(d => `<option value="${d.id}" ${s.diaId===d.id?'selected':''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('')}
         </select>
-        <button type="button" class="icon-btn" onclick="eliminarSedeEvento(${i})" title="Quitar sede">🗑</button>
+        <input type="time" id="sedeHoraIni-${i}" value="${s.horaInicio||''}" style="padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+        <span style="font-size:11px; color:var(--ink-3)">a</span>
+        <input type="time" id="sedeHoraFin-${i}" value="${s.horaFin||''}" style="padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
       </div>
       <div class="autocomplete-wrap">
-        <input type="text" id="sedeDireccion-${i}" value="${escHtml(s.direccion||'')}" placeholder="Dirección / lugar de esta sede" autocomplete="off" style="width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+        <input type="text" id="sedeDireccion-${i}" value="${escHtml(s.direccion||'')}" placeholder="Dirección / lugar de esta actividad" autocomplete="off" style="width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
         <div class="autocomplete-list" id="sedeDireccionList-${i}"></div>
       </div>
       <input type="hidden" id="sedeLat-${i}" value="${s.lat||''}">
       <input type="hidden" id="sedeLng-${i}" value="${s.lng||''}">
-    </div>`).join('') : `<div class="empty-mini">Sin sedes agregadas — agrega una si el evento tiene lugar/dirección.</div>`;
+    </div>`).join('') : `<div class="empty-mini">Sin actividades agregadas — agrega una por cada cosa puntual del evento (ej. la carrera, los fuegos artificiales), con su propio lugar y hora.</div>`;
   currentEventoSedes.forEach((s, i) => attachAutocomplete(`sedeDireccion-${i}`, `sedeDireccionList-${i}`, `sedeLat-${i}`, `sedeLng-${i}`, null));
 }
 function agregarSedeEvento() {
-  currentEventoSedes.push({ diaId: currentDiaId || '', direccion: '', lat: '', lng: '' });
+  currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: currentDiaId || '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
   renderSedesEditor();
 }
 function eliminarSedeEvento(i) {
@@ -3190,7 +3202,9 @@ function eliminarSedeEvento(i) {
 function openEventoForm(id, diaId) {
   modalEsFormulario = true;
   const ev = id ? itinerario.eventos.find(x => x.id === id) : null;
-  currentEventoSedes = ev && ev.sedes && ev.sedes.length ? ev.sedes.map(s => ({ ...s })) : [];
+  currentEventoSedes = ev && ev.sedes && ev.sedes.length
+    ? ev.sedes.map(s => ({ id: s.id || ('ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)), ...s }))
+    : [];
   currentEventoProgramaB64 = null;
   const diaOptionsIni = '<option value="">— Sin asignar —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${(diaId===d.id)||(ev&&ev.diaIdInicio===d.id) ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
   const diaOptionsFin = '<option value="">— Sin asignar —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${ev&&ev.diaIdFin===d.id ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
@@ -3213,11 +3227,6 @@ function openEventoForm(id, diaId) {
         <div class="field"><label>Día asignado — inicio <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><select id="fEventoDiaInicio">${diaOptionsIni}</select></div>
         <div class="field"><label>Día asignado — fin <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><select id="fEventoDiaFin">${diaOptionsFin}</select></div>
       </div>
-      <div class="row-2">
-        <div class="field"><label>Hora inicio <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><input type="time" id="fEventoHoraIni" value="${ev ? ev.horaInicio||'' : ''}"></div>
-        <div class="field"><label>Hora fin <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><input type="time" id="fEventoHoraFin" value="${ev ? ev.horaFin||'' : ''}"></div>
-      </div>
-      <div class="field" style="margin-top:-6px; margin-bottom:14px; font-size:11px; color:var(--ink-3)">Si le pones hora, aparece como bloque en el calendario del "Día asignado — inicio" y lo podés arrastrar ahí como cualquier otro.</div>
       <div class="row-2">
         <div class="field"><label>Categoría</label>
           <select id="fEventoCategoria">
@@ -3253,20 +3262,22 @@ function openEventoForm(id, diaId) {
 
 async function guardarEvento() {
   const id = document.getElementById('fEventoId').value;
-  const sedes = currentEventoSedes.map((_, i) => ({
+  const sedes = currentEventoSedes.map((s, i) => ({
+    id: s.id,
+    nombre: (document.getElementById(`sedeNombre-${i}`)||{}).value || '',
     diaId: (document.getElementById(`sedeDia-${i}`)||{}).value || '',
+    horaInicio: (document.getElementById(`sedeHoraIni-${i}`)||{}).value || '',
+    horaFin: (document.getElementById(`sedeHoraFin-${i}`)||{}).value || '',
     direccion: (document.getElementById(`sedeDireccion-${i}`)||{}).value || '',
     lat: (document.getElementById(`sedeLat-${i}`)||{}).value || '',
     lng: (document.getElementById(`sedeLng-${i}`)||{}).value || ''
-  })).filter(s => s.direccion || s.diaId);
+  })).filter(s => s.nombre || s.direccion || s.diaId);
   const body = {
     nombre: document.getElementById('fEventoNombre').value,
     fechaInicioReal: document.getElementById('fEventoFechaInicio').value,
     fechaFinReal: document.getElementById('fEventoFechaFin').value,
     diaIdInicio: document.getElementById('fEventoDiaInicio').value,
     diaIdFin: document.getElementById('fEventoDiaFin').value,
-    horaInicio: document.getElementById('fEventoHoraIni').value,
-    horaFin: document.getElementById('fEventoHoraFin').value,
     categoria: document.getElementById('fEventoCategoria').value,
     reservado: getReservadoVal('fEventoReservado'),
     ciudades: document.getElementById('fEventoCiudades').value,
@@ -3298,8 +3309,21 @@ async function refinarEventoConIA(btnEl) {
 
   if (r.ok && r.data) {
     if (r.data.nombreConEmoji) document.getElementById('fEventoNombre').value = r.data.nombreConEmoji;
-    if (r.data.direccionExacta) {
-      if (!currentEventoSedes.length) currentEventoSedes.push({ diaId: diaIniId || '', direccion: '', lat: '', lng: '' });
+    if (r.data.actividades && r.data.actividades.length) {
+      // La IA reconoció varias partes del evento (carrera, ceremonia, etc.) — se agregan como
+      // actividades nuevas, tratando de emparejar la fecha sugerida con un día real del viaje.
+      r.data.actividades.forEach(a => {
+        const diaMatch = a.fechaSugerida ? diasFiltrados().find(d => d.fecha === a.fechaSugerida) : null;
+        currentEventoSedes.push({
+          id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          nombre: a.nombre || '', diaId: diaMatch ? diaMatch.id : '',
+          horaInicio: a.horaSugerida || '', horaFin: '',
+          direccion: a.direccionExacta || '', lat: a.lat || '', lng: a.lng || ''
+        });
+      });
+      renderSedesEditor();
+    } else if (r.data.direccionExacta) {
+      if (!currentEventoSedes.length) currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: diaIniId || '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
       currentEventoSedes[0].direccion = r.data.direccionExacta;
       if (r.data.lat) currentEventoSedes[0].lat = r.data.lat;
       if (r.data.lng) currentEventoSedes[0].lng = r.data.lng;
@@ -3462,7 +3486,7 @@ function abrirVisorEvento(id) {
       ${ev.categoria ? `<div class="visor-row">🏷️ ${escHtml(ev.categoria)}</div>` : ''}
       ${ev.ciudades ? `<div class="visor-row">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
-      ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>📍 Sedes</b><br>${ev.sedes.map(s => `${escHtml(diaLabel(s.diaId) || 'Sin día')}: ${escHtml(s.direccion||'')}`).join('<br>')}</div>` : ''}
+      ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>🎪 Actividades</b><br>${ev.sedes.map(s => `${s.nombre ? `<b>${escHtml(s.nombre)}</b> — ` : ''}${escHtml(diaLabel(s.diaId) || 'Sin día')}${s.horaInicio ? ` · 🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''}` : ''}${s.direccion ? ` — ${escHtml(s.direccion)}` : ''}`).join('<br>')}</div>` : ''}
       ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a> <button type="button" class="btn-mini ai" onclick="analizarProgramaEventoForm('${ev.id}')">🤖 Analizar programa con IA</button></div>` : ''}
       ${ev.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(ev.notas)}</div>` : ''}
       ${ev.sugerenciasIA ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(ev.sugerenciasIA)}</div>` : ''}
@@ -4397,6 +4421,8 @@ function attachWeekBlockDrag(el, b, diaId) {
     if (b.kind === 'transporte') {
       // Transporte: click simple abre directo la misma vista que la tarjeta de la barra lateral
       abrirVisor(b.kind, b.id);
+    } else if (b.kind === 'eventoActividad') {
+      if (dragBloqueado) abrirVisorEvento(b.eventoId);
     } else {
       if (dragBloqueado) abrirVisor(b.kind, b.id);
     }
