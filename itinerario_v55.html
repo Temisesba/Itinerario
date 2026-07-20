@@ -5560,62 +5560,14 @@ async function copiarAlPortapapeles(texto) {
     document.body.removeChild(ta);
   }
 }
-function textoVisorPendiente(p) {
-  const lineas = [
-    `${p.antojo || p.esRestaurante ? '🍴' : '📍'} ${p.nombre || '(sin nombre)'}`,
-    `📅 ${p.diaId ? diaLabel(p.diaId) : 'Para después / si hay tiempo'}${p.horaInicio ? ` · 🕐 ${p.horaInicio}–${p.horaFin || ''}` : ''}`
-  ];
-  if (p.duracionMin) lineas.push(`⏱ ~${formatDuracion(p.duracionMin)}`);
-  if (p.antojo) lineas.push(`🍴 Antojo: ${p.antojo}`);
-  if (p.direccion) lineas.push(`📍 ${p.direccion}`);
-  if (p.horarioApertura || p.horarioCierre) lineas.push(`🕐 Abre: ${p.horarioApertura || '?'} · Cierra: ${p.horarioCierre || '?'}`);
-  if (p.notasPrevias) lineas.push(`📌 Notas: ${p.notasPrevias}`);
-  if (p.notasDiario) lineas.push(`📓 Diario: ${p.notasDiario}`);
-  if (p.sugerenciasIA) lineas.push(`✨ Sugerencia IA: ${p.sugerenciasIA}`);
-  return lineas.join('\n');
-}
-function textoVisorTransporte(t) {
-  const opciones = t.opciones || [];
-  const opSel = opciones[t.opcionElegida || 0];
-  const lineas = [
-    `${TIPO_LABEL[t.tipo] || t.tipo}: ${t.origen || ''} → ${t.destino || ''}`,
-    `🕐 ${opSel ? formatOpcionTexto(opSel) : 'Sin horario'}`,
-    `📅 ${diaLabel(t.diaId)}`
-  ];
-  if (t.direccionOrigen) lineas.push(`📍 Origen: ${t.direccionOrigen}`);
-  if (t.direccionDestino) lineas.push(`📍 Destino: ${t.direccionDestino}`);
-  if (t.notas) lineas.push(`📓 Notas: ${t.notas}`);
-  if (t.sugerenciasIAOrigen) lineas.push(`✨ Sugerencia IA: ${t.sugerenciasIAOrigen}`);
-  return lineas.join('\n');
-}
-function textoVisorHospedaje(h) {
-  const rango = (!h.diaIdFin || h.diaIdInicio === h.diaIdFin) ? diaLabel(h.diaIdInicio) : `${diaLabel(h.diaIdInicio)} a ${diaLabel(h.diaIdFin)}`;
-  const lineas = [`🏨 ${h.nombre || 'Hospedaje'}`, `📅 ${rango}`];
-  if (h.direccion) lineas.push(`📍 ${h.direccion}`);
-  if (h.notas) lineas.push(`📓 Notas: ${h.notas}`);
-  if (h.sugerenciasIA) lineas.push(`✨ Sugerencia IA: ${h.sugerenciasIA}`);
-  return lineas.join('\n');
-}
-function textoVisorEvento(ev) {
-  const lineas = [`🎪 ${ev.nombre || 'Evento'}`];
-  const rangoReal = ev.fechaInicioReal ? `${ev.fechaInicioReal}${ev.fechaFinReal && ev.fechaFinReal !== ev.fechaInicioReal ? ' → ' + ev.fechaFinReal : ''}` : '';
-  if (rangoReal) lineas.push(`📅 ${rangoReal}`);
-  if (ev.categoria) lineas.push(`🏷️ ${ev.categoria}`);
-  if (ev.ciudades) lineas.push(`📍 ${ev.ciudades}`);
-  if (ev.paginaWeb) lineas.push(`🔗 ${ev.paginaWeb}`);
-  if (ev.sedes && ev.sedes.length) lineas.push(`📍 Sedes: ${ev.sedes.map(s => `${diaLabel(s.diaId) || 'Sin día'}: ${s.direccion || ''}`).join(' · ')}`);
-  if (ev.notas) lineas.push(`📓 Notas: ${ev.notas}`);
-  if (ev.sugerenciasIA) lineas.push(`✨ Sugerencia IA: ${ev.sugerenciasIA}`);
-  return lineas.join('\n');
-}
 function copiarVisorActual() {
   const box = document.getElementById('modalBox');
   const tipo = box && box.dataset.visorTipo, id = box && box.dataset.visorId;
   let texto = '';
-  if (tipo === 'pendiente') { const p = itinerario.pendientes.find(x => x.id === id); if (p) texto = textoVisorPendiente(p); }
-  else if (tipo === 'transporte') { const t = itinerario.transporte.find(x => x.id === id); if (t) texto = textoVisorTransporte(t); }
-  else if (tipo === 'hospedaje') { const h = itinerario.hospedaje.find(x => x.id === id); if (h) texto = textoVisorHospedaje(h); }
-  else if (tipo === 'evento') { const ev = itinerario.eventos.find(x => x.id === id); if (ev) texto = textoVisorEvento(ev); }
+  if (tipo === 'pendiente') { const p = itinerario.pendientes.find(x => x.id === id); if (p) texto = p.nombre || ''; }
+  else if (tipo === 'transporte') { const t = itinerario.transporte.find(x => x.id === id); if (t) texto = `${t.origen || ''} → ${t.destino || ''}`; }
+  else if (tipo === 'hospedaje') { const h = itinerario.hospedaje.find(x => x.id === id); if (h) texto = h.nombre || ''; }
+  else if (tipo === 'evento') { const ev = itinerario.eventos.find(x => x.id === id); if (ev) texto = ev.nombre || ''; }
   copiarAlPortapapeles(texto);
 }
 
