@@ -102,9 +102,8 @@ button, input, textarea, select { font-family: var(--font-sans); font-size: 13px
   .cal-backdrop { display: none; }
   .cal-backdrop.show { display: block; position: fixed; inset: 0; background: rgba(26,24,20,0.35); z-index: 65; }
   /* El menú flotante de abajo (#mobileTabFloat) ya cubre Itinerario/Tabla/Mapa con solo íconos —
-     ocultamos el logo de texto y las pestañas verticales de arriba para que el carril de días
-     tenga más ancho y entren más chips completos. */
-  .logo { display: none; }
+     ocultamos las pestañas verticales de arriba (redundantes) para que el carril de días tenga
+     más ancho; el logo de texto se deja, no ocupa espacio de más junto al nombre del viaje. */
   .tab-btn { display: none; }
 }
 
@@ -284,7 +283,8 @@ body.drag-locked .cal-resize-handle { display: none; }
 .fab-chat { position: fixed; right: 18px; bottom: 22px; width: 52px; height: 52px; border-radius: 50%; background: var(--ink); color: var(--paper); border:none; cursor:pointer; font-size:20px; box-shadow: 0 6px 18px rgba(0,0,0,0.18); z-index: 60; }
 .mobile-tab-float { display: none; }
 @media (max-width: 759px) {
-  .mobile-tab-float { display: flex; position: fixed; left: 14px; bottom: 22px; gap: 4px; background: var(--paper); border: 1px solid var(--line); border-radius: 30px; padding: 5px; box-shadow: 0 6px 18px rgba(0,0,0,0.18); z-index: 61; }
+  .mobile-tab-float { display: flex; position: fixed; left: 14px; bottom: 22px; gap: 4px; background: var(--paper); border: 1px solid var(--line); border-radius: 30px; padding: 5px; box-shadow: 0 6px 18px rgba(0,0,0,0.18); z-index: 61; touch-action: none; cursor: grab; }
+  .mobile-tab-float.mtf-dragging { cursor: grabbing; opacity: 0.85; }
   .mtf-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; font-size: 17px; cursor: pointer; display:flex; align-items:center; justify-content:center; }
   .mtf-btn.active { background: var(--ink); }
 }
@@ -441,7 +441,6 @@ body.drag-locked .cal-resize-handle { display: none; }
         </div>
       </div>
       <button class="btn-mini" id="btnToggleEtiquetas" onclick="toggleEtiquetasMapa()">🏷️ Ocultar etiquetas</button>
-      <span class="empty-mini" style="padding:0">El día activo (arriba) filtra el mapa. En "Vista" elegí "Todos" para verlos todos.</span>
     </div>
     <div id="mapBox"></div>
     <div class="legend" style="position:absolute;bottom:8px;left:14px;z-index:1100;background:rgba(245,243,239,0.92);padding:5px 10px;border-radius:8px;border:1px solid var(--line);font-size:11px;display:flex;gap:12px;flex-wrap:wrap;">
@@ -3398,6 +3397,58 @@ function cerrarLightboxSiFondo(e) { if (e.target.id === 'lightboxOverlay') cerra
     if (e.key === 'ArrowRight') lightboxNav(1);
     if (e.key === 'Escape') cerrarLightbox();
   });
+})();
+
+// Menú flotante de abajo (Itinerario/Tabla/Mapa en el celular): arrastrable, se puede dejar donde
+// quieras y recuerda la posición entre sesiones.
+(function () {
+  const el = document.getElementById('mobileTabFloat');
+  if (!el) return;
+  let dragging = false, moved = false, startX, startY, startLeft, startTop, pid;
+
+  try {
+    const pos = JSON.parse(localStorage.getItem('itin_tabFloatPos'));
+    if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+      el.style.left = pos.left + 'px';
+      el.style.top = pos.top + 'px';
+      el.style.bottom = 'auto';
+    }
+  } catch (e) {}
+
+  el.addEventListener('pointerdown', (e) => {
+    dragging = true; moved = false; pid = e.pointerId;
+    const r = el.getBoundingClientRect();
+    startX = e.clientX; startY = e.clientY;
+    startLeft = r.left; startTop = r.top;
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (!moved && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+      moved = true;
+      el.classList.add('mtf-dragging');
+      el.setPointerCapture(pid);
+    }
+    if (!moved) return;
+    const maxLeft = window.innerWidth - el.offsetWidth - 4;
+    const maxTop = window.innerHeight - el.offsetHeight - 4;
+    el.style.left = Math.max(4, Math.min(maxLeft, startLeft + dx)) + 'px';
+    el.style.top = Math.max(4, Math.min(maxTop, startTop + dy)) + 'px';
+    el.style.bottom = 'auto';
+  });
+  el.addEventListener('pointerup', () => {
+    if (!dragging) return;
+    dragging = false;
+    if (moved) {
+      el.classList.remove('mtf-dragging');
+      el.releasePointerCapture(pid);
+      try { localStorage.setItem('itin_tabFloatPos', JSON.stringify({ left: parseFloat(el.style.left), top: parseFloat(el.style.top) })); } catch (e) {}
+    }
+  });
+  // Si se arrastró, que no dispare el onclick del botón que quedó debajo del dedo.
+  el.addEventListener('click', (e) => {
+    if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+  }, true);
 })();
 
 async function subirFotoPendiente(id, input) {

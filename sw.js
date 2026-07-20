@@ -2,7 +2,7 @@
 // Estrategia: red primero, caché solo como respaldo. Mientras haya señal, todo se sirve
 // siempre fresco desde la red (igual que antes de que existiera este archivo); la copia en
 // caché solo se usa el momento puntual en que el fetch a la red falla de verdad.
-const CACHE_NAME = 'itin-shell-v1';
+const CACHE_NAME = 'itin-shell-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -25,7 +25,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET' || !esMismoOrigen) return;
 
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'reload' }) // "reload" = ir siempre a la red, ignorando la caché HTTP normal del navegador
       .then((res) => {
         const copia = res.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(req, copia));
