@@ -148,7 +148,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 .week-scroll { position: relative; height: 64vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; display: flex; }
 .week-gutter { position: sticky; left: 0; z-index: 10; width: 48px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--line); }
 .week-cols { display: flex; }
-.week-col { flex-shrink: 0; border-right: 1px solid var(--line); }
+.week-col { flex-shrink: 0; border-right: 1px solid var(--line); background: #fff; }
 .week-col-header { position: sticky; top: 0; z-index: 8; background: #fff; border-bottom: 1px solid var(--line); padding: 6px 8px; font-size: 11.5px; font-weight: 500; display: flex; flex-direction: column; gap: 1px; }
 .week-gutter-header { border-bottom: 1px solid var(--line); background: #fff; position: sticky; top: 0; z-index: 9; }
 .reservado-btns { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -2777,6 +2777,10 @@ async function guardarNotasDia(id, notas) { await postGAS({ action: 'updateDia',
 async function elegirOpcionTransporte(id, idx) {
   const t = itinerario.transporte.find(x => x.id === id); if (t) t.opcionElegida = idx;
   renderSemana(); renderPoolPanel(); renderSpine();
+  // Si el visor de este transporte está abierto, también hay que refrescarlo — si no, la
+  // elección visualmente no cambia ahí y parece que el toque no hizo nada.
+  const box = document.getElementById('modalBox');
+  if (box && box.dataset.visorTipo === 'transporte' && box.dataset.visorId === id) abrirVisorTransporte(id);
   await postGAS({ action: 'elegirOpcion', id, opcionElegida: idx });
 }
 function toggleOtrosModos(id, panelId) {
