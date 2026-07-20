@@ -512,7 +512,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 8; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 9; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
@@ -2444,7 +2444,11 @@ function startActividadDrag(e, eventoId, actividad) {
     document.removeEventListener('pointerup', onUp);
     ghost.remove();
     clearHighlights();
-    if (!moved) { abrirVisorEvento(eventoId); return; }
+    if (!moved) {
+      if (!actividad.diaId || !actividad.horaInicio) abrirAsignarActividad(eventoId, actividad.id);
+      else abrirVisorEvento(eventoId);
+      return;
+    }
     const col = elFrom(e2, '.week-col');
     if (col) {
       const diaId = col.dataset.dia;
@@ -2473,6 +2477,44 @@ async function scheduleActividad(eventoId, actividadId, diaId, iniMin, finMin) {
   await postGAS({ action: 'updateEvento', id: eventoId, sedes: ev.sedes });
   showToast('Ubicado ✦');
   renderSpine(); renderSemana(); renderPoolPanel();
+}
+// Tocar (sin arrastrar) una actividad sin día/hora todavía: preguntar directo en vez de
+// obligar a arrastrarla hasta el calendario.
+function abrirAsignarActividad(eventoId, actividadId) {
+  const ev = itinerario.eventos.find(x => x.id === eventoId); if (!ev) return;
+  const act = (ev.sedes || []).find(x => x.id === actividadId); if (!act) return;
+  modalEsFormulario = true;
+  modalOpen(`
+    <div class="modal-head"><span class="modal-title">🎪 ${escHtml(act.nombre || ev.nombre || 'Actividad')}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-body">
+      <div class="empty-mini" style="margin-bottom:10px">Todavía no tiene día ni hora — asignale uno para que aparezca en el calendario.</div>
+      <div class="field"><label>Día</label>
+        <select id="fActDia">
+          <option value="">— Sin asignar —</option>
+          ${diasFiltrados().map(d => `<option value="${d.id}" ${act.diaId===d.id?'selected':''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('')}
+        </select>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Hora inicio</label><input type="time" id="fActHoraIni" value="${act.horaInicio||''}"></div>
+        <div class="field"><label>Hora fin</label><input type="time" id="fActHoraFin" value="${act.horaFin||''}"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="modalClose(); abrirVisorEvento('${eventoId}')">Ver evento completo</button>
+        <button class="btn-save" onclick="guardarAsignarActividad('${eventoId}','${actividadId}')">Guardar</button>
+      </div>
+    </div>`);
+}
+async function guardarAsignarActividad(eventoId, actividadId) {
+  const ev = itinerario.eventos.find(x => x.id === eventoId); if (!ev) return;
+  const act = (ev.sedes || []).find(x => x.id === actividadId); if (!act) return;
+  act.diaId = document.getElementById('fActDia').value;
+  act.horaInicio = document.getElementById('fActHoraIni').value;
+  act.horaFin = document.getElementById('fActHoraFin').value;
+  modalClose();
+  showToast('Guardando...');
+  await postGAS({ action: 'updateEvento', id: eventoId, sedes: ev.sedes });
+  renderSpine(); renderSemana(); renderPoolPanel();
+  showToast('Actividad agendada ✦');
 }
 
 function tipoComidaToggleHtml(id, valor) {
@@ -3140,9 +3182,9 @@ function renderEventoCard(ev, esDelDia) {
   const actividadesHtml = actividades.length
     ? actividades.map(act => {
         const agendada = act.diaId && act.horaInicio;
-        return `<div id="actividad-${act.id}" style="display:flex; align-items:center; gap:5px; padding:3px 6px; margin-top:3px; border-radius:6px; background:${agendada ? 'var(--route-light)' : 'var(--paper-2)'}; ${agendada ? 'cursor:grab' : ''}">
+        return `<div id="actividad-${act.id}" style="display:flex; align-items:center; gap:5px; padding:3px 6px; margin-top:3px; border-radius:6px; cursor:grab; background:${agendada ? 'var(--route-light)' : 'var(--paper-2)'}">
           <span style="flex:1; font-size:11px">🎪 ${escHtml(act.nombre || '(sin nombre)')}</span>
-          <span style="font-size:10px; color:${agendada ? 'var(--route)' : 'var(--ink-3)'}; white-space:nowrap">${agendada ? `✅ ${escHtml(diaLabel(act.diaId))} · 🕐 ${escHtml(act.horaInicio)}` : '⬜ sin agendar'}</span>
+          <span style="font-size:10px; color:${agendada ? 'var(--route)' : 'var(--ink-3)'}; white-space:nowrap">${agendada ? `✅ ${escHtml(diaLabel(act.diaId))} · 🕐 ${escHtml(act.horaInicio)}` : '⬜ tocá para agendar'}</span>
         </div>`;
       }).join('')
     : `<div class="empty-mini">Sin actividades — editá el evento para agregar una (ej. la carrera, los fuegos artificiales), cada una con su propio lugar y hora.</div>`;
