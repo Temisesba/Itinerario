@@ -378,11 +378,13 @@ body.drag-locked .cal-resize-handle { display: none; }
       <!-- Logo + Proyecto compacto -->
       <div style="display:flex; flex-direction:column; gap:1px; flex-shrink:0; min-width:80px">
         <div style="display:flex; align-items:center; gap:4px">
-          <button class="dev-btn" onclick="openDevInfo()" title="Info técnica">⚙</button>
+          <span class="logo" style="font-size:21px; letter-spacing:-0.5px; font-weight:600">Itinerario <span>✦</span></span>
           <button id="btnConexion" onclick="sincronizarPendientes()" style="display:none; border:none; cursor:pointer; font-size:10px; padding:2px 8px; white-space:nowrap; background:#fef3c7; border-radius:10px; color:#92400e"></button>
         </div>
-        <button class="btn-mini" id="btnProyecto" onclick="openProyectoSelector()" style="font-size:10px; padding:2px 7px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;">📁 Viaje ▾</button>
-        <span class="logo" style="font-size:8.5px; letter-spacing:0; font-weight:500; opacity:0.5; white-space:nowrap">Itinerario <span>✦</span> <!-- ← subir en 1 cada vez que se publica --> v1</span>
+        <div style="display:flex; align-items:center; gap:4px">
+          <button class="btn-mini" id="btnProyecto" onclick="openProyectoSelector()" style="font-size:10px; padding:2px 7px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;">📁 Viaje ▾</button>
+          <button class="dev-btn" onclick="openDevInfo()" title="Info técnica" style="font-size:9px">⚙</button>
+        </div>
       </div>
       <!-- Spine inline (días) -->
       <div class="spine-wrap" style="flex:1; min-width:0">
@@ -424,7 +426,7 @@ body.drag-locked .cal-resize-handle { display: none; }
         </div>
       </div>
       <div style="position:relative">
-        <button class="btn-mini" onclick="toggleMapaMenu('mapaCats', event)">📂 Ver ▾</button>
+        <button class="btn-mini" onclick="toggleMapaMenu('mapaCats', event)">📂 Filtro ▾</button>
         <div class="mapa-cats" id="mapaCats">
           <label><input type="checkbox" value="pendientes" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 📌 Lugares</label>
           <label><input type="checkbox" value="transporte" checked onchange="mapaFoco=null; _mapaPreservarVista=true; renderMapaGeneral()"> 🚆 Transporte</label>
@@ -434,7 +436,7 @@ body.drag-locked .cal-resize-handle { display: none; }
         </div>
       </div>
       <div style="position:relative">
-        <button class="btn-mini" onclick="toggleMapaMenu('mapaVerTodosMenu', event)">👁️ Ver todos ▾</button>
+        <button class="btn-mini" onclick="toggleMapaMenu('mapaVerTodosMenu', event)">👁️ Ver ▾</button>
         <div class="mapa-cats" id="mapaVerTodosMenu">
           <label><input type="checkbox" onchange="toggleFocoEventosPendientes()"> <span style="width:12px;height:12px;border-radius:50%;background:#ff7200;border:2px solid #fff;box-shadow:0 0 0 1px #ff7200;display:inline-block;flex-shrink:0"></span> Pendientes</label>
           <label><input type="checkbox" checked onchange="toggleMapaRestaurantes()"> <span style="width:11px;height:11px;background:#7c3aed;display:inline-block;flex-shrink:0;clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%)"></span> Restaurantes</label>
@@ -508,6 +510,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
+const APP_VERSION = 2; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
@@ -6365,7 +6368,7 @@ function sortTablaGastos(col, thEl) {
 function openDevInfo() {
   modalEsFormulario = false;
   modalOpen(`
-    <div class="modal-head"><span class="modal-title">🔧 Info técnica</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-head"><span class="modal-title">🔧 Info técnica <span style="text-transform:none; font-weight:400; font-size:12px; color:var(--ink-3)">v${APP_VERSION}</span></span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
       <div class="field">
         <label>Tu nombre <span style="text-transform:none;font-weight:400;font-size:11px;color:var(--ink-3)">(para la pantalla de conflictos sin conexión)</span></label>
