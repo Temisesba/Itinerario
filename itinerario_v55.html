@@ -512,7 +512,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 9; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 10; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
@@ -1984,7 +1984,8 @@ function renderPoolPanel() {
         ? eventosSorted.map(ev => renderEventoCard(ev, eventosDelDia.some(x=>x.id===ev.id))).join('')
         : `<div class="empty-mini">Sin eventos agregados.</div>`;
       return sectionWrap('eventos', '🎪 Eventos/Festivales', eventosSorted.length,
-        `<button class="btn-mini" onclick="openEventoForm(null,'${dia.id}')" title="Agregar evento">＋</button>`,
+        `<label class="btn-mini" title="Sacar foto o subir el cartel/programa — crea el evento solo" style="cursor:pointer">📷<input type="file" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="capturarProgramaNuevoEvento(this,'${dia.id}')"></label>
+         <button class="btn-mini" onclick="openEventoForm(null,'${dia.id}')" title="Agregar evento">＋</button>`,
         contenido);
     })(),
     mapa: sectionWrap('mapa', '🗺️ Mapa del día', 0, '',
@@ -3256,7 +3257,12 @@ function openEventoForm(id, diaId) {
     <div class="modal-body">
       <input type="hidden" id="fEventoId" value="${ev ? ev.id : ''}">
       <div class="field"><label>Nombre del evento</label><input type="text" id="fEventoNombre" value="${escHtml(ev ? ev.nombre : '')}" placeholder="Ej: 16° Festival del Globo"></div>
-      <div style="display:flex; gap:6px; margin:-6px 0 14px;">
+      <div class="field">
+        <label>Programa (PDF o foto) <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional — si lo subís, "Sugerencias IA" lo lee)</span></label>
+        <div id="fEventoProgramaActual" style="margin-bottom:6px; display:flex; gap:6px; flex-wrap:wrap">${ev && ev.programaUrl ? `<a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a>` : ''}</div>
+        ${ev ? `<input type="file" accept="application/pdf,image/*" capture="environment" onchange="subirProgramaEvento('${ev.id}', this)">` : `<div class="empty-mini">Guarda primero para poder subir el programa.</div>`}
+      </div>
+      <div style="display:flex; gap:6px; margin:6px 0 14px;">
         <input type="text" id="fEventoChatIA" placeholder="Corregir a la IA ej: No, el que es en Nago..." style="flex:1; padding:6px; font-size:12px; border:1px solid var(--line); border-radius:4px;">
         <button class="btn-mini ai" type="button" onclick="refinarEventoConIA(this)">🤖 Sugerencias IA</button>
       </div>
@@ -3282,14 +3288,9 @@ function openEventoForm(id, diaId) {
       <div class="field"><label>Ciudades involucradas</label><input type="text" id="fEventoCiudades" value="${escHtml(ev ? ev.ciudades : '')}" placeholder="Ej: CDMX, Teotihuacán"></div>
       <div class="field"><label>Página web</label><input type="url" id="fEventoWeb" value="${escHtml(ev ? ev.paginaWeb : '')}" placeholder="https://..."></div>
       <div class="field">
-        <label>Sedes / ubicaciones <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(si el evento cambia de lugar según el día)</span></label>
+        <label>Actividades <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(cada parte puntual del evento, con su propio lugar/hora)</span></label>
         <div id="sedesEventoHost"></div>
-        <button type="button" class="btn-mini" onclick="agregarSedeEvento()">＋ Agregar sede</button>
-      </div>
-      <div class="field">
-        <label>Programa (PDF o foto)</label>
-        <div id="fEventoProgramaActual" style="margin-bottom:6px; display:flex; gap:6px; flex-wrap:wrap">${ev && ev.programaUrl ? `<a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a> <button type="button" class="btn-mini ai" onclick="analizarProgramaEventoForm('${ev.id}')">🤖 Analizar programa con IA</button>` : ''}</div>
-        ${ev ? `<input type="file" accept="application/pdf,image/*" onchange="subirProgramaEvento('${ev.id}', this)">` : `<div class="empty-mini">Guarda primero para poder subir el programa.</div>`}
+        <button type="button" class="btn-mini" onclick="agregarSedeEvento()">＋ Agregar actividad</button>
       </div>
       <div class="field"><label>Notas</label><textarea id="fEventoNotas">${escHtml(ev ? ev.notas : '')}</textarea></div>
       <div class="modal-actions" style="justify-content:space-between">
@@ -3347,7 +3348,14 @@ async function refinarEventoConIA(btnEl) {
   showToast('IA Pensando...');
   const diaIniId = document.getElementById('fEventoDiaInicio').value;
   const dia = itinerario.dias.find(d => d.id === diaIniId);
-  const r = await postGAS({ action: 'sugerirUbicacionLocal', tipo: 'evento o festival', zona: dia ? dia.zona : '', nombre, promptUsuario: chatInput });
+  const idActual = document.getElementById('fEventoId').value;
+  const evActual = idActual ? itinerario.eventos.find(x => x.id === idActual) : null;
+  const body = { action: 'sugerirUbicacionLocal', tipo: 'evento o festival', zona: dia ? dia.zona : '', nombre, promptUsuario: chatInput };
+  // Si hay un programa (PDF/foto) adjunto, se manda junto — así la IA corrige/completa todo
+  // basándose en el documento real, no solo en lo que ya sabía.
+  if (currentEventoProgramaB64) body.programaBase64 = currentEventoProgramaB64;
+  else if (evActual && evActual.programaFileId) body.programaFileId = evActual.programaFileId;
+  const r = await postGAS(body);
   if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = textoOriginal; }
 
   if (r.ok && r.data) {
@@ -3412,107 +3420,35 @@ async function subirProgramaEvento(id, input) {
       if (ev) { ev.programaUrl = r.url; ev.programaFileId = r.fileId || ''; }
       await postGAS({ action: 'updateEvento', id, programaUrl: r.url, programaFileId: r.fileId || '' });
       const box = document.getElementById('fEventoProgramaActual');
-      if (box) box.innerHTML = `<a href="${r.url}" target="_blank" class="btn-mini">📄 Ver programa</a> <button type="button" class="btn-mini ai" onclick="analizarProgramaEventoForm('${id}')">🤖 Analizar programa con IA</button>`;
+      if (box) box.innerHTML = `<a href="${r.url}" target="_blank" class="btn-mini">📄 Ver programa</a>`;
       showToast('Programa subido ✦');
     } else showToast(r.error || 'Error al subir');
   } catch (e) { showToast('Error al subir el programa'); }
   input.value = '';
 }
-async function analizarProgramaEventoForm(id) {
-  const ev = itinerario.eventos.find(x => x.id === id);
-  // Igual que en Gastos: si no tenemos el base64 en memoria de esta sesión, releemos el archivo de Drive
-  // por su fileId — así se puede analizar cuantas veces se quiera, no solo justo después de subirlo.
-  if (!currentEventoProgramaB64 && !(ev && ev.programaFileId)) { showToast('Este programa no tiene un archivo analizable — vuelve a subirlo'); return; }
-  showToast('Leyendo el programa…');
-  const r = await postGAS({
-    action: 'analizarProgramaEvento',
-    base64: currentEventoProgramaB64 || undefined,
-    fileId: currentEventoProgramaB64 ? undefined : (ev ? ev.programaFileId : ''),
-    nombreEvento: ev ? ev.nombre : '',
-    fechaInicio: (document.getElementById('fEventoFechaInicio')||{}).value || (ev ? ev.fechaInicioReal : ''),
-    fechaFin: (document.getElementById('fEventoFechaFin')||{}).value || (ev ? ev.fechaFinReal : '')
-  });
-  if (!r.ok || !r.data || !r.data.actividades) { showToast(r.error || 'No se pudo leer el programa'); return; }
-  if (!r.data.actividades.length) { showToast('No se encontraron actividades con fecha/hora en el programa'); return; }
-  abrirRevisionProgramaEvento(r.data.actividades);
-}
-
-// ── Ventana flotante para revisar las actividades extraídas del programa (mismo patrón que transportes sugeridos) ──
-let _revisionProgramaEvento = null;
-function abrirRevisionProgramaEvento(actividades) {
-  _revisionProgramaEvento = { items: actividades.map(a => ({ ...a, incluir: true })) };
-  renderRevisionProgramaEvento();
-}
-function renderRevisionProgramaEvento() {
-  const { items } = _revisionProgramaEvento;
-  let panel = document.getElementById('revProgramaPanel');
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = 'revProgramaPanel';
-    panel.style.cssText = 'position:fixed; top:70px; right:24px; width:360px; max-width:calc(100vw - 32px); max-height:80vh; display:flex; flex-direction:column; background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 8px 32px rgba(0,0,0,.28); z-index:1500;';
-    document.body.appendChild(panel);
-  }
-  const dias = diasFiltrados();
-  panel.innerHTML = `
-    <div id="revProgramaHeader" style="padding:12px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; cursor:move; background:var(--paper-2); border-radius:14px 14px 0 0; flex-shrink:0">
-      <span style="font-family:var(--font-serif); font-size:15px">🤖 Actividades del programa</span>
-      <button class="modal-close" onclick="cerrarRevisionProgramaEvento()">✕</button>
-    </div>
-    <div style="padding:14px; overflow-y:auto">
-      <div class="visor-row" style="margin-bottom:10px; color:var(--ink-2); font-size:11.5px">Arrastra desde el título para mover esta ventana. Desmarca lo que no quieras crear — si la fecha coincide con un día de tu viaje se agenda ahí directo, si no va a "Para después" para que la arrastres cuando quieras.</div>
-      ${items.map((it, i) => {
-        const diaMatch = dias.find(d => d.fecha === it.fecha);
-        return `<div style="margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--line)">
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
-            <input type="checkbox" ${it.incluir ? 'checked' : ''} onchange="revProgramaToggleIncluir(${i}, this.checked)">
-            <input type="text" value="${escHtml(it.nombre||'')}" oninput="revProgramaEditar(${i},'nombre',this.value)" style="flex:1; border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-size:12.5px; font-weight:600">
-          </label>
-          <div style="margin-left:26px; margin-top:4px; display:flex; gap:5px">
-            <input type="date" value="${it.fecha||''}" onchange="revProgramaEditar(${i},'fecha',this.value); renderRevisionProgramaEvento()" style="border:1px solid var(--line); border-radius:6px; padding:3px 5px; font-size:11.5px">
-            <input type="time" value="${it.hora||''}" oninput="revProgramaEditar(${i},'hora',this.value)" style="border:1px solid var(--line); border-radius:6px; padding:3px 5px; font-size:11.5px">
-          </div>
-          <div style="margin-left:26px; margin-top:3px; font-size:10.5px; color:${diaMatch ? '#15803d' : 'var(--ink-3)'}">${diaMatch ? '📅 Coincide con ' + escHtml(diaMatch.fecha) + ' de tu viaje' : '📋 Sin coincidencia — irá a "Para después"'}</div>
-          ${it.notas ? `<div style="margin-left:26px; margin-top:2px; font-size:10.5px; color:var(--ink-3)">${escHtml(it.notas)}</div>` : ''}
-        </div>`;
-      }).join('')}
-      <div class="modal-actions" style="justify-content:flex-end; margin-top:10px">
-        <button class="btn-cancel" onclick="cerrarRevisionProgramaEvento()">Cancelar</button>
-        <button class="btn-save" onclick="crearActividadesPrograma()">✅ Crear seleccionadas</button>
-      </div>
-    </div>`;
-  makeDraggable(panel, document.getElementById('revProgramaHeader'));
-}
-function revProgramaToggleIncluir(i, val) { _revisionProgramaEvento.items[i].incluir = val; }
-function revProgramaEditar(i, campo, val) { _revisionProgramaEvento.items[i][campo] = val; }
-function cerrarRevisionProgramaEvento() {
-  const panel = document.getElementById('revProgramaPanel');
-  if (panel) panel.remove();
-  _revisionProgramaEvento = null;
-}
-async function crearActividadesPrograma() {
-  const { items } = _revisionProgramaEvento;
-  const seleccion = items.filter(it => it.incluir && it.nombre);
-  if (!seleccion.length) { cerrarRevisionProgramaEvento(); return; }
-  const dias = diasFiltrados();
-  showToast(`Creando ${seleccion.length} actividad${seleccion.length > 1 ? 'es' : ''}…`);
-  for (const it of seleccion) {
-    const diaMatch = dias.find(d => d.fecha === it.fecha);
-    const horaInicio = diaMatch ? (it.hora || '') : '';
-    const iniMin = horaInicio ? hhmmToMin(horaInicio) : null;
-    const horaFin = iniMin !== null ? minToHHMM(Math.min(1439, iniMin + 60)) : '';
-    await postGAS({
-      action: 'savePendiente',
-      nombre: it.nombre,
-      diaId: diaMatch ? diaMatch.id : '',
-      horaInicio, horaFin,
-      notasPrevias: [it.notas, (!diaMatch && (it.fecha || it.hora)) ? `Del programa: ${it.fecha || ''} ${it.hora || ''}`.trim() : ''].filter(Boolean).join(' · '),
-      proyecto: currentProyecto,
-      reservado: 'pendiente'
-    });
-  }
-  cerrarRevisionProgramaEvento();
-  showToast('Actividades creadas ✦');
-  await loadItinerario();
+// Atajo: sacar/subir foto de un cartel o el PDF del programa y que arme el evento solo, sin
+// tener que escribirle un nombre primero — crea el evento, sube el archivo, y le pide a la IA
+// que lo lea y complete todo (nombre, fechas, actividades).
+async function capturarProgramaNuevoEvento(input, diaId) {
+  const file = input.files[0]; if (!file) return;
+  input.value = '';
+  showToast('Creando evento…');
+  const r = await postGAS({ action: 'saveEvento', nombre: 'Nuevo evento', diaIdInicio: diaId || '', proyecto: currentProyecto });
+  if (!r.ok || !r.id) { showToast(r.error || 'No se pudo crear el evento'); return; }
+  showToast('Subiendo foto/PDF…');
+  try {
+    const esImagen = file.type.startsWith('image/');
+    const dataUrl = esImagen ? await resizeImage(file, 1600, 0.78) : await leerArchivoBase64(file);
+    const subida = await postGAS({ action: 'subirFoto', base64: dataUrl, nombre: file.name });
+    if (!subida.ok) { showToast(subida.error || 'Error al subir'); await loadItinerario(); return; }
+    await postGAS({ action: 'updateEvento', id: r.id, programaUrl: subida.url, programaFileId: subida.fileId || '' });
+    await loadItinerario();
+    openEventoForm(r.id);
+    currentEventoProgramaB64 = dataUrl; // openEventoForm lo resetea a null — lo ponemos después para que la IA lo use ya
+    const box = document.getElementById('fEventoProgramaActual');
+    if (box) box.innerHTML = `<a href="${subida.url}" target="_blank" class="btn-mini">📄 Ver programa</a>`;
+    await refinarEventoConIA();
+  } catch (e) { showToast('Error al leer el archivo'); await loadItinerario(); }
 }
 function abrirVisorEvento(id) {
   modalEsFormulario = false;
@@ -3530,7 +3466,7 @@ function abrirVisorEvento(id) {
       ${ev.ciudades ? `<div class="visor-row">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
       ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>🎪 Actividades</b><br>${ev.sedes.map(s => `${s.nombre ? `<b>${escHtml(s.nombre)}</b> — ` : ''}${escHtml(diaLabel(s.diaId) || 'Sin día')}${s.horaInicio ? ` · 🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''}` : ''}${s.direccion ? ` — ${escHtml(s.direccion)}` : ''}`).join('<br>')}</div>` : ''}
-      ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a> <button type="button" class="btn-mini ai" onclick="analizarProgramaEventoForm('${ev.id}')">🤖 Analizar programa con IA</button></div>` : ''}
+      ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a></div>` : ''}
       ${ev.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(ev.notas)}</div>` : ''}
       ${ev.sugerenciasIA ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(ev.sugerenciasIA)}</div>` : ''}
       ${gastoVinculadoHtml('evento', ev.id, JSON.stringify({nombre:ev.nombre}))}
@@ -5048,6 +4984,7 @@ function openProyectoSelector() {
   modalOpen(`
     <div class="modal-head"><span class="modal-title">Tus viajes</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body" id="proyectoListBody">
+      <div class="empty-mini" style="margin-bottom:10px; display:flex; align-items:center; gap:6px">👤 ${escHtml(quienSoy() || 'Sin nombre puesto')} <a href="#" onclick="event.preventDefault(); preguntarQuienSoy(true)" style="text-decoration:underline">Cambiar</a></div>
       ${proyectos.length ? proyectos.map((p, i) => `
         <div class="pool-item-mini">
           <span class="handle" style="cursor:pointer" data-pick="${i}">${p === currentProyecto ? '✓' : '📁'}</span>
