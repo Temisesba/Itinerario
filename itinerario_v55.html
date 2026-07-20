@@ -381,10 +381,8 @@ body.drag-locked .cal-resize-handle { display: none; }
           <span class="logo" style="font-size:21px; letter-spacing:-0.5px; font-weight:600">Itinerario <span>✦</span></span>
           <button id="btnConexion" onclick="sincronizarPendientes()" style="display:none; border:none; cursor:pointer; font-size:10px; padding:2px 8px; white-space:nowrap; background:#fef3c7; border-radius:10px; color:#92400e"></button>
         </div>
-        <div style="display:flex; align-items:center; gap:4px">
-          <button class="btn-mini" id="btnProyecto" onclick="openProyectoSelector()" style="font-size:10px; padding:2px 7px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;">📁 Viaje ▾</button>
-          <button class="dev-btn" onclick="openDevInfo()" title="Info técnica" style="font-size:9px">⚙</button>
-        </div>
+        <button class="btn-mini" id="btnProyecto" onclick="openProyectoSelector()" style="font-size:10px; padding:2px 7px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;">📁 Viaje ▾</button>
+        <button class="dev-btn" onclick="openDevInfo()" title="Info técnica" style="font-size:9px; text-align:left">⚙</button>
       </div>
       <!-- Spine inline (días) -->
       <div class="spine-wrap" style="flex:1; min-width:0">
@@ -443,7 +441,7 @@ body.drag-locked .cal-resize-handle { display: none; }
           <label><input type="checkbox" onchange="toggleFocoHoteles()"> <span style="width:10px;height:10px;background:#0c5f8c;border:1.5px solid #fff;box-shadow:0 0 0 1px #0c5f8c;display:inline-block;flex-shrink:0;transform:rotate(45deg)"></span> Hoteles</label>
         </div>
       </div>
-      <button class="btn-mini" id="btnToggleEtiquetas" onclick="toggleEtiquetasMapa()">🏷️ Ocultar etiquetas</button>
+      <button class="btn-mini" id="btnToggleEtiquetas" onclick="toggleEtiquetasMapa()">👁‍🗨 Etiquetas</button>
     </div>
     <div id="mapBox"></div>
     <div class="legend" style="position:absolute;bottom:8px;left:14px;z-index:1100;background:rgba(245,243,239,0.92);padding:5px 10px;border-radius:8px;border:1px solid var(--line);font-size:11px;display:flex;gap:12px;flex-wrap:wrap;">
@@ -510,7 +508,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 2; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 3; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
@@ -3187,6 +3185,10 @@ async function refinarEventoConIA(btnEl) {
       renderSedesEditor();
     }
     if (r.data.sugerenciasIA) document.getElementById('fEventoSugIA').value = r.data.sugerenciasIA;
+    if (r.data.fechaInicioReal) document.getElementById('fEventoFechaInicio').value = r.data.fechaInicioReal;
+    if (r.data.fechaFinReal) document.getElementById('fEventoFechaFin').value = r.data.fechaFinReal;
+    if (r.data.categoria) document.getElementById('fEventoCategoria').value = r.data.categoria;
+    if (r.data.ciudades) document.getElementById('fEventoCiudades').value = r.data.ciudades;
     document.getElementById('fEventoChatIA').value = '';
     showToast('✨ Actualizado con IA');
   } else {
@@ -3686,7 +3688,7 @@ function toggleMapaMenu(id, e) {
 function toggleEtiquetasMapa() {
   mapaEtiquetasVisibles = !mapaEtiquetasVisibles;
   const btn = document.getElementById('btnToggleEtiquetas');
-  if (btn) btn.textContent = mapaEtiquetasVisibles ? '🏷️ Ocultar etiquetas' : '🏷️ Mostrar etiquetas';
+  if (btn) btn.textContent = mapaEtiquetasVisibles ? '👁‍🗨 Etiquetas' : '🚫 Etiquetas';
   // Solo ocultar/mostrar las etiquetas existentes sin re-renderizar todo el mapa
   const display = mapaEtiquetasVisibles ? '' : 'none';
   document.querySelectorAll('.leaflet-tooltip, .dia-label-mapa').forEach(el => { el.style.display = display; });
