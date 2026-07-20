@@ -131,15 +131,17 @@ body.drag-locked .cal-resize-handle { display: none; }
 .cal-block.realizado .cbtitle { text-decoration: line-through; }
 .cbnota { font-size: 9.5px; opacity: 0.8; margin-top: 1px; line-height: 1.25; }
 .cal-block.dragging { opacity: 0.75; z-index: 20; box-shadow: 0 4px 14px rgba(0,0,0,0.18); cursor: grabbing; }
-.drag-arm-fill { position: absolute; left: 0; bottom: 0; height: 4px; width: 0; background: rgba(255,255,255,0.9); transition: width 2.2s linear; border-radius: 0 0 6px 6px; pointer-events: none; z-index: 2; }
-.drop-confirm { position: absolute; left: 50%; bottom: -38px; transform: translateX(-50%); z-index: 50; display: flex; gap: 6px; background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 4px 6px; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+.drag-arm-fill { position: absolute; left: 0; bottom: 0; height: 4px; width: 0; background: rgba(255,255,255,0.9); transition: width 2s linear; border-radius: 0 0 6px 6px; pointer-events: none; z-index: 2; }
+.drop-confirm { position: fixed; transform: translateX(-50%); z-index: 300; display: flex; gap: 6px; background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 4px 6px; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
 .drop-confirm button { border: none; background: var(--paper-2); font-size: 16px; line-height: 1; cursor: pointer; padding: 4px 10px; border-radius: 14px; }
 .drop-confirm button.ok { background: var(--ok-light); color: #0d5c2a; }
 .drop-confirm button.cancel { background: #fee2e2; color: #b91c1c; }
 .cal-block .cbtitle { font-weight: 500; line-height: 1.25; }
 .cal-block .cbtime { font-size: 10px; opacity: 0.85; }
-.cal-resize-handle { position: absolute; left: 0; right: 0; height: 9px; cursor: ns-resize; }
+.cal-resize-handle { position: absolute; right: 2px; width: 22px; height: 12px; cursor: ns-resize; }
 .cal-resize-handle.top { top: 0; } .cal-resize-handle.bottom { bottom: 0; }
+.cal-resize-handle::after { content:''; position:absolute; right:4px; width:14px; height:3px; border-radius:2px; background:currentColor; opacity:0.35; }
+.cal-resize-handle.top::after { top:2px; } .cal-resize-handle.bottom::after { bottom:2px; }
 
 /* Vista semanal */
 .semana-wrap { padding: 12px 18px 40px; height: calc(100vh - 56px); overflow-y: auto; }
@@ -509,7 +511,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 5; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 6; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
@@ -4278,17 +4280,18 @@ function renderSemana() {
       <div class="semana-group"><button class="btn-mini" onclick="adjustWeekCount(-1)">－</button><span class="cal-hint" style="margin:0">${count} día${count > 1 ? 's' : ''}</span><button class="btn-mini" onclick="adjustWeekCount(1)">＋</button></div>
       <div class="semana-group"><button class="btn-mini" onclick="adjustZoom(-1)">－</button><span class="cal-hint" style="margin:0">Zoom ${zoomPct()}</span><button class="btn-mini" onclick="adjustZoom(1)">＋</button></div>
       <button class="btn-mini" id="btnLockDrag" onclick="toggleDragLock()" style="font-weight:700">${dragBloqueado ? '🔒 Arrastre bloqueado' : '🔓 Arrastre libre'}</button>
-      <span class="cal-hint" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:10.5px">
-        <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#fff3c4; border:1px solid #e8c44a; display:inline-block"></span>⭐ Prioritario</span>
-        <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:var(--route-light); border:1px solid var(--route); display:inline-block"></span>Lugar</span>
-        <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#dbeafe; border:1px solid #93c5fd; display:inline-block"></span>Transporte</span>
-        <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#dcf5e3; border:1px solid #7fc99a; display:inline-block"></span>🍳 Des. &nbsp;🍜 Com. &nbsp;🍷 Cena &nbsp;🍪 Col.</span>
-      </span>
     </div>
       <div class="week-scroll" id="weekScroll">
         <div class="week-gutter"><div class="week-gutter-header" id="weekGutterHdr"></div><div class="week-gutter-labels" style="position:relative; height:${1440 * px}px">${hourLabels}</div></div>
         <div class="week-cols">${cols}</div>
-      </div>`;
+      </div>
+      <span class="cal-hint" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:10.5px; margin-top:6px">
+        <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#fff3c4; border:1px solid #e8c44a; display:inline-block"></span>⭐ Prioritario</span>
+        <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:var(--route-light); border:1px solid var(--route); display:inline-block"></span>Lugar</span>
+        <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#dbeafe; border:1px solid #93c5fd; display:inline-block"></span>Transporte</span>
+        <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#f3e8ff; border:1px solid #c4b5fd; display:inline-block"></span>🎪 Evento</span>
+        <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#dcf5e3; border:1px solid #7fc99a; display:inline-block"></span>🍳 Des. &nbsp;🍜 Com. &nbsp;🍷 Cena &nbsp;🍪 Col.</span>
+      </span>`;
 
   // Sincronizar la altura del spacer del gutter con la del header real de columna
   // (usa la más alta de todas las columnas visibles — si una tiene hotel/relevo y otra no,
@@ -4297,8 +4300,13 @@ function renderSemana() {
     const hdrs = [...host.querySelectorAll('.week-col-header')];
     const gHdr = document.getElementById('weekGutterHdr');
     if (hdrs.length && gHdr) {
+      // Igualar TODOS los encabezados de columna a la altura del más alto (no solo el
+      // espaciador del gutter) — si no, la columna con encabezado más corto arranca su
+      // grilla más arriba que las demás y las líneas de hora quedan desalineadas entre sí.
+      hdrs.forEach(h => { h.style.minHeight = ''; });
       const maxH = Math.max(...hdrs.map(h => h.getBoundingClientRect().height));
       gHdr.style.height = maxH + 'px';
+      hdrs.forEach(h => { h.style.minHeight = maxH + 'px'; });
     }
   };
   requestAnimationFrame(() => { sincronizarGutter(); requestAnimationFrame(sincronizarGutter); });
@@ -4403,7 +4411,7 @@ function startWeekMove(e, b, el, origDiaId) {
   e.preventDefault();
   const startY = e.clientY, startX = e.clientX;
   const origIni = b.ini, dur = b.fin - b.ini;
-  const HOLD_MS = 2200;
+  const HOLD_MS = 2000;
 
   const fill = document.createElement('div');
   fill.className = 'drag-arm-fill';
@@ -4502,7 +4510,11 @@ function mostrarConfirmarDrop(el, onOk, onCancel) {
   const pill = document.createElement('div');
   pill.className = 'drop-confirm';
   pill.innerHTML = `<button type="button" class="ok" title="Dejar acá">✓</button><button type="button" class="cancel" title="Volver a su lugar">✗</button>`;
-  el.appendChild(pill);
+  // Aparte en el body (no adentro del bloque) porque el bloque tiene overflow:hidden y se recortaba.
+  document.body.appendChild(pill);
+  const r = el.getBoundingClientRect();
+  pill.style.left = (r.left + r.width / 2) + 'px';
+  pill.style.top = Math.min(window.innerHeight - 40, r.bottom + 6) + 'px';
   const limpiar = () => { pill.remove(); el.classList.remove('dragging'); };
   const timer = setTimeout(() => { limpiar(); onCancel(); }, 8000);
   pill.querySelector('.ok').addEventListener('click', (ev) => { ev.stopPropagation(); clearTimeout(timer); limpiar(); onOk(); });
