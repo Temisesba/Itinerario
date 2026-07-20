@@ -124,6 +124,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 .cal-block.pendiente { background: var(--route-light); border-color: #eab98a; color: #8a3a0c; }
 .cal-block.transporte { background: var(--sky-light); border-color: #9cc6dc; color: #0c4a68; }
 .cal-block.comida { background: #dcf5e3; border-color: #7fc99a; color: #14532d; }
+.cal-block.evento { background: #f3e8ff; border-color: #c4b5fd; color: #5b21b6; }
 .cal-block.prioritaria { background: #fff3c4; border-color: #e8c44a; color: #7a5d00; border-width: 2px; }
 .cal-block.comida.prioritaria { background: #c5ecd1; border-color: #e8c44a; color: #7a5d00; border-width: 3px; }
 .cal-block.realizado { background: #e9e9e6; border-color: #c7c7c0; color: #8a8a82; opacity: 0.75; }
@@ -508,7 +509,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 3; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 4; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
@@ -1577,6 +1578,13 @@ function getCalendarBlocks(diaId) {
     const emoji = tipoEmoji(t.tipo);
     blocks.push({ id: t.id, kind: 'transporte', title: `${emoji} 📅${icono} ` + (TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''), ini, fin: Math.max(fin, ini + 15) });
   });
+  itinerario.eventos.forEach(ev => {
+    if (ev.diaIdInicio !== diaId) return;
+    const ini = hhmmToMin(ev.horaInicio), fin = hhmmToMin(ev.horaFin);
+    if (ini === null || fin === null) return;
+    const icono = RESERVADO_ICON[ev.reservado || 'pendiente'];
+    blocks.push({ id: ev.id, kind: 'evento', title: `🎪${icono} ` + (ev.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+  });
   return blocks;
 }
 
@@ -1732,6 +1740,12 @@ async function unscheduleBlock(b, fullyUnassign) {
     if (fullyUnassign) p.diaId = '';
     await postGAS({ action: 'updatePendiente', id: b.id, horaInicio: '', horaFin: '', diaId: fullyUnassign ? '' : p.diaId });
     showToast(fullyUnassign ? 'Movido a "para después" ✦' : 'Sin hora, sigue hoy ✦');
+  } else if (b.kind === 'evento') {
+    const ev = itinerario.eventos.find(x => x.id === b.id); if (!ev) return;
+    ev.horaInicio = ''; ev.horaFin = '';
+    if (fullyUnassign) { ev.diaIdInicio = ''; ev.diaIdFin = ''; }
+    await postGAS({ action: 'updateEvento', id: b.id, horaInicio: '', horaFin: '', diaIdInicio: fullyUnassign ? '' : ev.diaIdInicio, diaIdFin: fullyUnassign ? '' : ev.diaIdFin });
+    showToast(fullyUnassign ? 'Movido a "para después" ✦' : 'Sin hora, sigue hoy ✦');
   } else {
     const t = itinerario.transporte.find(x => x.id === b.id); if (!t) return;
     const idx = t.opcionElegida || 0;
@@ -1782,6 +1796,18 @@ async function persistBlockTime(b, iniMin, finMin, diaId) {
       if (p) { p.horaInicio = horaInicio; p.horaFin = horaFin; if (diaId) p.diaId = diaId; }
       const body = { action: 'updatePendiente', id: b.id, horaInicio, horaFin };
       if (diaId) body.diaId = diaId;
+      r = await postGAS(body);
+    } else if (b.kind === 'evento') {
+      const ev = itinerario.eventos.find(x => x.id === b.id);
+      if (!ev) return;
+      ev.horaInicio = horaInicio; ev.horaFin = horaFin;
+      const body = { action: 'updateEvento', id: b.id, horaInicio, horaFin };
+      if (diaId) {
+        // Si no era multi-día (o no tenía fin), lo movemos entero al nuevo día.
+        if (!ev.diaIdFin || ev.diaIdFin === ev.diaIdInicio) body.diaIdFin = diaId;
+        ev.diaIdInicio = diaId;
+        body.diaIdInicio = diaId;
+      }
       r = await postGAS(body);
     } else {
       const t = itinerario.transporte.find(x => x.id === b.id);
@@ -1983,6 +2009,15 @@ function renderPoolPanel() {
     el.addEventListener('pointerdown', (e) => {
       if (e.target.closest('.icon-btn') || e.target.closest('.opcion-pill') || e.target.closest('.toggle-reservado') || e.target.closest('.otros-modos-toggle') || e.target.closest('.otros-modos-panel') || e.target.closest('.horarios-toggle-btn')) return;
       startTransporteDrag(e, t);
+    });
+  });
+
+  itinerario.eventos.forEach(ev => {
+    const el = document.getElementById('evento-' + ev.id);
+    if (!el) return;
+    el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.icon-btn')) return;
+      startEventoDrag(e, ev);
     });
   });
 }
@@ -2359,6 +2394,83 @@ async function schedulePendiente(id, diaId, iniMin, finMin) {
     p.horaFin = ''; 
   }
   await postGAS({ action: 'updatePendiente', id, diaId, horaInicio: p.horaInicio, horaFin: p.horaFin });
+  showToast('Ubicado ✦');
+  renderSpine(); renderSemana(); renderPoolPanel();
+}
+
+// ── Arrastrar un evento/festival desde el panel lateral al calendario, para ponerle hora ──
+function startEventoDrag(e, ev) {
+  e.preventDefault();
+  const startX = e.clientX, startY = e.clientY;
+  let moved = false;
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  ghost.textContent = ev.nombre || 'Mover';
+  document.body.appendChild(ghost);
+  positionGhost(ghost, e.clientX, e.clientY);
+  const dur = 60;
+
+  function clearHighlights() {
+    document.querySelectorAll('.day-chip').forEach(c => c.classList.remove('drop-hover'));
+    document.querySelectorAll('.week-col').forEach(c => c.classList.remove('drop-target'));
+    hideDragPreview();
+  }
+  function timeForCol(col, e2) {
+    const body = col.querySelector('.week-col-body');
+    if (!body) return null;
+    const rect = body.getBoundingClientRect();
+    const px = pxPerMin();
+    return snap15(Math.max(0, Math.min(1380, (e2.clientY - rect.top) / px)));
+  }
+  function onMove(e2) {
+    if (Math.abs(e2.clientX - startX) > 4 || Math.abs(e2.clientY - startY) > 4) moved = true;
+    positionGhost(ghost, e2.clientX, e2.clientY);
+    clearHighlights();
+    const col = elFrom(e2, '.week-col');
+    if (col) {
+      col.classList.add('drop-target');
+      const iniMin = timeForCol(col, e2);
+      if (iniMin !== null) { showDragPreview(col, iniMin, dur); ghost.textContent = minToHHMM(iniMin) + '–' + minToHHMM(iniMin + dur); }
+      return;
+    }
+    const chip = elFrom(e2, '.day-chip');
+    if (chip) { chip.classList.add('drop-hover'); ghost.textContent = ev.nombre || 'Mover'; }
+  }
+  async function onUp(e2) {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    ghost.remove();
+    clearHighlights();
+    if (!moved) { abrirVisor('evento', ev.id); return; }
+    const col = elFrom(e2, '.week-col');
+    if (col) {
+      const diaId = col.dataset.dia;
+      const iniMin = timeForCol(col, e2);
+      if (iniMin === null) return;
+      await scheduleEvento(ev.id, diaId, iniMin, iniMin + dur);
+      return;
+    }
+    const chip = elFrom(e2, '.day-chip');
+    if (chip) { await scheduleEvento(ev.id, chip.dataset.dia, null, null); return; }
+  }
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+}
+async function scheduleEvento(id, diaId, iniMin, finMin) {
+  const ev = itinerario.eventos.find(x => x.id === id); if (!ev) return;
+  const eraMonoDia = !ev.diaIdFin || ev.diaIdFin === ev.diaIdInicio;
+  ev.diaIdInicio = diaId;
+  if (eraMonoDia) ev.diaIdFin = diaId;
+  if (iniMin !== null) {
+    ev.horaInicio = minToHHMM(iniMin);
+    ev.horaFin = minToHHMM(finMin);
+  } else {
+    ev.horaInicio = '';
+    ev.horaFin = '';
+  }
+  const body = { action: 'updateEvento', id, diaIdInicio: diaId, horaInicio: ev.horaInicio, horaFin: ev.horaFin };
+  if (eraMonoDia) body.diaIdFin = diaId;
+  await postGAS(body);
   showToast('Ubicado ✦');
   renderSpine(); renderSemana(); renderPoolPanel();
 }
@@ -3025,7 +3137,7 @@ function renderEventoCard(ev, esDelDia) {
   const gCotsE = gastosE.filter(g => g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
   const rangoReal = ev.fechaInicioReal ? `${escHtml(ev.fechaInicioReal)}${ev.fechaFinReal && ev.fechaFinReal !== ev.fechaInicioReal ? ' → ' + escHtml(ev.fechaFinReal) : ''}` : '';
   const asignado = ev.diaIdInicio ? diaLabel(ev.diaIdInicio) + (ev.diaIdFin && ev.diaIdFin !== ev.diaIdInicio ? ' a ' + diaLabel(ev.diaIdFin) : '') : '';
-  return `<div style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esDelDia ? 'border-color:var(--route)' : ''}">
+  return `<div id="evento-${ev.id}" style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esDelDia ? 'border-color:var(--route)' : ''}; ${ev.diaIdInicio ? 'cursor:grab' : ''}">
     <div style="display:flex; align-items:center; gap:5px; padding:5px 8px; background:${esDelDia ? 'var(--route-light)' : 'var(--paper-2)'}">
       <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorEvento('${ev.id}')">🎪 ${escHtml(ev.nombre || '(sin nombre)')}</span>
       <button class="icon-btn" onclick="openEventoForm('${ev.id}')" title="Editar">✏️</button>
@@ -3033,7 +3145,7 @@ function renderEventoCard(ev, esDelDia) {
     </div>
     <div style="padding:4px 8px; font-size:11.5px; color:var(--ink-2)">
       ${rangoReal ? `<div style="font-size:12px">📅 ${rangoReal}</div>` : ''}
-      ${asignado ? `<div style="font-size:11px; color:var(--route)">✅ Asignado: ${escHtml(asignado)}</div>` : `<div style="font-size:11px; color:var(--ink-3)">⬜ Sin día asignado todavía</div>`}
+      ${asignado ? `<div style="font-size:11px; color:var(--route)">✅ Asignado: ${escHtml(asignado)}${ev.horaInicio ? ` · 🕐 ${escHtml(ev.horaInicio)}–${escHtml(ev.horaFin||'')}` : ''}</div>` : `<div style="font-size:11px; color:var(--ink-3)">⬜ Sin día asignado todavía</div>`}
       ${ev.ciudades ? `<div style="font-size:11px; color:var(--ink-3)">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.categoria ? `<div style="font-size:11px; color:var(--ink-3)">🏷️ ${escHtml(ev.categoria)}</div>` : ''}
       ${(gRealesE>0||gCotsE>0) ? `<div style="font-size:10.5px; margin-top:2px">${gRealesE>0?`<span style="color:#15803d;font-weight:600">💴 ¥${gRealesE.toLocaleString()}</span>`:''}${gRealesE>0&&gCotsE>0?' · ':''}${gCotsE>0?`<span style="color:#b85c8a;font-weight:600">💬 ¥${gCotsE.toLocaleString()}</span>`:''}</div>` : ''}
@@ -3100,6 +3212,11 @@ function openEventoForm(id, diaId) {
         <div class="field"><label>Día asignado — fin <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><select id="fEventoDiaFin">${diaOptionsFin}</select></div>
       </div>
       <div class="row-2">
+        <div class="field"><label>Hora inicio <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><input type="time" id="fEventoHoraIni" value="${ev ? ev.horaInicio||'' : ''}"></div>
+        <div class="field"><label>Hora fin <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><input type="time" id="fEventoHoraFin" value="${ev ? ev.horaFin||'' : ''}"></div>
+      </div>
+      <div class="field" style="margin-top:-6px; margin-bottom:14px; font-size:11px; color:var(--ink-3)">Si le pones hora, aparece como bloque en el calendario del "Día asignado — inicio" y lo podés arrastrar ahí como cualquier otro.</div>
+      <div class="row-2">
         <div class="field"><label>Categoría</label>
           <select id="fEventoCategoria">
             <option value="">— Selecciona —</option>
@@ -3146,6 +3263,8 @@ async function guardarEvento() {
     fechaFinReal: document.getElementById('fEventoFechaFin').value,
     diaIdInicio: document.getElementById('fEventoDiaInicio').value,
     diaIdFin: document.getElementById('fEventoDiaFin').value,
+    horaInicio: document.getElementById('fEventoHoraIni').value,
+    horaFin: document.getElementById('fEventoHoraFin').value,
     categoria: document.getElementById('fEventoCategoria').value,
     reservado: getReservadoVal('fEventoReservado'),
     ciudades: document.getElementById('fEventoCiudades').value,
