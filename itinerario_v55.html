@@ -403,8 +403,9 @@ body.drag-locked .cal-resize-handle { display: none; }
   <div class="map-wrap" id="viewMapa" style="display:none">
     <div class="mapa-controls">
       <label style="display:flex; align-items:center; gap:5px; font-size:12px; cursor:pointer; border:1px solid var(--line); border-radius:20px; padding:6px 12px; background:#fff;">
-        <input type="checkbox" id="mapaVerTodos" checked onchange="mapaFoco=null; renderMapaGeneral(); renderSpine();"> Ver todos los días
+        <input type="checkbox" id="mapaVerTodos" checked onchange="onToggleMapaVerTodos(this)"> Ver todos los días
       </label>
+      <button class="btn-mini" id="btnMapaMultiSel" onclick="toggleMapaMultiSel()" title="Elegir más de un día a la vez en el mapa">🗂 Varios días</button>
       <div style="position:relative">
         <button class="btn-mini" onclick="toggleMapaCatsMenu(event)">📂 Categorías ▾</button>
         <div class="mapa-cats" id="mapaCats">
@@ -575,6 +576,8 @@ let currentProyecto = null; // null = todavía no se ha decidido; '' = "Sin proy
 let leafletMap = null;
 let mapaModoPendientes = false;
 let mapaHotelesMode = false; // cuando true, todos los hoteles se ven en el mapa
+let mapaDiasSel = new Set(); // días elegidos a mano en el mapa (cuando "Ver todos" está desmarcado)
+let mapaMultiSelActivo = false; // true = clic en chip suma/quita día; false = clic reemplaza (modo clásico)
 let mapaRestoMode = true;    // restaurantes visibles por defecto
 let _mapaPreservarVista = false;
 let _gastosSumaSel = new Set(); // IDs de gastos seleccionados para sumar (cache de sesión) // si true, renderMapaGeneral no hace fitBounds (mantiene zoom/centro actual)
@@ -1137,20 +1140,24 @@ function renderSpine() {
   const enMapa = document.getElementById('viewMapa') && document.getElementById('viewMapa').style.display !== 'none';
   const chkTodos = document.getElementById('mapaVerTodos');
   const verTodosMapa = enMapa && chkTodos && chkTodos.checked;
+  // En modo "Varios días" cada chip elegido toma el mismo color que "Ver todos".
+  const multiSelMapa = enMapa && !verTodosMapa && mapaMultiSelActivo;
   track.innerHTML = dias.map((d, idx) => {
     const date = d.fecha ? new Date(d.fecha + 'T00:00:00') : null;
     const dnum = date ? date.getDate() : '–';
     const dmonth = date ? date.toLocaleDateString('es', { month: 'short' }) : '';
-    
+
     // NUEVO: Obtener la inicial del día de la semana (L, M, Mi, J...)
     const diasSemana = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'];
     const dday = date ? diasSemana[date.getDay()] : '';
-    
+
     const estado = diaEstado(d);
     const isToday = d.fecha === hoy;
-    const colorMapa = verTodosMapa ? DIA_COLORES[idx % DIA_COLORES.length] : null;
+    const colorMapa = verTodosMapa ? DIA_COLORES[idx % DIA_COLORES.length]
+      : (multiSelMapa && mapaDiasSel.has(d.id)) ? DIA_COLORES[idx % DIA_COLORES.length]
+      : null;
     const estiloColor = colorMapa ? `style="border-color:${colorMapa}; background:${colorMapa}22;"` : '';
-    const activeClass = verTodosMapa ? '' : (d.id === currentDiaId ? 'active' : '');
+    const activeClass = verTodosMapa ? '' : (enMapa ? (mapaDiasSel.has(d.id) ? 'active' : '') : (d.id === currentDiaId ? 'active' : ''));
     return `<div class="day-chip ${activeClass} ${isToday ? 'today' : ''}" data-dia="${d.id}" onclick="selectDay('${d.id}')" ${estiloColor}>
        <span style="font-size:10px; font-weight:bold; color:${colorMapa || 'var(--route)'}; margin-bottom:-2px;">${dday}</span>
        <span class="dnum">${dnum}</span>
@@ -1164,21 +1171,23 @@ function renderSpine() {
 
 function renderProyectoBtn() {
   const btn = document.getElementById('btnProyecto');
-  if (btn) btn.innerHTML = '📁 ' + escHtml(currentProyecto || 'Sin proyecto') + ' <span onclick="abrirEditarProyecto(event)" style="cursor:pointer" title="Editar viaje">✏️</span> ▾';
+  if (btn) btn.innerHTML = '📁 ' + escHtml(currentProyecto || 'Sin proyecto') + ' ▾';
 }
 
-function abrirEditarProyecto(e) {
-  if (e) e.stopPropagation();
-  if (!currentProyecto) return;
-  // Pre-calcular la fecha de inicio y fin del proyecto actual
-  const diasProyecto = itinerario.dias.filter(d => (d.proyecto || '') === currentProyecto && d.fecha).sort((a,b) => a.fecha.localeCompare(b.fecha));
+let _proyectoEnEdicion = null; // proyecto que se está editando en el modal (puede no ser currentProyecto)
+function abrirEditarProyecto(proyecto) {
+  const p = proyecto || currentProyecto;
+  if (!p) return;
+  _proyectoEnEdicion = p;
+  // Pre-calcular la fecha de inicio y fin del proyecto
+  const diasProyecto = itinerario.dias.filter(d => (d.proyecto || '') === p && d.fecha).sort((a,b) => a.fecha.localeCompare(b.fecha));
   const fechaInicioProy = diasProyecto.length ? diasProyecto[0].fecha : siguienteFechaSugerida();
   const fechaFinProy = diasProyecto.length ? diasProyecto[diasProyecto.length-1].fecha : siguienteFechaSugerida();
   modalEsFormulario = false;
   modalOpen(`
     <div class="modal-head"><span class="modal-title">Editar viaje</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
-      <div class="field"><label>Nombre del viaje</label><input type="text" id="fProyEditNombre" value="${escHtml(currentProyecto)}"></div>
+      <div class="field"><label>Nombre del viaje</label><input type="text" id="fProyEditNombre" value="${escHtml(p)}"></div>
       <div class="empty-mini" style="margin-bottom:10px">Si cambias el nombre, se guarda al tocar "Guardar nombre".</div>
       <button class="btn-mini" type="button" onclick="guardarRenombreProyecto()">💾 Guardar nombre</button>
       <div class="field" style="margin-top:20px"><label>Agregar más días a este viaje (rango)</label></div>
@@ -1196,21 +1205,27 @@ function abrirEditarProyecto(e) {
 }
 
 async function guardarRenombreProyecto() {
+  const proyectoOrig = _proyectoEnEdicion || currentProyecto;
   const nuevoNombre = document.getElementById('fProyEditNombre').value.trim();
-  if (!nuevoNombre || nuevoNombre === currentProyecto) return;
+  if (!nuevoNombre || nuevoNombre === proyectoOrig) return;
   showToast('Renombrando viaje...');
-  const r = await postGAS({ action: 'renombrarProyecto', viejo: currentProyecto, nuevo: nuevoNombre });
-  if (r.ok) { showToast('Viaje renombrado ✦'); currentProyecto = nuevoNombre; modalClose(); await loadItinerario(); }
-  else showToast(r.error || 'Error al renombrar');
+  const r = await postGAS({ action: 'renombrarProyecto', viejo: proyectoOrig, nuevo: nuevoNombre });
+  if (r.ok) {
+    showToast('Viaje renombrado ✦');
+    if (currentProyecto === proyectoOrig) currentProyecto = nuevoNombre;
+    modalClose();
+    await loadItinerario();
+  } else showToast(r.error || 'Error al renombrar');
 }
 
 async function guardarRangoDiasProyecto() {
+  const proyecto = _proyectoEnEdicion || currentProyecto;
   const fechaInicio = document.getElementById('fProyRangoInicio').value;
   const fechaFin = document.getElementById('fProyRangoFin').value || fechaInicio;
   if (!fechaInicio) { showToast('Pon al menos la fecha "Desde"'); return; }
   const zona = document.getElementById('fProyRangoZona').value.trim();
   showToast('Agregando días…');
-  const r = await postGAS({ action: 'agregarRangoDias', proyecto: currentProyecto, fechaInicio, fechaFin, zona });
+  const r = await postGAS({ action: 'agregarRangoDias', proyecto, fechaInicio, fechaFin, zona });
   if (r.ok) {
     modalClose();
     showToast(r.agregados ? `${r.agregados} día(s) agregado(s) ✦` : 'Esas fechas ya existían, no se agregó nada nuevo');
@@ -1220,18 +1235,28 @@ async function guardarRangoDiasProyecto() {
 
 
 function selectDay(id) {
-  currentDiaId = id;
-  const dias = diasFiltrados();
-  const idx = dias.findIndex(d => d.id === id);
-  if (idx >= 0 && (idx < weekStartIdx || idx >= weekStartIdx + weekDayCount)) weekStartIdx = idx;
-  // Si estás viendo el mapa, el día elegido arriba también filtra el mapa (desmarca "Ver todos").
   const chkTodos = document.getElementById('mapaVerTodos');
   const enMapa = document.getElementById('viewMapa').style.display !== 'none';
   if (chkTodos && enMapa) {
     chkTodos.checked = false;
     mapaFoco = null;
+    currentDiaId = id;
+    if (mapaMultiSelActivo) {
+      // Modo "Varios días": el clic suma/quita ese día de la selección.
+      if (mapaDiasSel.has(id)) mapaDiasSel.delete(id); else mapaDiasSel.add(id);
+      if (!mapaDiasSel.size) chkTodos.checked = true; // nada seleccionado = volver a "ver todos"
+    } else {
+      // Modo clásico: el clic reemplaza la selección por ese único día.
+      mapaDiasSel = new Set([id]);
+    }
     renderMapaGeneral();
+    renderSpine();
+    return;
   }
+  currentDiaId = id;
+  const dias = diasFiltrados();
+  const idx = dias.findIndex(d => d.id === id);
+  if (idx >= 0 && (idx < weekStartIdx || idx >= weekStartIdx + weekDayCount)) weekStartIdx = idx;
   renderSpine(); renderItinerario();
 }
 
@@ -2520,8 +2545,10 @@ function verEnMapa(tipo, id, diaId) {
   setTimeout(() => {
     const chk = document.getElementById('mapaVerTodos');
     if (chk) chk.checked = false;
-    if (diaId) currentDiaId = diaId;
+    if (diaId) { currentDiaId = diaId; mapaDiasSel = new Set([diaId]); }
+    else if (!mapaDiasSel.size && currentDiaId) mapaDiasSel = new Set([currentDiaId]);
     renderMapaGeneral();
+    renderSpine();
   }, 80);
 }
 
@@ -3566,6 +3593,33 @@ function bindEtiquetaMapa(marker, texto, onEditar, opacidad, enFrente) {
     });
   }
 }
+function onToggleMapaVerTodos(chk) {
+  mapaFoco = null;
+  if (!chk.checked && mapaDiasSel.size === 0) {
+    const id = currentDiaId || pickTodayOrFirst();
+    if (id) mapaDiasSel.add(id);
+  }
+  renderMapaGeneral();
+  renderSpine();
+}
+function toggleMapaMultiSel() {
+  mapaMultiSelActivo = !mapaMultiSelActivo;
+  const btn = document.getElementById('btnMapaMultiSel');
+  if (btn) {
+    btn.style.background = mapaMultiSelActivo ? '#0c5f8c' : '';
+    btn.style.color = mapaMultiSelActivo ? '#fff' : '';
+    btn.style.borderColor = mapaMultiSelActivo ? '#084a6e' : '';
+    btn.style.fontWeight = mapaMultiSelActivo ? '700' : '';
+  }
+  if (!mapaMultiSelActivo) {
+    // Al apagarlo, colapsar a un solo día para volver limpio al modo clásico.
+    const id = currentDiaId || [...mapaDiasSel][0] || pickTodayOrFirst();
+    mapaDiasSel = id ? new Set([id]) : new Set();
+    currentDiaId = id;
+  }
+  renderMapaGeneral();
+  renderSpine();
+}
 function categoriasMapaActivas() {
   return [...document.querySelectorAll('#mapaCats input[type=checkbox]:checked')].map(c => c.value);
 }
@@ -3589,9 +3643,8 @@ function renderMapaGeneral() {
 
   const dias = diasFiltrados();
   const verTodos = document.getElementById('mapaVerTodos');
-  const filtro = (verTodos && verTodos.checked) ? 'todos' : (currentDiaId || 'todos');
-  _mapaEnModoTodos = filtro === 'todos';
-  const diasAMostrar = filtro === 'todos' ? dias : dias.filter(d => d.id === filtro);
+  _mapaEnModoTodos = !!(verTodos && verTodos.checked);
+  const diasAMostrar = _mapaEnModoTodos ? dias : dias.filter(d => mapaDiasSel.has(d.id));
   const diaIds = new Set(diasAMostrar.map(d => d.id));
   const diaNombre = (id) => { const d = itinerario.dias.find(x => x.id === id); return d ? `${d.fecha}${d.zona ? ' · ' + d.zona : ''}` : ''; };
   const colorDeDia = (diaId) => { const idx = dias.findIndex(d => d.id === diaId); return DIA_COLORES[idx >= 0 ? idx % DIA_COLORES.length : 0]; };
@@ -3694,19 +3747,22 @@ function renderMapaGeneral() {
       // Buscar por fecha (más fiable que comparar IDs)
       const dFecha = dia ? dia.fecha : '';
       const fechaDia = (diaId) => ((itinerario.dias.find(d=>d.id===diaId)||{}).fecha||'');
+      // Entre varios candidatos el mismo día, preferir el elegido (⭐); si hay más de uno y ninguno
+      // elegido, no se dibuja línea a ninguno (evita adivinar cuál es el hotel real).
+      const elegirCandidato = (grupo) => grupo.length === 1 ? grupo[0] : (grupo.find(h => h.elegido) || null);
       // Hotel del que salgo hoy (check-out = hoy es último día)
-      const hospCheckOut = verHospedaje && dFecha ? itinerario.hospedaje.find(h =>
+      const hospCheckOut = verHospedaje && dFecha ? elegirCandidato(itinerario.hospedaje.filter(h =>
         h.lat && h.lng && h.diaIdFin && fechaDia(h.diaIdFin) === dFecha
-      ) : null;
+      )) : null;
       // Hotel al que llego hoy (check-in = hoy es primer día)
-      const hospCheckIn = verHospedaje && dFecha ? itinerario.hospedaje.find(h =>
+      const hospCheckIn = verHospedaje && dFecha ? elegirCandidato(itinerario.hospedaje.filter(h =>
         h.lat && h.lng && h.diaIdInicio && fechaDia(h.diaIdInicio) === dFecha
-      ) : null;
+      )) : null;
       // Hotel activo hoy (dormí y regreso ahí, no es checkout ni checkin)
-      const hospActivo = verHospedaje && dFecha ? itinerario.hospedaje.find(h =>
+      const hospActivo = verHospedaje && dFecha ? elegirCandidato(itinerario.hospedaje.filter(h =>
         h.lat && h.lng && h.diaIdInicio && h.diaIdFin &&
         fechaDia(h.diaIdInicio) < dFecha && fechaDia(h.diaIdFin) > dFecha
-      ) : null;
+      )) : null;
       const hotelAlInicio = hospCheckOut || hospActivo;
       const hotelAlFinal  = hospCheckIn  || hospActivo;
       if (hotelAlInicio) ruta.push({ lat: hotelAlInicio.lat, lng: hotelAlInicio.lng, esTrans: false });
@@ -3778,10 +3834,16 @@ function renderMapaGeneral() {
 
   // Hospedaje (forma diamante, color fijo para distinguirlo de los días)
   if (verHospedaje || mapaHotelesMode) {
+    // Un hotel "compite" con otro cuando de verdad se solapan en fechas (hospedajesSeSolapan ya excluye
+    // los simples relevos checkout/checkin). Si compite, solo se mapea el elegido (⭐); si no compite,
+    // se mapea igual aunque no tenga estrella (es el único candidato de esos días).
+    const compiteSinElegir = (h) => !h.elegido && itinerario.hospedaje.some(h2 =>
+      h2.id !== h.id && h2.lat && h2.lng && hospedajesSeSolapan(h, h2));
     const hotelFilter = mapaHotelesMode
       ? itinerario.hospedaje.filter(h => h.lat && h.lng)
       : itinerario.hospedaje.filter(h => {
           if (!h.lat || !h.lng) return false;
+          if (compiteSinElegir(h)) return false;
           // Check-in o check-out en los días visibles
           if (diaIds.has(h.diaIdInicio) || diaIds.has(h.diaIdFin)) return true;
           // O el hotel está activo en alguno de los días visibles (día cae dentro del rango de fechas)
@@ -4629,7 +4691,7 @@ const body = document.getElementById('proyectoListBody');
   body.addEventListener('click', (e) => {
     const dupEl = e.target.closest('[data-dup]');
     const editEl = e.target.closest('[data-edit]');
-    if (editEl) { openEditarProyectoForm(proyectos[Number(editEl.dataset.edit)]); return; }
+    if (editEl) { abrirEditarProyecto(proyectos[Number(editEl.dataset.edit)]); return; }
     if (dupEl) { openDuplicarProyectoForm(proyectos[Number(dupEl.dataset.dup)]); return; }
     
     // NUEVO: Detectar clic en el basurero
@@ -4658,43 +4720,6 @@ function cambiarProyecto(p) {
   chatHistorialCargado = false;
   const chatBody = document.getElementById('chatBody');
   if (chatBody) chatBody.innerHTML = '';
-}
-
-function openEditarProyectoForm(proyecto) {
-  const diasProyecto = itinerario.dias.filter(d => (d.proyecto||'') === proyecto).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
-  const fechaInicio = diasProyecto.length ? (diasProyecto[0].fecha || '') : '';
-  const fechaFin    = diasProyecto.length ? (diasProyecto[diasProyecto.length-1].fecha || '') : '';
-  modalEsFormulario = true;
-  modalOpen(`
-    <div class="modal-head"><span class="modal-title">✏️ Editar viaje</span><button class="modal-close" onclick="modalClose()">✕</button></div>
-    <div class="modal-body">
-      <div class="field"><label>Nombre del viaje</label><input type="text" id="fEditProyNombre" value="${escHtml(proyecto)}"></div>
-      <div class="field"><label>Fecha de inicio (primer día)</label><input type="date" id="fEditProyInicio" value="${fechaInicio}"></div>
-      <div class="field"><label>Fecha final (último día)</label><input type="date" id="fEditProyFin" value="${fechaFin}"></div>
-      <div class="empty-mini" style="font-size:11px">Nota: cambiar el nombre crea un viaje nuevo con los mismos días. Cambiar fechas solo afecta el rango visible de días de este proyecto.</div>
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick="modalClose()">Cancelar</button>
-        <button class="btn-save" onclick="guardarEditProyecto('${escHtml(proyecto)}')">Guardar</button>
-      </div>
-    </div>`);
-}
-async function guardarEditProyecto(proyectoOrig) {
-  const nuevoNombre = document.getElementById('fEditProyNombre').value.trim();
-  const fechaInicio = document.getElementById('fEditProyInicio').value;
-  const fechaFin = document.getElementById('fEditProyFin').value;
-  if (!nuevoNombre) { showToast('Pon un nombre'); return; }
-  showToast('Guardando…');
-  if (nuevoNombre !== proyectoOrig) {
-    // Cambiar nombre del proyecto en todos sus días
-    const diasProyecto = itinerario.dias.filter(d => (d.proyecto||'') === proyectoOrig);
-    for (const d of diasProyecto) {
-      await postGAS({ action: 'updateDia', id: d.id, proyecto: nuevoNombre });
-    }
-    if (currentProyecto === proyectoOrig) currentProyecto = nuevoNombre;
-  }
-  modalClose();
-  await loadItinerario();
-  showToast('Viaje actualizado ✦');
 }
 
 function openNuevoProyectoForm() {
