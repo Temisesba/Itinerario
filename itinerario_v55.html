@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#faf7f0">
+<link rel="manifest" href="manifest.json">
 <title>Itinerario ✦</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
@@ -368,6 +369,7 @@ body.drag-locked .cal-resize-handle { display: none; }
         <div style="display:flex; align-items:center; gap:4px">
           <span class="logo" style="font-size:21px; letter-spacing:-0.5px; font-weight:600">Itinerario <span>✦</span></span>
           <button class="dev-btn" onclick="openDevInfo()" title="Info técnica">⚙</button>
+          <button id="btnConexion" onclick="sincronizarPendientes()" style="display:none; border:none; cursor:pointer; font-size:10px; padding:2px 8px; white-space:nowrap; background:#fef3c7; border-radius:10px; color:#92400e"></button>
         </div>
         <button class="btn-mini" id="btnProyecto" onclick="openProyectoSelector()" style="font-size:10px; padding:2px 7px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;">📁 Viaje ▾</button>
       </div>
@@ -646,23 +648,49 @@ const ETIQUETA_DIRECCION = {
 };
 
 // ── Init ─────────────────────────────────────────────────────
-async function init() { document.body.classList.toggle('drag-locked', dragBloqueado); await loadItinerario(); }
+function registrarServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+async function init() {
+  document.body.classList.toggle('drag-locked', dragBloqueado);
+  registrarServiceWorker();
+  await loadItinerario();
+  actualizarIndicadorConexion();
+  if (navigator.onLine && cargarColaPendiente().length) sincronizarPendientes(true);
+  preguntarQuienSoy();
+}
 
 // ajustarAlturaMapa eliminada — Flexbox maneja el layout automáticamente
 
 async function loadItinerario() {
+  if (!navigator.onLine) {
+    reconstruirDesdeCache();
+    renderSpine();
+    renderItinerario();
+    actualizarIndicadorConexion();
+    return;
+  }
   try {
     const r = await fetch(`${GAS_URL}?action=getItinerario&t=${Date.now()}`);
     const d = await r.json();
     itinerario = { dias: d.dias || [], transporte: d.transporte || [], hospedaje: d.hospedaje || [], pendientes: d.pendientes || [], eventos: d.eventos || [] };
     itinerario.dias.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    guardarBaseline(itinerario); // esta es la foto confirmada por el servidor — nueva base para futuros conflictos
+    cargarColaPendiente().forEach(c => aplicarCambioLocal(itinerario, c)); // reaplicar lo que siga sin sincronizar
     if (currentProyecto === null) currentProyecto = pickDefaultProyecto();
     if (!currentDiaId || !diasFiltrados().some(d => d.id === currentDiaId)) currentDiaId = pickTodayOrFirst();
     await cargarAntojosMaestros(); // carga la lista maestra de antojos del Sheets
     await cargarGastosVinculos();  // carga gastos vinculados a eventos desde GASTOS_VINCULOS tab
     renderSpine();
     renderItinerario();
-  } catch (e) { showToast('Error cargando itinerario'); }
+    actualizarIndicadorConexion();
+  } catch (e) {
+    reconstruirDesdeCache();
+    renderSpine();
+    renderItinerario();
+    actualizarIndicadorConexion();
+  }
 }
 
 // Días del proyecto actualmente activo
@@ -1219,6 +1247,7 @@ async function guardarRenombreProyecto() {
 }
 
 async function guardarRangoDiasProyecto() {
+  if (!navigator.onLine) { showToast('🔌 Necesitás conexión para agregar días nuevos'); return; }
   const proyecto = _proyectoEnEdicion || currentProyecto;
   const fechaInicio = document.getElementById('fProyRangoInicio').value;
   const fechaFin = document.getElementById('fProyRangoFin').value || fechaInicio;
@@ -4663,6 +4692,7 @@ function siguienteFechaSugerida() {
   return fechaLocalISO(next);
 }
 function openDiaForm(existingId) {
+  if (!existingId && !navigator.onLine) { showToast('🔌 Necesitás conexión para crear un día nuevo'); return; }
   modalEsFormulario = true;
   const d = existingId ? itinerario.dias.find(x => x.id === existingId) : null;
   const fechaSugerida = d ? d.fecha : siguienteFechaSugerida();
@@ -4762,6 +4792,7 @@ function cambiarProyecto(p) {
 }
 
 function openNuevoProyectoForm() {
+  if (!navigator.onLine) { showToast('🔌 Necesitás conexión para crear un viaje nuevo'); return; }
   modalEsFormulario = true;
   modalOpen(`
     <div class="modal-head"><span class="modal-title">Nuevo viaje</span><button class="modal-close" onclick="modalClose()">✕</button></div>
@@ -4799,6 +4830,7 @@ const r = await postGAS({ action: 'crearProyecto', proyecto, zona, fechaInicio, 
 }
 
 function openDuplicarProyectoForm(proyectoOrigen) {
+  if (!navigator.onLine) { showToast('🔌 Necesitás conexión para duplicar un viaje'); return; }
   modalEsFormulario = true;
   modalOpen(`
     <div class="modal-head"><span class="modal-title">Duplicar "${escHtml(proyectoOrigen || 'Sin proyecto')}"</span><button class="modal-close" onclick="modalClose()">✕</button></div>
@@ -5528,14 +5560,259 @@ function _showGasSaving(on) {
   if (on) { _gasRequests++; btn.textContent = '⏳'; btn.title = 'Guardando...'; }
   else { _gasRequests = Math.max(0, _gasRequests - 1); if (!_gasRequests) { btn.textContent = '✅'; btn.title = 'Guardado'; setTimeout(() => { btn.textContent = '⚙'; btn.title = 'Info técnica'; }, 1500); } }
 }
+// ══ Modo sin conexión: identidad, cola pendiente, sincronización y conflictos ══
+
+// Quién usa este dispositivo — solo para poder decir "tu versión" vs "la de Lot/Temis"
+// cuando hay que elegir entre cambios hechos sin conexión desde los dos lados.
+function quienSoy() { try { return localStorage.getItem('itin_quienSoy') || ''; } catch (e) { return ''; } }
+function elOtro() { const yo = quienSoy(); return yo === 'Lot' ? 'Temis' : (yo === 'Temis' ? 'Lot' : ''); }
+function preguntarQuienSoy() {
+  if (quienSoy()) return;
+  modalEsFormulario = false;
+  modalOpen(`
+    <div class="modal-head"><span class="modal-title">¿Quién sos?</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-body">
+      <div class="empty-mini" style="margin-bottom:10px">Es solo para poder avisarte de quién es cada cambio si algún día hay que elegir entre versiones distintas hechas sin conexión.</div>
+      <div style="display:flex; gap:8px">
+        <button class="btn-save" style="flex:1" onclick="elegirQuienSoy('Temis')">Temis</button>
+        <button class="btn-save" style="flex:1" onclick="elegirQuienSoy('Lot')">Lot</button>
+      </div>
+    </div>`);
+}
+function elegirQuienSoy(nombre) {
+  try { localStorage.setItem('itin_quienSoy', nombre); } catch (e) {}
+  modalClose();
+}
+
+// Última foto del itinerario confirmada por el servidor — la base para comparar en un conflicto.
+function cargarBaseline() { try { return JSON.parse(localStorage.getItem('itin_baseline') || 'null'); } catch (e) { return null; } }
+function guardarBaseline(itin) { try { localStorage.setItem('itin_baseline', JSON.stringify(itin)); } catch (e) {} }
+// Cambios que no se pudieron mandar todavía — cada uno es literalmente el body que se le iba a
+// mandar a postGAS, más un _opId para poder identificarlo.
+function cargarColaPendiente() { try { return JSON.parse(localStorage.getItem('itin_colaPendiente') || '[]'); } catch (e) { return []; } }
+function guardarColaPendiente(cola) { try { localStorage.setItem('itin_colaPendiente', JSON.stringify(cola)); } catch (e) {} }
+function quitarDeColaPendiente(opId) {
+  guardarColaPendiente(cargarColaPendiente().filter(c => c._opId !== opId));
+  actualizarIndicadorConexion();
+}
+
+// A qué colección de itinerario corresponde una acción tipo saveHospedaje/updateHospedaje/deleteHospedaje.
+function coleccionDeAccion(action) {
+  const COLECCION_POR_ENTIDAD = { Dia: 'dias', Transporte: 'transporte', Hospedaje: 'hospedaje', Pendiente: 'pendientes', Evento: 'eventos' };
+  const m = /^(save|update|delete)(Dia|Transporte|Hospedaje|Pendiente|Evento)$/.exec(action || '');
+  return m ? COLECCION_POR_ENTIDAD[m[2]] : null;
+}
+// Aplica un cambio (el mismo body que se le manda al backend) directo sobre el itinerario en
+// memoria — espejo mínimo de lo que hace cada saveX/updateX/deleteX del backend, campo por campo.
+function aplicarCambioLocal(itin, body) {
+  const col = coleccionDeAccion(body.action);
+  if (!col || !itin[col]) return;
+  const lista = itin[col];
+  if (body.action.startsWith('save')) {
+    if (lista.some(x => x.id === body.id)) return; // ya estaba aplicado
+    const nuevo = { id: body.id };
+    Object.keys(body).forEach(k => { if (k !== 'action' && k !== 'id' && k !== '_opId') nuevo[k] = body[k]; });
+    lista.push(nuevo);
+  } else if (body.action.startsWith('update')) {
+    const item = lista.find(x => x.id === body.id);
+    if (!item) return;
+    Object.keys(body).forEach(k => { if (k !== 'action' && k !== 'id' && k !== '_opId') item[k] = body[k]; });
+  } else if (body.action.startsWith('delete')) {
+    itin[col] = lista.filter(x => x.id !== body.id);
+  }
+}
+// Reconstruye itinerario a partir de la última base confirmada + lo que sigue pendiente de mandar.
+function reconstruirDesdeCache() {
+  const base = cargarBaseline();
+  if (!base) { showToast('Sin datos guardados todavía en este dispositivo — necesitás conexión la primera vez'); return; }
+  itinerario = JSON.parse(JSON.stringify(base));
+  cargarColaPendiente().forEach(c => aplicarCambioLocal(itinerario, c));
+  itinerario.dias.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+  if (currentProyecto === null) currentProyecto = pickDefaultProyecto();
+  if (!currentDiaId || !diasFiltrados().some(d => d.id === currentDiaId)) currentDiaId = pickTodayOrFirst();
+}
+function encolarCambioOffline(body) {
+  const clon = { ...body, _opId: 'OP-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) };
+  if (/^save/.test(body.action) && !clon.id) clon.id = 'TMP-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const cola = cargarColaPendiente();
+  cola.push(clon);
+  guardarColaPendiente(cola);
+  aplicarCambioLocal(itinerario, clon);
+  actualizarIndicadorConexion();
+  return { ok: true, id: clon.id, offline: true };
+}
+
+// ── Indicador de conexión / cola pendiente ─────────────────────
+function actualizarIndicadorConexion() {
+  const btn = document.getElementById('btnConexion');
+  if (!btn) return;
+  const pendientes = cargarColaPendiente().length;
+  if (!navigator.onLine) {
+    btn.style.display = '';
+    btn.textContent = pendientes ? `🔌 Sin conexión · ${pendientes}` : '🔌 Sin conexión';
+    btn.title = 'Sin conexión — tus cambios se guardan acá y se mandan solos al volver';
+  } else if (pendientes) {
+    btn.style.display = '';
+    btn.textContent = `☁️ ${pendientes} sin sincronizar`;
+    btn.title = 'Tocá para sincronizar ahora';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+// ── Sincronización + detección de conflictos (comparación de 3 vías) ──
+// Para cada campo que cambió localmente: si el servidor no lo tocó desde la última vez que lo
+// vimos (baseline), se manda tal cual; si el servidor ya tiene puesto lo mismo que queríamos
+// mandar, no hace falta nada; si el servidor tiene un valor distinto a los otros dos, es conflicto.
+function detectarConflicto(cambio, baseline, fresco) {
+  const col = coleccionDeAccion(cambio.action);
+  if (!col) return null; // acción que no sabemos comparar (ej. notas/chat) — se manda directo
+  if (cambio.action.startsWith('delete')) {
+    const existeAhora = (fresco[col] || []).some(x => x.id === cambio.id);
+    return existeAhora ? null : { tipo: 'yaBorrado' };
+  }
+  if (cambio.action.startsWith('save')) return null; // creado con id temporal propio, no compite con nada
+  const idFresco = (fresco[col] || []).find(x => x.id === cambio.id);
+  if (!idFresco) return { tipo: 'borrado' }; // lo borraron del otro lado
+  const idBase = (baseline[col] || []).find(x => x.id === cambio.id);
+  if (!idBase) return null; // no había base para comparar, se manda directo
+  const campos = [];
+  Object.keys(cambio).forEach(k => {
+    if (k === 'action' || k === 'id' || k === '_opId') return;
+    const j = v => JSON.stringify(v === undefined ? null : v);
+    if (j(idFresco[k]) === j(idBase[k])) return; // el servidor no tocó este campo
+    if (j(idFresco[k]) === j(cambio[k])) return; // ya coincide
+    campos.push({ campo: k, base: idBase[k], servidor: idFresco[k], local: cambio[k] });
+  });
+  return campos.length ? { tipo: 'campos', campos } : null;
+}
+let _sincronizando = false;
+async function sincronizarPendientes(silencioso) {
+  if (_sincronizando) return;
+  const cola = cargarColaPendiente();
+  if (!cola.length) { if (!silencioso) showToast('No hay cambios pendientes'); return; }
+  if (!navigator.onLine) { if (!silencioso) showToast('Seguís sin conexión'); return; }
+  _sincronizando = true;
+  actualizarIndicadorConexion();
+  try {
+    let fresco;
+    try {
+      const r = await fetch(`${GAS_URL}?action=getItinerario&t=${Date.now()}`);
+      fresco = await r.json();
+    } catch (e) { return; } // en realidad seguimos sin señal, se reintenta después
+    const baseline = cargarBaseline() || fresco;
+    for (const cambio of cargarColaPendiente()) {
+      const conflicto = detectarConflicto(cambio, baseline, fresco);
+      if (conflicto && conflicto.tipo === 'yaBorrado') { quitarDeColaPendiente(cambio._opId); continue; }
+      if (conflicto && conflicto.tipo === 'borrado') {
+        showToast(`${elOtro() || 'El otro lado'} borró algo que habías editado sin conexión — se descartó ese cambio`);
+        quitarDeColaPendiente(cambio._opId);
+        continue;
+      }
+      if (conflicto && conflicto.tipo === 'campos') { mostrarModalConflicto(cambio, conflicto.campos, fresco); return; }
+      const { _opId, ...bodyReal } = cambio;
+      try {
+        const form = new FormData(); form.append('payload', JSON.stringify(bodyReal));
+        const resp = await fetch(GAS_URL, { method: 'POST', body: form });
+        await resp.json();
+      } catch (e) { return; } // se cortó la señal a mitad de camino
+      quitarDeColaPendiente(_opId);
+    }
+    if (!cargarColaPendiente().length) {
+      guardarBaseline(fresco);
+      await loadItinerario();
+      showToast('✅ Todo sincronizado');
+    }
+  } finally {
+    _sincronizando = false;
+    actualizarIndicadorConexion();
+  }
+}
+
+// ── Modal de resolución de conflictos, campo por campo ─────────
+function etiquetaCampoConflicto(campo) {
+  const ETIQUETAS = { nombre: 'Nombre', direccion: 'Dirección', notas: 'Notas', notasPrevias: 'Notas', notasDiario: 'Diario', horaInicio: 'Hora inicio', horaFin: 'Hora fin', reservado: 'Reservado', elegido: 'Hotel elegido', realizado: 'Realizado', fecha: 'Fecha', zona: 'Zona', diaId: 'Día asignado', diaIdInicio: 'Día inicio', diaIdFin: 'Día fin', prioritaria: 'Prioritaria', orden: 'Orden' };
+  return ETIQUETAS[campo] || campo;
+}
+function valorLegibleConflicto(v) {
+  if (v === true) return 'Sí';
+  if (v === false) return 'No';
+  if (v === '' || v == null) return '(vacío)';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+let _conflictoActual = null;
+function mostrarModalConflicto(cambio, campos, fresco) {
+  _conflictoActual = { cambio, campos };
+  const col = coleccionDeAccion(cambio.action);
+  const idFresco = (fresco[col] || []).find(x => x.id === cambio.id) || {};
+  const titulo = idFresco.nombre || idFresco.origen || 'este registro';
+  const otro = elOtro() || 'el otro lado';
+  modalEsFormulario = false;
+  modalOpen(`
+    <div class="modal-head"><span class="modal-title">⚠️ "${escHtml(titulo)}" cambió en los dos lados</span></div>
+    <div class="modal-body">
+      <div class="empty-mini" style="margin-bottom:10px">Esto se editó acá y también con ${escHtml(otro)} mientras alguno estaba sin conexión. Elegí qué te quedás en cada campo.</div>
+      <div style="display:flex; gap:6px; margin-bottom:12px">
+        <button class="btn-mini" style="flex:1" onclick="elegirTodoConflicto('local')">Usar todo lo mío</button>
+        <button class="btn-mini" style="flex:1" onclick="elegirTodoConflicto('servidor')">Usar todo lo de ${escHtml(otro)}</button>
+      </div>
+      <div id="conflictoCampos">${campos.map((c, i) => `
+        <div class="field" data-campo-idx="${i}">
+          <label>${escHtml(etiquetaCampoConflicto(c.campo))}</label>
+          <div style="display:flex; gap:6px; flex-wrap:wrap">
+            <button class="opcion-pill elegida" data-lado="local" onclick="elegirCampoConflicto(${i},'local',this)">Tuyo: ${escHtml(valorLegibleConflicto(c.local))}</button>
+            <button class="opcion-pill" data-lado="servidor" onclick="elegirCampoConflicto(${i},'servidor',this)">${escHtml(otro)}: ${escHtml(valorLegibleConflicto(c.servidor))}</button>
+          </div>
+        </div>`).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn-save" onclick="guardarResolucionConflicto()">Guardar y seguir sincronizando</button>
+      </div>
+    </div>`);
+}
+function elegirCampoConflicto(i, lado, btnEl) {
+  _conflictoActual.campos[i]._elegido = lado;
+  const fila = btnEl.closest('[data-campo-idx]');
+  fila.querySelectorAll('.opcion-pill').forEach(b => b.classList.remove('elegida'));
+  btnEl.classList.add('elegida');
+}
+function elegirTodoConflicto(lado) {
+  _conflictoActual.campos.forEach(c => c._elegido = lado);
+  document.querySelectorAll('#conflictoCampos [data-campo-idx]').forEach(fila => {
+    fila.querySelectorAll('.opcion-pill').forEach(b => b.classList.toggle('elegida', b.dataset.lado === lado));
+  });
+}
+async function guardarResolucionConflicto() {
+  const { cambio, campos } = _conflictoActual;
+  const bodyFinal = { action: cambio.action, id: cambio.id };
+  Object.keys(cambio).forEach(k => { if (k !== 'action' && k !== 'id' && k !== '_opId') bodyFinal[k] = cambio[k]; });
+  campos.forEach(c => { if (c._elegido === 'servidor') bodyFinal[c.campo] = c.servidor; });
+  showToast('Guardando...');
+  try {
+    const form = new FormData(); form.append('payload', JSON.stringify(bodyFinal));
+    const resp = await fetch(GAS_URL, { method: 'POST', body: form });
+    await resp.json();
+  } catch (e) { showToast('Seguís sin conexión, lo intento más tarde'); _conflictoActual = null; modalClose(); return; }
+  quitarDeColaPendiente(cambio._opId);
+  _conflictoActual = null;
+  modalClose();
+  sincronizarPendientes(true);
+}
+
+window.addEventListener('online', () => { actualizarIndicadorConexion(); sincronizarPendientes(true); });
+window.addEventListener('offline', actualizarIndicadorConexion);
+setInterval(() => { if (navigator.onLine && cargarColaPendiente().length) sincronizarPendientes(true); }, 60000);
+
 async function postGAS(body) {
+  if (!navigator.onLine) return encolarCambioOffline(body);
   _showGasSaving(true);
   try {
     const form = new FormData(); form.append('payload', JSON.stringify(body));
     const r = await fetch(GAS_URL, { method: 'POST', body: form });
     _showGasSaving(false);
-    return r.json();
-  } catch(e) { _showGasSaving(false); throw e; }
+    return await r.json();
+  } catch(e) { _showGasSaving(false); return encolarCambioOffline(body); }
 }
 function escHtml(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 let toastTimer;
