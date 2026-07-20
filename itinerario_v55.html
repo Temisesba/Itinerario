@@ -2413,7 +2413,7 @@ function abrirVisorPendiente(id) {
   const p = itinerario.pendientes.find(x => x.id === id);
   if (!p) return;
   modalOpen(`
-    <div class="modal-head"><span class="modal-title">${p.realizado ? '✅ ' : ''}${p.prioritaria ? '⭐ ' : ''}${escHtml(p.nombre || '(sin nombre)')}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-head"><span class="modal-title">${p.realizado ? '✅ ' : ''}${p.prioritaria ? '⭐ ' : ''}${escHtml(p.nombre || '(sin nombre)')}</span><div style="display:flex; align-items:center; gap:8px"><button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button><button class="modal-close" onclick="modalClose()">✕</button></div></div>
     <div class="modal-body">
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
         <button class="btn-mini" style="${p.realizado ? 'background:var(--ok-light);border-color:var(--ok);color:#0d5c2a' : ''}" onclick="toggleRealizadoPendiente('${p.id}', this)">${p.realizado ? '✅ Realizado' : '⬜ Marcar como realizado'}</button>
@@ -2463,6 +2463,7 @@ function abrirVisorTransporte(id) {
       <div style="display:flex; align-items:center; gap:10px">
         <button class="icon-btn" title="${sinHora ? 'Sin hora fija — toca para ponerle una y que se vea en mapa/calendario' : oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
         <button class="icon-btn" title="Ver en panel lateral" onclick="scrollPanelATransporte('${t.id}')">👉</button>
+        <button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button>
         <button class="modal-close" onclick="modalClose()">✕</button>
       </div>
     </div>
@@ -2517,7 +2518,7 @@ function abrirVisorHospedaje(id) {
   if (!h) return;
   const rango = (!h.diaIdFin || h.diaIdInicio === h.diaIdFin) ? diaLabel(h.diaIdInicio) : `${diaLabel(h.diaIdInicio)} a ${diaLabel(h.diaIdFin)}`;
   modalOpen(`
-    <div class="modal-head"><span class="modal-title">🏨 ${escHtml(h.nombre || 'Hospedaje')}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-head"><span class="modal-title">🏨 ${escHtml(h.nombre || 'Hospedaje')}</span><div style="display:flex; align-items:center; gap:8px"><button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button><button class="modal-close" onclick="modalClose()">✕</button></div></div>
     <div class="modal-body">
       <div class="visor-row" style="margin-bottom:8px">${reservadoToggleHtml('hospedaje', h.id, h.reservado)}</div>
       <div class="visor-row">📅 ${escHtml(rango)}</div>
@@ -3032,6 +3033,11 @@ function openEventoForm(id, diaId) {
     <div class="modal-body">
       <input type="hidden" id="fEventoId" value="${ev ? ev.id : ''}">
       <div class="field"><label>Nombre del evento</label><input type="text" id="fEventoNombre" value="${escHtml(ev ? ev.nombre : '')}" placeholder="Ej: 16° Festival del Globo"></div>
+      <div style="display:flex; gap:6px; margin:-6px 0 14px;">
+        <input type="text" id="fEventoChatIA" placeholder="Corregir a la IA ej: No, el que es en Nago..." style="flex:1; padding:6px; font-size:12px; border:1px solid var(--line); border-radius:4px;">
+        <button class="btn-mini ai" type="button" onclick="refinarEventoConIA(this)">🤖 Sugerencias IA</button>
+      </div>
+      <div class="field"><label>Sugerencias IA</label><textarea id="fEventoSugIA" readonly style="background:var(--paper-2); font-size:12px; color:var(--ink-2); min-height:60px;">${escHtml(ev ? ev.sugerenciasIA : '')}</textarea></div>
       <div class="row-2">
         <div class="field"><label>Fecha de inicio real del evento</label><input type="date" id="fEventoFechaInicio" value="${escHtml(ev ? ev.fechaInicioReal||'' : '')}"></div>
         <div class="field"><label>Fecha de fin real del evento</label><input type="date" id="fEventoFechaFin" value="${escHtml(ev ? ev.fechaFinReal||'' : '')}"></div>
@@ -3093,6 +3099,7 @@ async function guardarEvento() {
     ciudades: document.getElementById('fEventoCiudades').value,
     paginaWeb: document.getElementById('fEventoWeb').value,
     notas: document.getElementById('fEventoNotas').value,
+    sugerenciasIA: document.getElementById('fEventoSugIA').value,
     sedes,
     proyecto: currentProyecto
   };
@@ -3100,6 +3107,37 @@ async function guardarEvento() {
   if (id) body.id = id;
   const r = await postGAS(body);
   if (r.ok) { modalClose(); showToast('Evento guardado ✦'); await loadItinerario(); }
+}
+// Igual que refinarConIALocal (hotel/lugar), pero para eventos: la IA corrige el nombre,
+// propone la sede principal (dirección + coords) y deja tips en "Sugerencias IA".
+async function refinarEventoConIA(btnEl) {
+  const nombre = document.getElementById('fEventoNombre').value;
+  const chatInput = document.getElementById('fEventoChatIA').value;
+  if (!nombre) { showToast('Escribe el nombre del evento primero'); return; }
+
+  const textoOriginal = btnEl ? btnEl.innerHTML : '';
+  if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<span class="spinner-mini"></span> Pensando…'; }
+  showToast('IA Pensando...');
+  const diaIniId = document.getElementById('fEventoDiaInicio').value;
+  const dia = itinerario.dias.find(d => d.id === diaIniId);
+  const r = await postGAS({ action: 'sugerirUbicacionLocal', tipo: 'evento o festival', zona: dia ? dia.zona : '', nombre, promptUsuario: chatInput });
+  if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = textoOriginal; }
+
+  if (r.ok && r.data) {
+    if (r.data.nombreConEmoji) document.getElementById('fEventoNombre').value = r.data.nombreConEmoji;
+    if (r.data.direccionExacta) {
+      if (!currentEventoSedes.length) currentEventoSedes.push({ diaId: diaIniId || '', direccion: '', lat: '', lng: '' });
+      currentEventoSedes[0].direccion = r.data.direccionExacta;
+      if (r.data.lat) currentEventoSedes[0].lat = r.data.lat;
+      if (r.data.lng) currentEventoSedes[0].lng = r.data.lng;
+      renderSedesEditor();
+    }
+    if (r.data.sugerenciasIA) document.getElementById('fEventoSugIA').value = r.data.sugerenciasIA;
+    document.getElementById('fEventoChatIA').value = '';
+    showToast('✨ Actualizado con IA');
+  } else {
+    showToast(r.error || 'La IA no pudo sugerir el evento');
+  }
 }
 async function eliminarEvento(id) {
   if (!confirm('¿Eliminar este evento?')) return;
@@ -3239,7 +3277,7 @@ function abrirVisorEvento(id) {
   const rangoReal = ev.fechaInicioReal ? `${ev.fechaInicioReal}${ev.fechaFinReal && ev.fechaFinReal !== ev.fechaInicioReal ? ' → ' + ev.fechaFinReal : ''}` : '';
   const asignado = ev.diaIdInicio ? diaLabel(ev.diaIdInicio) + (ev.diaIdFin && ev.diaIdFin !== ev.diaIdInicio ? ' a ' + diaLabel(ev.diaIdFin) : '') : '';
   modalOpen(`
-    <div class="modal-head"><span class="modal-title">🎪 ${escHtml(ev.nombre || 'Evento')}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-head"><span class="modal-title">🎪 ${escHtml(ev.nombre || 'Evento')}</span><div style="display:flex; align-items:center; gap:8px"><button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button><button class="modal-close" onclick="modalClose()">✕</button></div></div>
     <div class="modal-body">
       <div class="visor-row" style="margin-bottom:8px">${reservadoToggleHtml('evento', ev.id, ev.reservado)}</div>
       ${rangoReal ? `<div class="visor-row">📅 ${escHtml(rangoReal)}</div>` : ''}
@@ -3250,6 +3288,7 @@ function abrirVisorEvento(id) {
       ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>📍 Sedes</b><br>${ev.sedes.map(s => `${escHtml(diaLabel(s.diaId) || 'Sin día')}: ${escHtml(s.direccion||'')}`).join('<br>')}</div>` : ''}
       ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a> <button type="button" class="btn-mini ai" onclick="analizarProgramaEventoForm('${ev.id}')">🤖 Analizar programa con IA</button></div>` : ''}
       ${ev.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(ev.notas)}</div>` : ''}
+      ${ev.sugerenciasIA ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(ev.sugerenciasIA)}</div>` : ''}
       ${gastoVinculadoHtml('evento', ev.id, JSON.stringify({nombre:ev.nombre}))}
       <div class="modal-actions" style="justify-content:space-between">
         <button class="btn-cancel" onclick="eliminarEvento('${ev.id}')" style="color:#b91c1c">🗑 Eliminar</button>
@@ -5337,7 +5376,7 @@ function openPendienteForm(id, diaId) {
         <input type="text" id="fPendLat" value="${p ? p.lat : ''}" placeholder="Lat" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2); display:inline-block; width:calc(50% - 2px); margin-top:3px"><input type="text" id="fPendLng" value="${p ? p.lng : ''}" placeholder="Lng" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2); display:inline-block; width:calc(50% - 2px); margin-top:3px; margin-left:4px">
         <div style="display:flex; gap:6px; margin-top:6px;">
           <input type="text" id="fPendChatIA" placeholder="Corregir a la IA ej: No, la sucursal del centro..." style="flex:1; padding:6px; font-size:12px; border:1px solid var(--line); border-radius:4px;">
-          <button class="btn-mini ai" type="button" onclick="refinarConIALocal('lugar para visitar', 'fPendNombre', 'fPendDireccion', 'fPendSugIA', 'fPendChatIA', 'fPendDuracion', 'fPendLat', 'fPendLng', this)">🤖 Sugerencias IA</button>
+          <button class="btn-mini ai" type="button" onclick="refinarConIALocal(document.getElementById('fPendEsRestaurante').checked ? 'restaurante' : 'lugar para visitar', 'fPendNombre', 'fPendDireccion', 'fPendSugIA', 'fPendChatIA', 'fPendDuracion', 'fPendLat', 'fPendLng', this)">🤖 Sugerencias IA</button>
         </div>
       </div>
       <div class="field"><label>Sugerencias IA</label><textarea id="fPendSugIA" readonly style="background:var(--paper-2); font-size:12px; color:var(--ink-2); min-height:60px;">${escHtml(p ? p.sugerenciasIA : '')}</textarea></div>
@@ -5504,6 +5543,80 @@ function showToast(msg) {
   const ex = document.querySelector('.toast'); if (ex) ex.remove(); clearTimeout(toastTimer);
   const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
   document.body.appendChild(t); toastTimer = setTimeout(() => t.remove(), 2600);
+}
+
+// ── Copiar texto de un visor (para pegarlo, por ej., en el chat con la IA) ──
+async function copiarAlPortapapeles(texto) {
+  if (!texto) { showToast('Nada para copiar'); return; }
+  try {
+    await navigator.clipboard.writeText(texto);
+    showToast('📋 Copiado');
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = texto; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast('📋 Copiado'); }
+    catch (e2) { showToast('No se pudo copiar'); }
+    document.body.removeChild(ta);
+  }
+}
+function textoVisorPendiente(p) {
+  const lineas = [
+    `${p.antojo || p.esRestaurante ? '🍴' : '📍'} ${p.nombre || '(sin nombre)'}`,
+    `📅 ${p.diaId ? diaLabel(p.diaId) : 'Para después / si hay tiempo'}${p.horaInicio ? ` · 🕐 ${p.horaInicio}–${p.horaFin || ''}` : ''}`
+  ];
+  if (p.duracionMin) lineas.push(`⏱ ~${formatDuracion(p.duracionMin)}`);
+  if (p.antojo) lineas.push(`🍴 Antojo: ${p.antojo}`);
+  if (p.direccion) lineas.push(`📍 ${p.direccion}`);
+  if (p.horarioApertura || p.horarioCierre) lineas.push(`🕐 Abre: ${p.horarioApertura || '?'} · Cierra: ${p.horarioCierre || '?'}`);
+  if (p.notasPrevias) lineas.push(`📌 Notas: ${p.notasPrevias}`);
+  if (p.notasDiario) lineas.push(`📓 Diario: ${p.notasDiario}`);
+  if (p.sugerenciasIA) lineas.push(`✨ Sugerencia IA: ${p.sugerenciasIA}`);
+  return lineas.join('\n');
+}
+function textoVisorTransporte(t) {
+  const opciones = t.opciones || [];
+  const opSel = opciones[t.opcionElegida || 0];
+  const lineas = [
+    `${TIPO_LABEL[t.tipo] || t.tipo}: ${t.origen || ''} → ${t.destino || ''}`,
+    `🕐 ${opSel ? formatOpcionTexto(opSel) : 'Sin horario'}`,
+    `📅 ${diaLabel(t.diaId)}`
+  ];
+  if (t.direccionOrigen) lineas.push(`📍 Origen: ${t.direccionOrigen}`);
+  if (t.direccionDestino) lineas.push(`📍 Destino: ${t.direccionDestino}`);
+  if (t.notas) lineas.push(`📓 Notas: ${t.notas}`);
+  if (t.sugerenciasIAOrigen) lineas.push(`✨ Sugerencia IA: ${t.sugerenciasIAOrigen}`);
+  return lineas.join('\n');
+}
+function textoVisorHospedaje(h) {
+  const rango = (!h.diaIdFin || h.diaIdInicio === h.diaIdFin) ? diaLabel(h.diaIdInicio) : `${diaLabel(h.diaIdInicio)} a ${diaLabel(h.diaIdFin)}`;
+  const lineas = [`🏨 ${h.nombre || 'Hospedaje'}`, `📅 ${rango}`];
+  if (h.direccion) lineas.push(`📍 ${h.direccion}`);
+  if (h.notas) lineas.push(`📓 Notas: ${h.notas}`);
+  if (h.sugerenciasIA) lineas.push(`✨ Sugerencia IA: ${h.sugerenciasIA}`);
+  return lineas.join('\n');
+}
+function textoVisorEvento(ev) {
+  const lineas = [`🎪 ${ev.nombre || 'Evento'}`];
+  const rangoReal = ev.fechaInicioReal ? `${ev.fechaInicioReal}${ev.fechaFinReal && ev.fechaFinReal !== ev.fechaInicioReal ? ' → ' + ev.fechaFinReal : ''}` : '';
+  if (rangoReal) lineas.push(`📅 ${rangoReal}`);
+  if (ev.categoria) lineas.push(`🏷️ ${ev.categoria}`);
+  if (ev.ciudades) lineas.push(`📍 ${ev.ciudades}`);
+  if (ev.paginaWeb) lineas.push(`🔗 ${ev.paginaWeb}`);
+  if (ev.sedes && ev.sedes.length) lineas.push(`📍 Sedes: ${ev.sedes.map(s => `${diaLabel(s.diaId) || 'Sin día'}: ${s.direccion || ''}`).join(' · ')}`);
+  if (ev.notas) lineas.push(`📓 Notas: ${ev.notas}`);
+  if (ev.sugerenciasIA) lineas.push(`✨ Sugerencia IA: ${ev.sugerenciasIA}`);
+  return lineas.join('\n');
+}
+function copiarVisorActual() {
+  const box = document.getElementById('modalBox');
+  const tipo = box && box.dataset.visorTipo, id = box && box.dataset.visorId;
+  let texto = '';
+  if (tipo === 'pendiente') { const p = itinerario.pendientes.find(x => x.id === id); if (p) texto = textoVisorPendiente(p); }
+  else if (tipo === 'transporte') { const t = itinerario.transporte.find(x => x.id === id); if (t) texto = textoVisorTransporte(t); }
+  else if (tipo === 'hospedaje') { const h = itinerario.hospedaje.find(x => x.id === id); if (h) texto = textoVisorHospedaje(h); }
+  else if (tipo === 'evento') { const ev = itinerario.eventos.find(x => x.id === id); if (ev) texto = textoVisorEvento(ev); }
+  copiarAlPortapapeles(texto);
 }
 
 async function refinarConIALocal(tipo, idNombre, idDireccion, idSugIA, idChat, idDuracion, idLat, idLng, btnEl) {
