@@ -457,7 +457,7 @@ body.drag-locked .cal-resize-handle { display: none; }
   </div>
 </div>
 
-<div class="mobile-tab-float" id="mobileTabFloat" title="Arrastrá para moverlo · doble toque para poner vertical/horizontal">
+<div class="mobile-tab-float" id="mobileTabFloat" title="Arrastrá para moverlo · mantené presionado para poner vertical/horizontal">
   <button class="mtf-btn active" data-tab="semana" onclick="setTab('semana')" title="Itinerario">📅</button>
   <button class="mtf-btn" data-tab="tabla" onclick="setTab('tabla')" title="Tabla">📋</button>
   <button class="mtf-btn" data-tab="mapa" onclick="setTab('mapa')" title="Mapa">🗺️</button>
@@ -512,7 +512,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 10; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 11; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
@@ -1984,8 +1984,7 @@ function renderPoolPanel() {
         ? eventosSorted.map(ev => renderEventoCard(ev, eventosDelDia.some(x=>x.id===ev.id))).join('')
         : `<div class="empty-mini">Sin eventos agregados.</div>`;
       return sectionWrap('eventos', '🎪 Eventos/Festivales', eventosSorted.length,
-        `<label class="btn-mini" title="Sacar foto o subir el cartel/programa — crea el evento solo" style="cursor:pointer">📷<input type="file" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="capturarProgramaNuevoEvento(this,'${dia.id}')"></label>
-         <button class="btn-mini" onclick="openEventoForm(null,'${dia.id}')" title="Agregar evento">＋</button>`,
+        `<button class="btn-mini" onclick="openEventoForm(null,'${dia.id}')" title="Agregar evento">＋</button>`,
         contenido);
     })(),
     mapa: sectionWrap('mapa', '🗺️ Mapa del día', 0, '',
@@ -3207,6 +3206,8 @@ function renderEventoCard(ev, esDelDia) {
 
 let currentEventoSedes = [];
 let currentEventoProgramaB64 = null;
+let currentEventoProgramaUrl = null;
+let currentEventoProgramaFileId = null;
 function renderSedesEditor() {
   const host = document.getElementById('sedesEventoHost');
   if (!host) return;
@@ -3250,18 +3251,20 @@ function openEventoForm(id, diaId) {
     ? ev.sedes.map(s => ({ id: s.id || ('ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)), ...s }))
     : [];
   currentEventoProgramaB64 = null;
+  currentEventoProgramaUrl = null;
+  currentEventoProgramaFileId = null;
   const diaOptionsIni = '<option value="">— Sin asignar —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${(diaId===d.id)||(ev&&ev.diaIdInicio===d.id) ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
   const diaOptionsFin = '<option value="">— Sin asignar —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${ev&&ev.diaIdFin===d.id ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
   modalOpen(`
     <div class="modal-head"><span class="modal-title">${ev ? 'Editar' : 'Nuevo'} evento/festival</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
       <input type="hidden" id="fEventoId" value="${ev ? ev.id : ''}">
-      <div class="field"><label>Nombre del evento</label><input type="text" id="fEventoNombre" value="${escHtml(ev ? ev.nombre : '')}" placeholder="Ej: 16° Festival del Globo"></div>
       <div class="field">
-        <label>Programa (PDF o foto) <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional — si lo subís, "Sugerencias IA" lo lee)</span></label>
+        <label>Programa (PDF o foto) <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional — subilo primero y "Sugerencias IA" lo lee para llenar todo)</span></label>
         <div id="fEventoProgramaActual" style="margin-bottom:6px; display:flex; gap:6px; flex-wrap:wrap">${ev && ev.programaUrl ? `<a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a>` : ''}</div>
-        ${ev ? `<input type="file" accept="application/pdf,image/*" capture="environment" onchange="subirProgramaEvento('${ev.id}', this)">` : `<div class="empty-mini">Guarda primero para poder subir el programa.</div>`}
+        <input type="file" accept="application/pdf,image/*" capture="environment" onchange="subirProgramaEvento('${ev ? ev.id : ''}', this)">
       </div>
+      <div class="field"><label>Nombre del evento <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(o dejalo vacío si subiste el programa — la IA lo completa)</span></label><input type="text" id="fEventoNombre" value="${escHtml(ev ? ev.nombre : '')}" placeholder="Ej: 16° Festival del Globo"></div>
       <div style="display:flex; gap:6px; margin:6px 0 14px;">
         <input type="text" id="fEventoChatIA" placeholder="Corregir a la IA ej: No, el que es en Nago..." style="flex:1; padding:6px; font-size:12px; border:1px solid var(--line); border-radius:4px;">
         <button class="btn-mini ai" type="button" onclick="refinarEventoConIA(this)">🤖 Sugerencias IA</button>
@@ -3333,6 +3336,12 @@ async function guardarEvento() {
   };
   body.action = id ? 'updateEvento' : 'saveEvento';
   if (id) body.id = id;
+  // El programa se sube aparte (subirProgramaEvento) apenas se elige el archivo; si el evento
+  // era nuevo (sin id todavía), acá recién se manda para guardarlo junto con el resto.
+  if (!id || currentEventoProgramaUrl) {
+    body.programaUrl = currentEventoProgramaUrl || '';
+    body.programaFileId = currentEventoProgramaFileId || '';
+  }
   const r = await postGAS(body);
   if (r.ok) { modalClose(); showToast('Evento guardado ✦'); await loadItinerario(); }
 }
@@ -3341,16 +3350,17 @@ async function guardarEvento() {
 async function refinarEventoConIA(btnEl) {
   const nombre = document.getElementById('fEventoNombre').value;
   const chatInput = document.getElementById('fEventoChatIA').value;
-  if (!nombre) { showToast('Escribe el nombre del evento primero'); return; }
+  const idActual = document.getElementById('fEventoId').value;
+  const evActual = idActual ? itinerario.eventos.find(x => x.id === idActual) : null;
+  const tieneDocumento = !!(currentEventoProgramaB64 || currentEventoProgramaUrl || (evActual && evActual.programaFileId));
+  if (!nombre && !tieneDocumento) { showToast('Escribe el nombre del evento o subí el programa primero'); return; }
 
   const textoOriginal = btnEl ? btnEl.innerHTML : '';
   if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<span class="spinner-mini"></span> Pensando…'; }
   showToast('IA Pensando...');
   const diaIniId = document.getElementById('fEventoDiaInicio').value;
   const dia = itinerario.dias.find(d => d.id === diaIniId);
-  const idActual = document.getElementById('fEventoId').value;
-  const evActual = idActual ? itinerario.eventos.find(x => x.id === idActual) : null;
-  const body = { action: 'sugerirUbicacionLocal', tipo: 'evento o festival', zona: dia ? dia.zona : '', nombre, promptUsuario: chatInput };
+  const body = { action: 'sugerirUbicacionLocal', tipo: 'evento o festival', zona: dia ? dia.zona : '', nombre: nombre || '(sin nombre — ver documento adjunto)', promptUsuario: chatInput };
   // Si hay un programa (PDF/foto) adjunto, se manda junto — así la IA corrige/completa todo
   // basándose en el documento real, no solo en lo que ya sabía.
   if (currentEventoProgramaB64) body.programaBase64 = currentEventoProgramaB64;
@@ -3413,42 +3423,25 @@ async function subirProgramaEvento(id, input) {
   try {
     const esImagen = file.type.startsWith('image/');
     const dataUrl = esImagen ? await resizeImage(file, 1600, 0.78) : await leerArchivoBase64(file);
-    currentEventoProgramaB64 = dataUrl; // atajo: si analizas en esta misma sesión no hace falta re-leer Drive
+    currentEventoProgramaB64 = dataUrl; // para que "Sugerencias IA" lo lea en esta misma sesión sin releer Drive
     const r = await postGAS({ action: 'subirFoto', base64: dataUrl, nombre: file.name });
     if (r.ok) {
-      const ev = itinerario.eventos.find(x => x.id === id);
-      if (ev) { ev.programaUrl = r.url; ev.programaFileId = r.fileId || ''; }
-      await postGAS({ action: 'updateEvento', id, programaUrl: r.url, programaFileId: r.fileId || '' });
+      currentEventoProgramaUrl = r.url;
+      currentEventoProgramaFileId = r.fileId || '';
+      if (id) {
+        // El evento ya existe: se guarda directo, como antes.
+        const ev = itinerario.eventos.find(x => x.id === id);
+        if (ev) { ev.programaUrl = r.url; ev.programaFileId = r.fileId || ''; }
+        await postGAS({ action: 'updateEvento', id, programaUrl: r.url, programaFileId: r.fileId || '' });
+      }
+      // Si todavía no existe (evento nuevo sin guardar), queda en currentEventoProgramaUrl/FileId
+      // y guardarEvento() lo manda junto al crearlo.
       const box = document.getElementById('fEventoProgramaActual');
       if (box) box.innerHTML = `<a href="${r.url}" target="_blank" class="btn-mini">📄 Ver programa</a>`;
       showToast('Programa subido ✦');
     } else showToast(r.error || 'Error al subir');
   } catch (e) { showToast('Error al subir el programa'); }
   input.value = '';
-}
-// Atajo: sacar/subir foto de un cartel o el PDF del programa y que arme el evento solo, sin
-// tener que escribirle un nombre primero — crea el evento, sube el archivo, y le pide a la IA
-// que lo lea y complete todo (nombre, fechas, actividades).
-async function capturarProgramaNuevoEvento(input, diaId) {
-  const file = input.files[0]; if (!file) return;
-  input.value = '';
-  showToast('Creando evento…');
-  const r = await postGAS({ action: 'saveEvento', nombre: 'Nuevo evento', diaIdInicio: diaId || '', proyecto: currentProyecto });
-  if (!r.ok || !r.id) { showToast(r.error || 'No se pudo crear el evento'); return; }
-  showToast('Subiendo foto/PDF…');
-  try {
-    const esImagen = file.type.startsWith('image/');
-    const dataUrl = esImagen ? await resizeImage(file, 1600, 0.78) : await leerArchivoBase64(file);
-    const subida = await postGAS({ action: 'subirFoto', base64: dataUrl, nombre: file.name });
-    if (!subida.ok) { showToast(subida.error || 'Error al subir'); await loadItinerario(); return; }
-    await postGAS({ action: 'updateEvento', id: r.id, programaUrl: subida.url, programaFileId: subida.fileId || '' });
-    await loadItinerario();
-    openEventoForm(r.id);
-    currentEventoProgramaB64 = dataUrl; // openEventoForm lo resetea a null — lo ponemos después para que la IA lo use ya
-    const box = document.getElementById('fEventoProgramaActual');
-    if (box) box.innerHTML = `<a href="${subida.url}" target="_blank" class="btn-mini">📄 Ver programa</a>`;
-    await refinarEventoConIA();
-  } catch (e) { showToast('Error al leer el archivo'); await loadItinerario(); }
 }
 function abrirVisorEvento(id) {
   modalEsFormulario = false;
@@ -3545,24 +3538,30 @@ function cerrarLightboxSiFondo(e) { if (e.target.id === 'lightboxOverlay') cerra
     }
   } catch (e) {}
   try { if (localStorage.getItem('itin_tabFloatVertical') === '1') el.classList.add('vertical'); } catch (e) {}
-  // Doble toque: alterna entre horizontal y vertical (útil cuando lo dejás pegado a un costado).
-  el.addEventListener('dblclick', (e) => {
-    e.stopPropagation(); e.preventDefault();
+
+  let longPressTimer = null, longPressFired = false;
+  function alternarOrientacion() {
     const vertical = el.classList.toggle('vertical');
     try { localStorage.setItem('itin_tabFloatVertical', vertical ? '1' : '0'); } catch (err) {}
-  });
-
+    showToast(vertical ? '↕️ Vertical' : '↔️ Horizontal');
+  }
   el.addEventListener('pointerdown', (e) => {
-    dragging = true; moved = false; pid = e.pointerId;
+    dragging = true; moved = false; longPressFired = false; pid = e.pointerId;
     const r = el.getBoundingClientRect();
     startX = e.clientX; startY = e.clientY;
     startLeft = r.left; startTop = r.top;
+    // Mantener presionado sin mover ~550ms alterna horizontal/vertical (más confiable en
+    // celular que el doble toque, que el navegador a veces confunde con el arrastre).
+    longPressTimer = setTimeout(() => {
+      if (!moved) { longPressFired = true; alternarOrientacion(); }
+    }, 550);
   });
   el.addEventListener('pointermove', (e) => {
     if (!dragging) return;
     const dx = e.clientX - startX, dy = e.clientY - startY;
     if (!moved && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
       moved = true;
+      clearTimeout(longPressTimer);
       el.classList.add('mtf-dragging');
       el.setPointerCapture(pid);
     }
@@ -3576,15 +3575,17 @@ function cerrarLightboxSiFondo(e) { if (e.target.id === 'lightboxOverlay') cerra
   el.addEventListener('pointerup', () => {
     if (!dragging) return;
     dragging = false;
+    clearTimeout(longPressTimer);
     if (moved) {
       el.classList.remove('mtf-dragging');
       el.releasePointerCapture(pid);
       try { localStorage.setItem('itin_tabFloatPos', JSON.stringify({ left: parseFloat(el.style.left), top: parseFloat(el.style.top) })); } catch (e) {}
     }
   });
-  // Si se arrastró, que no dispare el onclick del botón que quedó debajo del dedo.
+  // Si se arrastró o se disparó el mantener-presionado, que no dispare el onclick del botón
+  // que quedó debajo del dedo.
   el.addEventListener('click', (e) => {
-    if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+    if (moved || longPressFired) { e.stopPropagation(); e.preventDefault(); moved = false; longPressFired = false; }
   }, true);
 })();
 
@@ -5820,8 +5821,7 @@ function preguntarQuienSoy(forzar) {
   modalOpen(`
     <div class="modal-head"><span class="modal-title">¿Quién sos?</span><button class="modal-close" onclick="modalClose()">✕</button></div>
     <div class="modal-body">
-      <div class="empty-mini" style="margin-bottom:10px">Es solo para poder avisarte de quién es cada cambio si algún día hay que elegir entre versiones distintas hechas sin conexión — por si alguna vez lo comparten con alguien más.</div>
-      <div class="field"><label>Tu nombre</label><input type="text" id="fQuienSoy" value="${escHtml(quienSoy())}" placeholder="Ej: Temis" onkeydown="if(event.key==='Enter')guardarQuienSoy()"></div>
+      <div class="field"><label>Usuario</label><input type="text" id="fQuienSoy" value="${escHtml(quienSoy())}" placeholder="Ej: Temis" onkeydown="if(event.key==='Enter')guardarQuienSoy()"></div>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="modalClose()">Cerrar</button>
         <button class="btn-save" onclick="guardarQuienSoy()">Guardar</button>
