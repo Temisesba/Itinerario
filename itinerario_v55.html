@@ -512,7 +512,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 11; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 12; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
@@ -537,7 +537,7 @@ async function cargarGastosVinculos() {
           itemId: g.itemId, proyecto: g.proyecto,
           costo: g.costo || '', moneda: g.moneda_pago || 'JPY',
           monedaConv: g.moneda || 'MXN', conversion: g.otra_moneda || '',
-          quien_paga: g.quien_paga || '', compartido: g.compartido || '',
+          quien_paga: g.quien_paga || '', compartido: g.compartido || '', pago: g.pago || '',
           concepto: g.concepto || '', tienda: g.producto || g.tienda || '',
           fecha: g.fecha || '', categoria: g.categoria || '',
           notas: g.notas || '', cotizacion: (g.compartido||'').toLowerCase().includes('cotiz'),
@@ -786,6 +786,74 @@ function zoomPct() { return Math.round((zoom / 0.4) * 100) + '%'; }
 // ── Gastos vinculados a eventos (diseño gastos_v8) ─────────────
 let gCropper = null, gTb64 = '', gTMime = '';
 let gCurrentPayer = '', gCurrentType = '';
+let gSesionCards = []; // tarjetas de Lot/Temis (misma fuente que usa la app Gastos)
+async function gCargarTarjetas() {
+  if (gSesionCards.length) return; // ya se cargaron una vez en esta sesión de uso
+  try {
+    const form = new FormData(); form.append('payload', JSON.stringify({ action: 'tarjetasDeMiembros', miembros: ['Lot', 'Temis'] }));
+    const resp = await fetch(GAS_URL_GASTOS, { method: 'POST', body: form });
+    const d = await resp.json();
+    gSesionCards = (d && d.ok && Array.isArray(d.tarjetas)) ? d.tarjetas : [];
+  } catch (e) { gSesionCards = []; }
+  // Si el usuario ya tenía el select de tarjeta abierto esperando, se re-llena solo.
+  const sel = document.getElementById('gTarjetaSel');
+  if (sel && sel.style.display !== 'none') gFillTarjetaSelect();
+}
+// Mismo formato de etiqueta que ya usa la app Gastos, para que se vea igual en los dos lados.
+function gCardLabel(c) {
+  const tipo = c.ctipo || 'TDC';
+  const tf = c.termFisica || c.terminacion, tv = c.termVirtual;
+  let term = '';
+  if (tf && tv) term = ' 💳····' + tf + ' 📱····' + tv;
+  else if (tf) term = ' ····' + tf;
+  else if (tv) term = ' 📱····' + tv;
+  const tit = c.titular ? (' (' + c.titular + ')') : '';
+  const red = c.red ? (' ' + c.red) : '';
+  return (c.banco || '') + red + ' ' + tipo + term + tit;
+}
+function gOnMetodoChange() {
+  const m = document.getElementById('gMetodo').value;
+  const esTarj = (m === 'Tarjeta');
+  const sel = document.getElementById('gTarjetaSel'), hint = document.getElementById('gTarjetaHint');
+  sel.style.display = esTarj ? 'block' : 'none';
+  if (esTarj) { gFillTarjetaSelect(); hint.style.display = gSesionCards.length ? 'none' : 'block'; }
+  else hint.style.display = 'none';
+  gOnTarjetaSelChange();
+}
+function gFillTarjetaSelect(selId) {
+  const el = document.getElementById('gTarjetaSel'); if (!el) return;
+  el.innerHTML = '<option value="">— elige tarjeta —</option>' + gSesionCards.map(c => `<option value="${escHtml(c.id)}" ${selId===c.id?'selected':''}>${escHtml(gCardLabel(c))}</option>`).join('');
+}
+function gOnTarjetaSelChange() {
+  const id = document.getElementById('gTarjetaSel').value;
+  const card = gSesionCards.find(c => c.id === id);
+  const esTDC = card && card.ctipo === 'TDC';
+  document.getElementById('gMsiWrap').style.display = esTDC ? 'inline-flex' : 'none';
+  if (!esTDC) { document.getElementById('gMsi').checked = false; document.getElementById('gMsiMeses').style.display = 'none'; }
+}
+function gOnMsiChange() { document.getElementById('gMsiMeses').style.display = document.getElementById('gMsi').checked ? 'inline-block' : 'none'; }
+// String "TIPO§Banco ····1234§MSI12" — mismo formato que guarda la app Gastos en la columna Pago.
+function gPagoBuild() {
+  const m = document.getElementById('gMetodo').value; if (!m) return '';
+  if (m === 'Efectivo') return 'Efectivo';
+  const id = document.getElementById('gTarjetaSel').value;
+  const card = gSesionCards.find(c => c.id === id);
+  if (!card) return 'Tarjeta';
+  const tipo = card.ctipo || 'TDC';
+  const tf = card.termFisica || card.terminacion || '', tv = card.termVirtual || '';
+  const label = ((card.banco || '') + (tf ? (' ····' + tf) : '') + (tv ? (' /····' + tv) : '')).trim();
+  let out = tipo + '§' + label;
+  if (tipo === 'TDC' && document.getElementById('gMsi').checked) { const mm = parseInt(document.getElementById('gMsiMeses').value) || 0; out += '§MSI' + (mm || ''); }
+  return out;
+}
+function gPagoParse(str) {
+  if (!str) return null;
+  const p = String(str).split('§');
+  const tipo = p[0] || '', tarjeta = p[1] || '';
+  let msi = 0;
+  if (p[2] && /^MSI/.test(p[2])) msi = parseInt(p[2].replace('MSI', '')) || 0;
+  return { tipo, tarjeta, msi };
+}
 
 function gConceptoGasto(tipo, datos) {
   const fechaDia = () => { const d = itinerario.dias.find(x => x.id === currentDiaId); return d ? d.fecha : fechaLocalISO(new Date()); };
@@ -839,6 +907,27 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId) {
   // Payer y tipo
   if (prev && prev.quien_paga) { gSetPayer(prev.quien_paga, true); } else { gCurrentPayer = ''; document.querySelectorAll('#gPayerGroup .g-tbtn').forEach(b => b.className='g-tbtn'); }
   if (prev && prev.compartido) { gSetType(prev.compartido, true); } else { gCurrentType = ''; document.querySelectorAll('#gTipoGroup .g-tbtn').forEach(b => b.className='g-tbtn'); }
+  // Pagado con: reconstruir desde lo guardado, o dejarlo vacío para uno nuevo.
+  document.getElementById('gMetodo').value = '';
+  document.getElementById('gTarjetaSel').style.display = 'none';
+  document.getElementById('gTarjetaHint').style.display = 'none';
+  document.getElementById('gMsiWrap').style.display = 'none';
+  document.getElementById('gMsi').checked = false;
+  document.getElementById('gMsiMeses').value = ''; document.getElementById('gMsiMeses').style.display = 'none';
+  gCargarTarjetas().then(() => {
+    const pg = prev && prev.pago ? gPagoParse(prev.pago) : null;
+    if (!pg || !pg.tipo) return;
+    if (pg.tipo === 'Efectivo') { document.getElementById('gMetodo').value = 'Efectivo'; gOnMetodoChange(); return; }
+    document.getElementById('gMetodo').value = 'Tarjeta';
+    gOnMetodoChange();
+    const lbl = (pg.tarjeta || '').toLowerCase();
+    const match = gSesionCards.find(c => gCardLabel(c).toLowerCase().indexOf(lbl.split(' ')[0]) !== -1 && (c.termFisica||c.terminacion||'') && lbl.indexOf((c.termFisica||c.terminacion||'').toLowerCase()) !== -1);
+    if (match) {
+      document.getElementById('gTarjetaSel').value = match.id;
+      gOnTarjetaSelChange();
+      if (pg.msi) { document.getElementById('gMsi').checked = true; gOnMsiChange(); document.getElementById('gMsiMeses').value = pg.msi; }
+    }
+  });
   gToggleCot();
   document.getElementById('gOverlay').style.display = 'flex';
 }
@@ -882,6 +971,7 @@ function gToggleCot() {
   const isCot = document.getElementById('gChkCot').checked;
   const pBadge = document.getElementById('gPayerBadge');
   const payBtns = document.querySelectorAll('#gPayerGroup .g-tbtn');
+  const pagoField = document.getElementById('gPagoField');
   if(isCot) {
     window._gWasCot = true;
     gCurrentType='Cotizacion'; gCurrentPayer='NA';
@@ -889,12 +979,14 @@ function gToggleCot() {
     if(pBadge) pBadge.style.display='inline-flex';
     payBtns.forEach(b=>{b.style.opacity='.3';b.style.pointerEvents='none';});
     gSetType('Cotizacion', true);
+    if (pagoField) pagoField.style.display = 'none';
   } else {
     if(pBadge) pBadge.style.display='none';
     payBtns.forEach(b=>{b.style.opacity='1';b.style.pointerEvents='';});
     // Solo restaurar defaults si veníamos de cotización activa (no al abrir form nuevo)
     if(window._gWasCot) { gSetType('Compartido', true); gSetPayer('Lot', true); }
     window._gWasCot = false;
+    if (pagoField) pagoField.style.display = '';
   }
 }
 
@@ -1024,6 +1116,7 @@ async function gGuardar() {
     concepto:concepto_final,
     quien_paga:gCurrentPayer,
     compartido:gCurrentType,
+    pago: gPagoBuild(),
     notas:document.getElementById('gNotas').value||'',
     categoria:document.getElementById('gCat').value||'',
     foto_ticket:document.getElementById('gStoredPhoto').value||'',
@@ -1048,7 +1141,7 @@ async function gGuardar() {
         costo: costo||'0', moneda: document.getElementById('gMoneda').value,
         conversion: document.getElementById('gConversion').value,
         monedaConv: document.getElementById('gMonedaConv').value,
-        quien_paga: gCurrentPayer, compartido: gCurrentType,
+        quien_paga: gCurrentPayer, compartido: gCurrentType, pago: body.pago,
         concepto: concepto_final, tienda, fecha: body.fecha,
         fecha_captura: body.fecha_captura,
         categoria: body.categoria, notas: body.notas,
@@ -6781,7 +6874,21 @@ init();
           <button class="g-tbtn" id="gBDev" onclick="gSetType('Devolucion')">↩️ Devolución</button>
         </div>
       </div>
-      <div class="g-field"><label>Notas</label><input type="text" id="gNotas" class="g-input" placeholder="Método de pago, observaciones…"></div>
+      <div class="g-field" id="gPagoField">
+        <label>Pagado con</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="gMetodo" onchange="gOnMetodoChange()" class="g-select" style="min-width:110px; width:auto">
+            <option value="">— sin especificar —</option>
+            <option value="Efectivo">💵 Efectivo</option>
+            <option value="Tarjeta">💳 Tarjeta</option>
+          </select>
+          <select id="gTarjetaSel" onchange="gOnTarjetaSelChange()" class="g-select" style="flex:1; min-width:160px; display:none"></select>
+          <label id="gMsiWrap" style="display:none; align-items:center; gap:5px; font-size:12px; color:var(--ink-2)"><input type="checkbox" id="gMsi" onchange="gOnMsiChange()" style="width:15px;height:15px"> MSI</label>
+          <input type="number" id="gMsiMeses" placeholder="meses" min="2" class="g-input" style="width:80px; display:none">
+        </div>
+        <div id="gTarjetaHint" class="empty-mini" style="display:none">No tenés tarjetas registradas todavía — agregalas en Gastos → Finanzas → Tarjetas.</div>
+      </div>
+      <div class="g-field"><label>Notas</label><input type="text" id="gNotas" class="g-input" placeholder="Observaciones…"></div>
       <div class="g-mfooter">
         <button class="g-bcnl" onclick="gCloseModal()">Cancelar</button>
         <button class="g-bsave" onclick="gGuardar()">Guardar gasto 💴</button>
