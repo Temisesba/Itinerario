@@ -525,7 +525,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 15; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 16; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1210,20 +1210,50 @@ async function gAnalyzeIA() {
   btn.disabled=false; btn.textContent='🤖 Analizar foto con IA';
 }
 
-// ── IA: conversión ──
+// ── Conversión con tipo de cambio real (frankfurter.app, vía backend de Itinerario) ──
 async function gConvertirIA() {
   const monto=document.getElementById('gCosto').value;
   const moneda=document.getElementById('gMoneda').value;
   const monedaDest=document.getElementById('gMonedaConv').value;
   if(!monto) { showToast('Llena el monto primero'); return; }
   const btn=document.querySelector('#gModal button[onclick="gConvertirIA()"]');
-  if(btn) { btn.textContent='🤖…'; btn.disabled=true; }
+  if(btn) { btn.textContent='🔄…'; btn.disabled=true; }
   try {
     const r=await postGAS({ action:'estimarConversion', monto, monedaOrigen:moneda, monedaDest:monedaDest });
     if(r.ok && r.valor) { document.getElementById('gConversion').value=r.valor; showToast(`~${r.valor} ${monedaDest} ✦`); }
-    else showToast('No se pudo estimar: '+(r.error||''));
+    else showToast('No se pudo obtener el tipo de cambio: '+(r.error||''));
   } catch(e) { showToast('Error de red'); }
-  if(btn) { btn.textContent='🤖 IA'; btn.disabled=false; }
+  if(btn) { btn.textContent='🔄 Tasa'; btn.disabled=false; }
+}
+// v57: autocompleta solo (sin botón) al salir de Monto o de Conversión, igual
+// que pAutoConvertir() en Compras — funciona en los dos sentidos y no pisa
+// nada si el campo destino ya tiene algo escrito.
+let _gAutoConvBusy = false;
+// origen: 'costo' calcula Conversión desde Monto; 'conv' calcula Monto desde Conversión.
+// force=true (al cambiar de moneda) recalcula aunque el campo destino ya tenga algo escrito.
+async function gAutoConvertir(origen, force) {
+  if (_gAutoConvBusy) return;
+  const costoEl = document.getElementById('gCosto'), convEl = document.getElementById('gConversion');
+  const monedaEl = document.getElementById('gMoneda'), monedaConvEl = document.getElementById('gMonedaConv');
+  if (!costoEl || !convEl) return;
+  const moneda = monedaEl.value, monedaConv = monedaConvEl.value;
+  if (moneda === monedaConv) return;
+  let monto, monedaOrigen, monedaDest, targetEl;
+  if (origen === 'costo') {
+    if (!force && convEl.value.trim()) return;
+    monto = parseFloat(costoEl.value); if (!monto) return;
+    monedaOrigen = moneda; monedaDest = monedaConv; targetEl = convEl;
+  } else {
+    if (!force && costoEl.value.trim()) return;
+    monto = parseFloat(convEl.value); if (!monto) return;
+    monedaOrigen = monedaConv; monedaDest = moneda; targetEl = costoEl;
+  }
+  _gAutoConvBusy = true;
+  try {
+    const r = await postGAS({ action: 'estimarConversion', monto, monedaOrigen, monedaDest });
+    if (r.ok && r.valor && (force || !targetEl.value.trim())) targetEl.value = r.valor;
+  } catch (e) { /* silencioso — el usuario siempre puede llenarlo a mano o tocar 🔄 Tasa */ }
+  _gAutoConvBusy = false;
 }
 
 // ── Productos del ticket (idéntico a v30* de Compras_v46.html) ──
@@ -7049,18 +7079,18 @@ init();
         <div class="amount-pair">
           <label style="display:block;font-size:11px;font-weight:500;color:var(--ink-2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Monto</label>
           <div class="pair-inputs">
-            <input type="number" id="gCosto" placeholder="0" oninput="gActualizarHintPagadores()">
-            <select id="gMoneda"><option>JPY</option><option>MXN</option><option>USD</option><option>EUR</option><option>GBP</option></select>
+            <input type="number" id="gCosto" placeholder="0" oninput="gActualizarHintPagadores()" onblur="gAutoConvertir('costo')">
+            <select id="gMoneda" onchange="gAutoConvertir('costo',true)"><option>JPY</option><option>MXN</option><option>USD</option><option>EUR</option><option>GBP</option></select>
           </div>
         </div>
         <div class="amount-pair">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
             <label style="font-size:11px;font-weight:500;color:var(--ink-2);text-transform:uppercase;letter-spacing:.07em;margin:0">Conversión <span style="text-transform:none;font-weight:400;letter-spacing:0;font-size:10px;color:var(--ink-3)">opcional</span></label>
-            <button type="button" class="g-btn-gem" style="flex:none;padding:3px 8px;font-size:10px;margin:0" onclick="gConvertirIA()">🤖 IA</button>
+            <button type="button" class="g-btn-gem" style="flex:none;padding:3px 8px;font-size:10px;margin:0" onclick="gConvertirIA()">🔄 Tasa</button>
           </div>
           <div class="pair-inputs">
-            <input type="text" id="gConversion" placeholder="IA puede estimar">
-            <select id="gMonedaConv"><option>MXN</option><option>JPY</option><option>USD</option><option>EUR</option></select>
+            <input type="text" id="gConversion" placeholder="Se calcula solo" onblur="gAutoConvertir('conv')">
+            <select id="gMonedaConv" onchange="gAutoConvertir('costo',true)"><option>MXN</option><option>JPY</option><option>USD</option><option>EUR</option></select>
           </div>
         </div>
       </div>
