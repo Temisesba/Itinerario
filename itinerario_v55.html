@@ -174,7 +174,8 @@ body.drag-locked .cal-resize-handle { display: none; }
 .g-tprev { position: relative; display: inline-block; }
 .g-tprev img { max-width: 100%; max-height: 140px; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); }
 .g-rimg { position: absolute; top: -6px; right: -6px; background: #fff; border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 10px; }
-.g-row2-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 13px; }
+.g-row2-dates { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 13px; }
+.g-row2-dates input { font-size: 12.5px; padding: 8px 7px; }
 .amounts-row { display: flex; gap: 6px; margin-bottom: 13px; width: 100%; }
 .amount-pair { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .amount-pair .pair-inputs { display: flex; gap: 6px; }
@@ -192,6 +193,15 @@ body.drag-locked .cal-resize-handle { display: none; }
 .g-bsave { padding: 8px 20px; border-radius: var(--radius); background: var(--ink); color: #fff; border: none; cursor: pointer; font-family: var(--font-sans); font-size: 13px; font-weight: 600; }
 .g-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 500; white-space: nowrap; background: rgba(184,92,138,.1); border: 1px solid rgba(184,92,138,.3); color: #b85c8a; }
 .g-cot-block { background: rgba(184,92,138,.07); border: 1px solid rgba(184,92,138,.28); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 13px; }
+.g-shop-del { background: none; border: none; cursor: pointer; color: var(--ink-3); font-size: 13px; }
+.g-shop-del:hover { color: #b02a2a; }
+.g-prod-row { display: grid; grid-template-columns: 1.6fr .5fr .7fr .8fr .8fr .9fr 24px 42px; gap: 4px; align-items: center; margin-bottom: 4px; }
+.g-prod-row input, .g-prod-row select { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; font-family: var(--font-sans); font-size: 12px; background: #fff; outline: none; }
+.g-prod-hdr { display: grid; grid-template-columns: 1.6fr .5fr .7fr .8fr .8fr .9fr 24px 42px; gap: 4px; font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); margin-bottom: 3px; }
+.g-prod-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+.g-prod-scroll .g-prod-hdr, .g-prod-scroll #gProdList { min-width: 560px; }
+.g-prod-scroll::-webkit-scrollbar { height: 7px; }
+.g-prod-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 /* Crop overlay */
 .crop-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.9); z-index: 9999; display: none; flex-direction: column; justify-content: center; align-items: center; }
 .crop-btn { padding: 10px 22px; border-radius: var(--radius); border: none; cursor: pointer; font-family: var(--font-sans); font-size: 13px; font-weight: 500; }
@@ -515,15 +525,18 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 14; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 15; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
-const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
+// Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
+// esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
+// sola vez por dispositivo desde "⚙ Info técnica" y queda en localStorage.
+let GAS_URL_GASTOS = localStorage.getItem('itin_gasUrlGastos') || '';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
 const GASTOS_CAT_DEFAULT = '✈️ Viajes';
 let gastosVinculados = {}; // { [itemId]: [{ id, costo, moneda, ... }] } — persiste en GASTOS_VINCULOS sheet
 
 async function cargarGastosVinculos() {
-  if (!currentProyecto) return;
+  if (!currentProyecto || !GAS_URL_GASTOS) return; // sin URL configurada todavía, no hay de dónde leer
   try {
     // Lee directamente del Sheet de Gastos (GAS_URL_GASTOS) filtrando por Proyecto
     const form = new FormData(); form.append('payload', JSON.stringify({ action: 'getGastos' }));
@@ -544,11 +557,40 @@ async function cargarGastosVinculos() {
           concepto: g.concepto || '', tienda: g.producto || g.tienda || '',
           fecha: g.fecha || '', categoria: g.categoria || '',
           notas: g.notas || '', cotizacion: (g.compartido||'').toLowerCase().includes('cotiz'),
-          foto_ticket: g.foto_ticket_url || ''
+          foto_ticket: g.foto_ticket_url || '',
+          pagadores: Array.isArray(g.pagadores) ? g.pagadores : []
         });
       });
     }
+    // Los mismos gastos ya traen las filas de producto (TipoFila='producto') — se
+    // reusan como catálogo, sin pedirle nada nuevo al backend.
+    gAllProds = (d.gastos || []).filter(g => g.tipoFila === 'producto');
+    gProdsCargados = true;
+    gPoblarDatalistsProductos();
   } catch(e) { console.warn('No se pudieron cargar gastos:', e); }
+}
+function gPoblarDatalistsProductos() {
+  const vistos = new Set();
+  const dlN = document.getElementById('gListProdNombres');
+  if (dlN) dlN.innerHTML = gAllProds.filter(p => { const k = gNormTxt(p.concepto); if (!k || vistos.has(k)) return false; vistos.add(k); return true; }).map(p => '<option value="' + escHtml(p.concepto) + '">').join('');
+  const cats = [...new Set(gAllProds.map(p => p.categoria).filter(Boolean))].sort();
+  const dlC = document.getElementById('gListProdCats');
+  if (dlC) dlC.innerHTML = cats.map(t => '<option value="' + escHtml(t) + '">').join('');
+  const lugares = [...new Set(gAllProds.map(p => p.ubicacion).filter(Boolean))].sort();
+  const dlL = document.getElementById('gListProdLugares');
+  if (dlL) dlL.innerHTML = lugares.map(t => '<option value="' + escHtml(t) + '">').join('');
+}
+function gCatalogoProductos() {
+  const cat = {};
+  gAllProds.forEach(p => {
+    const k = gNormTxt(p.concepto); if (!k) return;
+    if (!cat[k]) cat[k] = { nombre: p.concepto };
+    const c = cat[k];
+    if (!c.marca && p.marca) c.marca = p.marca;
+    if (!c.categoria && p.categoria) c.categoria = p.categoria;
+    if (!c.ubicacion && p.ubicacion) c.ubicacion = p.ubicacion;
+  });
+  return cat;
 }
 function _persistGastos() {} // ya no usa localStorage — se guarda en Sheet
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
@@ -790,6 +832,16 @@ function zoomPct() { return Math.round((zoom / 0.4) * 100) + '%'; }
 let gCropper = null, gTb64 = '', gTMime = '';
 let gCurrentPayer = '', gCurrentType = '';
 let gSesionCards = []; // tarjetas de Lot/Temis (misma fuente que usa la app Gastos)
+const GPEOPLE = ['Lot', 'Temis'];
+// ── Varios pagan (idéntico a v32* de Compras) ──
+let gCurrentVariosPagan = false;
+let gCurrentPagadores = {}; // {persona: monto}
+// ── Productos del ticket (idéntico a v30/v34 de Compras) ──
+let gProdDraft = [];   // productos en edición dentro del modal
+let gAllProds = [];    // catálogo: filas TipoFila='producto' del sheet de Gastos (carga lazy)
+let gProdsCargados = false;
+const GUNIDADES = ['unidad', 'pieza', 'g', 'kg', 'mg', 'ml', 'l', 'cm', 'm', 'pastilla', 'sobre'];
+const gNormTxt = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 async function gCargarTarjetas() {
   if (gSesionCards.length) return; // ya se cargaron una vez en esta sesión de uso
   try {
@@ -871,6 +923,7 @@ function gConceptoGasto(tipo, datos) {
 }
 
 function abrirGastosForm(tipo, itemId, datosStr, editGastoId) {
+  if (!requiereGasUrlGastos()) return;
   const datos = (() => { try { return typeof datosStr==='string' ? JSON.parse(datosStr) : (datosStr||{}); } catch(e) { return {}; } })();
   const hoy = fechaLocalISO(new Date());
   const concepto = gConceptoGasto(tipo, datos);
@@ -881,6 +934,7 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId) {
   document.getElementById('gEditId').value = editGastoId || '';
   document.getElementById('gTitle').textContent = prev ? '💴 Editar gasto' : '💴 Registrar gasto';
   document.getElementById('gFecha').value = hoy;  // siempre hoy, el usuario cambia
+  document.getElementById('gHoraCompra').value = '';
   document.getElementById('gCaptura').value = hoy;
   document.getElementById('gCosto').value = prev ? (prev.costo||'') : '';
   document.getElementById('gMoneda').value = prev ? (prev.moneda||'JPY') : 'JPY';
@@ -910,6 +964,22 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId) {
   // Payer y tipo
   if (prev && prev.quien_paga) { gSetPayer(prev.quien_paga, true); } else { gCurrentPayer = ''; document.querySelectorAll('#gPayerGroup .g-tbtn').forEach(b => b.className='g-tbtn'); }
   if (prev && prev.compartido) { gSetType(prev.compartido, true); } else { gCurrentType = ''; document.querySelectorAll('#gTipoGroup .g-tbtn').forEach(b => b.className='g-tbtn'); }
+  // Varios pagan: precargar si el gasto ya tenía pagadores[], si no dejar apagado.
+  gCurrentPagadores = {};
+  if (prev && Array.isArray(prev.pagadores) && prev.pagadores.length) {
+    prev.pagadores.forEach(p => { if (p && p.persona) gCurrentPagadores[p.persona] = p.monto; });
+    document.getElementById('gChkVariosPagan').checked = true;
+  } else {
+    document.getElementById('gChkVariosPagan').checked = false;
+  }
+  gOnToggleVariosPagan();
+  // Productos del ticket: precargar los ya guardados de esta compra (si los hay), o vaciar para uno nuevo.
+  gProdDraft = (prev && prev.id) ? gAllProds.filter(p => p.compraId === prev.id).map(p => ({
+    concepto: p.concepto || '', marca: p.marca || '', categoria: p.categoria || '', ubicacion: p.ubicacion || '',
+    notas: p.notas || '', piezas: p.piezas || '1', cantidad: p.cantidad || '', unidad: p.unidad || 'unidad',
+    precioInd: p.precioInd || '', caducidad: p.caducidad || '', inventario: (p.inventario || 'SI') !== 'NA'
+  })) : [];
+  gRenderProdDraft();
   // Pagado con: reconstruir desde lo guardado, o dejarlo vacío para uno nuevo.
   document.getElementById('gMetodo').value = '';
   document.getElementById('gTarjetaSel').style.display = 'none';
@@ -952,6 +1022,55 @@ function gSetPayer(p, silent) {
   const map = { Lot:'gBLot', Temis:'gBTemis', NA:'gBNA', Cotizacion:'gBNA' };
   if(map[p]) { const el=document.getElementById(map[p]); if(el) el.className='g-tbtn sel'; }
   if(!silent && p==='Cotizacion') gSetType('Cotizacion');
+}
+
+// ── Varios pagan (idéntico a v32* de Compras_v46.html) ──
+function gOnToggleVariosPagan() {
+  gCurrentVariosPagan = document.getElementById('gChkVariosPagan').checked;
+  const pagadoresField = document.getElementById('gPagadoresField');
+  if (gCurrentVariosPagan) {
+    document.querySelectorAll('#gPayerGroup .g-tbtn').forEach(b => b.style.display = 'none');
+    if (pagadoresField) pagadoresField.style.display = 'block';
+    gRenderPagadores();
+  } else {
+    document.querySelectorAll('#gPayerGroup .g-tbtn').forEach(b => b.style.display = '');
+    if (pagadoresField) pagadoresField.style.display = 'none';
+  }
+}
+function gRenderPagadores() {
+  const box = document.getElementById('gPagadoresBox'); if (!box) return;
+  const emoji = { Lot: '💙', Temis: '🧡' };
+  box.innerHTML = GPEOPLE.map(n => {
+    const val = gCurrentPagadores[n] !== undefined ? gCurrentPagadores[n] : '';
+    return '<div style="display:flex;align-items:center;gap:8px">'
+      + '<span class="g-chip" style="min-width:76px;justify-content:center">' + emoji[n] + ' ' + n + '</span>'
+      + '<input type="number" placeholder="0" value="' + escHtml(String(val)) + '" class="g-input" style="flex:1" oninput="gSetPagadorMonto(\'' + n + '\',this.value)">'
+      + '</div>';
+  }).join('');
+  gActualizarHintPagadores();
+}
+function gSetPagadorMonto(persona, val) {
+  const n = parseFloat(val);
+  if (val === '' || isNaN(n)) delete gCurrentPagadores[persona];
+  else gCurrentPagadores[persona] = n;
+  gActualizarHintPagadores();
+}
+function gPartesIguales() {
+  const costo = parseFloat(document.getElementById('gCosto').value) || 0;
+  if (!costo || !GPEOPLE.length) return;
+  const share = Math.round((costo / GPEOPLE.length) * 100) / 100;
+  GPEOPLE.forEach(n => gCurrentPagadores[n] = share);
+  gRenderPagadores();
+}
+function gActualizarHintPagadores() {
+  const hint = document.getElementById('gPagadoresHint'); if (!hint) return;
+  const costo = parseFloat(document.getElementById('gCosto').value) || 0;
+  const suma = Object.values(gCurrentPagadores).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  const dif = Math.round((costo - suma) * 100) / 100;
+  if (!costo) { hint.textContent = 'Escribe el monto total arriba.'; hint.style.color = 'var(--ink-3)'; return; }
+  if (Math.abs(dif) < 0.5) { hint.textContent = '✓ Cuadra con el total.'; hint.style.color = '#15803d'; }
+  else if (dif > 0) { hint.textContent = 'Falta ' + dif + ' para llegar al total.'; hint.style.color = '#b85c8a'; }
+  else { hint.textContent = 'Sobra ' + Math.abs(dif) + ' respecto al total.'; hint.style.color = '#b02a2a'; }
 }
 
 function gSetType(t, silent) {
@@ -1062,14 +1181,30 @@ async function gAnalyzeIA() {
     const notasIA = [res.concepto, res.notas].filter(Boolean).join(' — ');
     if(notasIA) document.getElementById('gNotas').value=notasIA;
     // Auto-conversión: si la IA ya calculó la conversión, úsala; si no, pídela
+    // Productos del ticket — la IA ya los manda listos (mismo prompt que usa Compras)
+    if (Array.isArray(res.productos) && res.productos.length) {
+      gProdDraft = res.productos.map(p => ({
+        concepto: String(p.producto || p.nombre || '').trim(),
+        marca: String(p.marca || '').trim(),
+        categoria: String(p.categoria_producto || p.categoria || res.categoria || '').trim(),
+        ubicacion: String(p.ubicacion || '').trim(),
+        notas: String(p.notas || '').trim(),
+        piezas: p.piezas != null ? String(p.piezas) : '1',
+        cantidad: p.cantidad != null ? String(p.cantidad) : '',
+        unidad: GUNIDADES.includes(String(p.unidad || '').toLowerCase()) ? String(p.unidad).toLowerCase() : 'unidad',
+        precioInd: p.precio != null ? String(p.precio) : '',
+        caducidad: '', inventario: p.inventario === true
+      })).filter(p => p.concepto);
+      gRenderProdDraft();
+    }
     if(res.conversion && res.moneda_conv) {
       document.getElementById('gConversion').value=res.conversion;
       const selConv=document.getElementById('gMonedaConv'); if(selConv && res.moneda_conv) selConv.value=res.moneda_conv;
-      banner.innerHTML='✅ IA llenó los campos con conversión automática.';
+      banner.innerHTML='✅ IA llenó los campos con conversión automática.'+(gProdDraft.length?' + '+gProdDraft.length+' productos':'');
     } else {
       banner.innerHTML='✅ IA llenó los campos — calculando conversión…';
       await gConvertirIA();
-      banner.innerHTML='✅ IA llenó los campos.';
+      banner.innerHTML='✅ IA llenó los campos.'+(gProdDraft.length?' + '+gProdDraft.length+' productos':'');
     }
   } else { banner.innerHTML='⚠️ ' + (r&&r.error ? r.error : 'No se pudieron extraer datos'); }
   btn.disabled=false; btn.textContent='🤖 Analizar foto con IA';
@@ -1091,6 +1226,33 @@ async function gConvertirIA() {
   if(btn) { btn.textContent='🤖 IA'; btn.disabled=false; }
 }
 
+// ── Productos del ticket (idéntico a v30* de Compras_v46.html) ──
+function gRenderProdDraft() {
+  const c = document.getElementById('gProdList'); if (!c) return;
+  document.getElementById('gProdHdr').style.display = gProdDraft.length ? 'grid' : 'none';
+  c.innerHTML = gProdDraft.map((p, i) => `
+    <div class="g-prod-row">
+      <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+        <input type="text" value="${escHtml(p.concepto)}" placeholder="Producto" list="gListProdNombres" onchange="gProdDraft[${i}].concepto=this.value">
+        <input type="text" value="${escHtml(p.marca||'')}" placeholder="marca…" style="font-size:10px;opacity:.85;font-weight:600" onchange="gProdDraft[${i}].marca=this.value">
+        <input type="text" value="${escHtml(p.categoria||'')}" placeholder="categoría…" list="gListProdCats" style="font-size:10px;opacity:.9;font-weight:600;color:#b85c8a" onchange="gProdDraft[${i}].categoria=this.value">
+        <input type="text" value="${escHtml(p.ubicacion||'')}" placeholder="lugar…" list="gListProdLugares" style="font-size:10px;opacity:.9" onchange="gProdDraft[${i}].ubicacion=this.value">
+        <input type="text" value="${escHtml(p.notas||'')}" placeholder="notas…" style="font-size:10px;opacity:.8" onchange="gProdDraft[${i}].notas=this.value">
+      </span>
+      <input type="text" value="${escHtml(p.piezas)}" placeholder="1" onchange="gProdDraft[${i}].piezas=this.value">
+      <input type="text" value="${escHtml(p.cantidad)}" placeholder="500" onchange="gProdDraft[${i}].cantidad=this.value">
+      <select onchange="gProdDraft[${i}].unidad=this.value">${GUNIDADES.map(u => '<option' + (u === p.unidad ? ' selected' : '') + '>' + u + '</option>').join('')}</select>
+      <input type="text" value="${escHtml(p.precioInd)}" placeholder="¥" onchange="gProdDraft[${i}].precioInd=this.value">
+      <input type="date" value="${escHtml(p.caducidad)}" onchange="gProdDraft[${i}].caducidad=this.value" title="Caducidad">
+      <input type="checkbox" ${p.inventario ? 'checked' : ''} onchange="gProdDraft[${i}].inventario=this.checked" title="¿Va a inventario?">
+      <button class="g-shop-del" onclick="gProdDraft.splice(${i},1);gRenderProdDraft()" title="Quitar línea">🗑</button>
+    </div>`).join('');
+}
+function gProdAdd() {
+  gProdDraft.push({ concepto:'', marca:'', categoria:'', ubicacion:'', notas:'', piezas:'1', cantidad:'', unidad:'unidad', precioInd:'', caducidad:'', inventario:true });
+  gRenderProdDraft();
+}
+
 // ── Guardar ──
 async function gGuardar() {
   const itemId = document.getElementById('gItemId').value;
@@ -1107,6 +1269,16 @@ async function gGuardar() {
     const gExist = gastosVinculados[itemId].find(g => g.id === editId);
     if (gExist && gExist.rowIndex) editRowIndex = gExist.rowIndex;
   }
+  // Varios pagan (idéntico a saveExpense() de Compras): cada quien puso lo
+  // suyo, sin deuda entre ustedes — se guarda como un solo gasto con el
+  // desglose completo en pagadores[].
+  let pagadoresBody = [], quienPagaBody = gCurrentPayer, compartidoBody = gCurrentType;
+  if (gCurrentVariosPagan) {
+    pagadoresBody = Object.keys(gCurrentPagadores).filter(n => (parseFloat(gCurrentPagadores[n])||0) > 0).map(n => ({ persona: n, monto: parseFloat(gCurrentPagadores[n])||0 }));
+    if (!pagadoresBody.length) { showToast('Pon cuánto puso cada quien'); return; }
+    quienPagaBody = pagadoresBody.map(p => p.persona).join(' + ');
+    compartidoBody = (gCurrentType === 'Compartido') ? 'Compartido' : 'VariosPagan';
+  }
   const body = {
     action: editRowIndex ? 'updateGasto' : 'saveGasto',
     rowIndex: editRowIndex || undefined,
@@ -1117,8 +1289,10 @@ async function gGuardar() {
     moneda_pago:document.getElementById('gMoneda').value,
     moneda:document.getElementById('gMonedaConv').value,
     concepto:concepto_final,
-    quien_paga:gCurrentPayer,
-    compartido:gCurrentType,
+    quien_paga:quienPagaBody,
+    compartido:compartidoBody,
+    participantes: [],
+    pagadores: pagadoresBody,
     pago: gPagoBuild(),
     notas:document.getElementById('gNotas').value||'',
     categoria:document.getElementById('gCat').value||'',
@@ -1144,7 +1318,8 @@ async function gGuardar() {
         costo: costo||'0', moneda: document.getElementById('gMoneda').value,
         conversion: document.getElementById('gConversion').value,
         monedaConv: document.getElementById('gMonedaConv').value,
-        quien_paga: gCurrentPayer, compartido: gCurrentType, pago: body.pago,
+        quien_paga: quienPagaBody, compartido: compartidoBody, pago: body.pago,
+        pagadores: pagadoresBody,
         concepto: concepto_final, tienda, fecha: body.fecha,
         fecha_captura: body.fecha_captura,
         categoria: body.categoria, notas: body.notas,
@@ -1155,9 +1330,32 @@ async function gGuardar() {
       } else {
         gastosVinculados[itemId].push(nuevo);
       }
+      // Productos del ticket: reemplaza (replace:true) todos los productos ligados
+      // a este gastoId — mismo comportamiento que saveExpense() en Compras.
+      const prodsLimpios = gProdDraft.filter(p => (p.concepto||'').trim() !== '');
+      if (prodsLimpios.length) {
+        try {
+          const catalogo = gCatalogoProductos();
+          const formP = new FormData();
+          formP.append('payload', JSON.stringify({
+            action: 'saveProductos', sesion: 'Principal', compraId: body.gastoId, replace: true,
+            tienda, fecha: body.fecha, quien: gCurrentPayer,
+            productos: prodsLimpios.map(p => {
+              const c = catalogo[gNormTxt(p.concepto)] || {};
+              return {
+                concepto: p.concepto.trim(), marca: p.marca || c.marca || '', notas: p.notas || '',
+                categoria: p.categoria || c.categoria || '', ubicacion: p.ubicacion || c.ubicacion || '',
+                piezas: p.piezas, cantidad: p.cantidad, unidad: p.unidad, precioInd: p.precioInd,
+                caducidad: p.caducidad, inventario: p.inventario ? 'SI' : 'NA'
+              };
+            })
+          }));
+          await fetch(GAS_URL_GASTOS, { method: 'POST', body: formP });
+        } catch (e) { console.warn('No se pudieron guardar los productos:', e); }
+      }
       // Los gastos se guardan SOLO en el Sheet de Gastos (GAS_URL_GASTOS).
       // No uses GASTOS_VINCULOS — esa pestaña ya no se utiliza.
-      gCloseModal(true); showToast('Gasto registrado 💴 ✦');
+      gCloseModal(true); showToast('Gasto registrado 💴 ✦' + (prodsLimpios.length ? ' + ' + prodsLimpios.length + ' productos' : ''));
       // Refrescar el visor si hay uno abierto (para ver el gasto inmediatamente)
       const modalEl = document.getElementById('modalBox');
       if (modalEl && modalEl.dataset.visorTipo && modalEl.dataset.visorId) {
@@ -1175,14 +1373,17 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
   const cots   = lista.filter(g =>  g.cotizacion);
   const totalJPY = reales.reduce((s,g) => s + (g.moneda==='JPY' ? Number(g.costo||0) : 0), 0);
   const rs = 'display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;border-top:1px solid #dcfce7;';
-  const buildRows = (rows) => rows.map(g => `<div style="${rs}">
-    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')} · ${escHtml(g.quien_paga||'')}${g.notas?' <span style="color:var(--ink-3);font-size:10px">· '+escHtml(g.notas)+'</span>':''}</span>
+  const buildRows = (rows) => rows.map(g => {
+    const nProds = gAllProds.filter(p => p.compraId === g.id).length;
+    return `<div style="${rs}">
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')} · ${escHtml(g.quien_paga||'')}${g.notas?' <span style="color:var(--ink-3);font-size:10px">· '+escHtml(g.notas)+'</span>':''}${nProds?' <span class="g-chip" style="font-size:9px;padding:1px 6px">🧾 '+nProds+'</span>':''}</span>
     <div style="display:flex;gap:3px;align-items:center;flex-shrink:0;margin-left:6px">
       <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
       <button class="icon-btn" style="font-size:12px" onclick="editarGastoVisor('${tipo}','${itemId}','${g.id}')">✏️</button>
       <button class="icon-btn" style="font-size:12px" onclick="eliminarGastoResumen('${itemId}','${g.id}')">🗑</button>
     </div>
-  </div>`).join('');
+  </div>`;
+  }).join('');
   return `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius);padding:10px 12px;margin-top:8px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <b style="font-size:12.5px">💴 Gastos (${reales.length})</b>
@@ -6609,6 +6810,18 @@ function sortTablaGastos(col, thEl) {
 }
 
 // ── Botón secreto: info técnica para soporte/desarrollo ────────
+function guardarGasUrlGastos() {
+  const url = (document.getElementById('fGasUrlGastos').value || '').trim();
+  GAS_URL_GASTOS = url;
+  try { localStorage.setItem('itin_gasUrlGastos', url); } catch (e) {}
+  showToast(url ? 'URL de Gastos guardada ✦' : 'URL de Gastos borrada');
+  cargarGastosVinculos();
+}
+function requiereGasUrlGastos() {
+  if (GAS_URL_GASTOS) return true;
+  showToast('🔌 Configurá la URL de Gastos en ⚙ Info técnica primero');
+  return false;
+}
 function openDevInfo() {
   modalEsFormulario = false;
   modalOpen(`
@@ -6622,6 +6835,13 @@ function openDevInfo() {
         </div>
       </div>
       <div class="field"><label>URL del Web App (Apps Script)</label><textarea readonly style="font-size:10.5px">${GAS_URL}</textarea></div>
+      <div class="field">
+        <label>URL del Web App de Gastos <span style="text-transform:none; font-weight:400; font-size:11px; color:var(--ink-3)">(para vincular gastos — se guarda en este dispositivo, no en el código)</span></label>
+        <div style="display:flex; gap:8px; align-items:center">
+          <input id="fGasUrlGastos" style="flex:1; font-size:10.5px" placeholder="https://script.google.com/macros/s/.../exec" value="${escHtml(GAS_URL_GASTOS)}">
+          <button class="btn-mini" onclick="guardarGasUrlGastos()">💾 Guardar</button>
+        </div>
+      </div>
       <div class="field"><label>Proyecto / viaje activo</label><input readonly value="${escHtml(currentProyecto || '(sin proyecto)')}"></div>
       <div class="field"><label>Conteo de datos cargados</label><textarea readonly style="font-size:11.5px; min-height:84px">Días: ${itinerario.dias.length}\nTransporte: ${itinerario.transporte.length}\nHospedaje: ${itinerario.hospedaje.length}\nPendientes: ${itinerario.pendientes.length}</textarea></div>
       <div class="field">
@@ -6796,6 +7016,9 @@ init();
     </div>
     <div class="g-mbody">
       <input type="hidden" id="gItemId"><input type="hidden" id="gTipo"><input type="hidden" id="gEditId"><input type="hidden" id="gStoredPhoto">
+      <datalist id="gListProdNombres"></datalist>
+      <datalist id="gListProdCats"></datalist>
+      <datalist id="gListProdLugares"></datalist>
       <div class="g-field">
         <label>Foto del ticket</label>
         <div class="g-uzone" id="gUzone" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="gHandleDrop(event)">
@@ -6819,13 +7042,14 @@ init();
       </div>
       <div class="g-row2-dates">
         <div class="g-field" style="margin-bottom:0"><label>Fecha de compra *</label><input type="date" id="gFecha" class="g-input"></div>
+        <div class="g-field" style="margin-bottom:0"><label>Hora ticket <span style="text-transform:none;font-weight:400">(opc.)</span></label><input type="time" id="gHoraCompra" class="g-input"></div>
         <div class="g-field" style="margin-bottom:0"><label>Fecha captura</label><input type="date" id="gCaptura" class="g-input" readonly style="background:var(--paper-2);color:var(--ink-3);cursor:not-allowed"></div>
       </div>
       <div class="amounts-row">
         <div class="amount-pair">
           <label style="display:block;font-size:11px;font-weight:500;color:var(--ink-2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Monto</label>
           <div class="pair-inputs">
-            <input type="number" id="gCosto" placeholder="0">
+            <input type="number" id="gCosto" placeholder="0" oninput="gActualizarHintPagadores()">
             <select id="gMoneda"><option>JPY</option><option>MXN</option><option>USD</option><option>EUR</option><option>GBP</option></select>
           </div>
         </div>
@@ -6869,6 +7093,15 @@ init();
           <button class="g-tbtn" id="gBTemis" onclick="gSetPayer('Temis')">🧡 Temis</button>
           <button class="g-tbtn" id="gBNA" onclick="gSetPayer('NA')">— N/A</button>
         </div>
+        <label id="gChkVariosPaganWrap" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:8px 0 0;font-size:12px">
+          <input type="checkbox" id="gChkVariosPagan" onchange="gOnToggleVariosPagan()" style="accent-color:#15803d;width:15px;height:15px;cursor:pointer">
+          <span>🙌 Varios pagan — cada quien pone lo suyo (sin deuda entre ustedes)</span>
+        </label>
+      </div>
+      <div class="g-field" id="gPagadoresField" style="display:none">
+        <label>¿Cuánto puso cada quien? <button type="button" class="g-btn-gem" style="flex:none;padding:3px 8px;font-size:10px;margin:0" onclick="gPartesIguales()">⚖️ Partes iguales</button></label>
+        <div id="gPagadoresBox" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div id="gPagadoresHint" style="font-size:10.5px;color:var(--ink-3);margin-top:5px"></div>
       </div>
       <div class="g-field">
         <label>¿Cómo se divide? <span id="gCotBadge" class="g-chip" style="display:none">💬 N/A</span></label>
@@ -6894,6 +7127,18 @@ init();
         <div id="gTarjetaHint" class="empty-mini" style="display:none">No tenés tarjetas registradas todavía — agregalas en Gastos → Finanzas → Tarjetas.</div>
       </div>
       <div class="g-field"><label>Notas</label><input type="text" id="gNotas" class="g-input" placeholder="Observaciones…"></div>
+
+      <div class="g-field">
+        <label>🧾 Productos del ticket <span style="font-weight:400;color:var(--ink-3);text-transform:none">(la IA los llena; puedes editar)</span></label>
+        <div class="g-prod-scroll">
+          <div id="gProdHdr" class="g-prod-hdr" style="display:none"><span>Producto</span><span>Pzas</span><span>Cant.</span><span>Unidad</span><span>Precio</span><span>Caducidad</span><span title="¿Va a inventario?">📦</span><span></span></div>
+          <div id="gProdList"></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button class="g-bcnl" style="padding:6px 12px;font-size:12px" onclick="gProdAdd()">＋ Agregar producto</button>
+        </div>
+      </div>
+
       <div class="g-mfooter">
         <button class="g-bcnl" onclick="gCloseModal()">Cancelar</button>
         <button class="g-bsave" onclick="gGuardar()">Guardar gasto 💴</button>
