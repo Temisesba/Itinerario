@@ -290,6 +290,9 @@ body.drag-locked .cal-resize-handle { display: none; }
   .mobile-tab-float { display: flex; position: fixed; left: 14px; bottom: 22px; gap: 4px; background: var(--paper); border: 1px solid var(--line); border-radius: 30px; padding: 5px; box-shadow: 0 6px 18px rgba(0,0,0,0.18); z-index: 2200; touch-action: none; cursor: grab; }
   .mobile-tab-float.vertical { flex-direction: column; }
   .mobile-tab-float.mtf-dragging { cursor: grabbing; opacity: 0.85; }
+  /* Flechita chica y discreta que avisa que se puede rotar el panel (mantener presionado). */
+  .mtf-rotate-hint { position: absolute; top: -5px; right: -5px; width: 15px; height: 15px; border-radius: 50%; background: var(--paper); border: 1px solid var(--line); font-size: 9px; line-height: 13px; text-align: center; color: var(--ink-3); pointer-events: none; }
+  .mobile-tab-float.vertical .mtf-rotate-hint { transform: rotate(90deg); }
   .mtf-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; font-size: 17px; cursor: pointer; display:flex; align-items:center; justify-content:center; }
   .mtf-btn.active { background: var(--ink); }
 }
@@ -458,6 +461,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 </div>
 
 <div class="mobile-tab-float" id="mobileTabFloat" title="Arrastrá para moverlo · mantené presionado para poner vertical/horizontal">
+  <span class="mtf-rotate-hint">⤢</span>
   <button class="mtf-btn active" data-tab="semana" onclick="setTab('semana')" title="Itinerario">📅</button>
   <button class="mtf-btn" data-tab="tabla" onclick="setTab('tabla')" title="Tabla">📋</button>
   <button class="mtf-btn" data-tab="mapa" onclick="setTab('mapa')" title="Mapa">🗺️</button>
@@ -512,7 +516,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 12; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 13; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 const GAS_URL_GASTOS = 'https://script.google.com/macros/s/AKfycby7JVoMBRNuu_xZKMcgvlrzpV7ksqNkeqstc2OaOpZzZVemgM4GRUl0Z1imsr5hOQNG/exec';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
