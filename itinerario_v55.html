@@ -304,6 +304,10 @@ body.drag-locked .cal-resize-handle { display: none; }
   .mtf-rotate-hint { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--paper); border: 1px solid var(--line); font-size: 10px; line-height: 16px; text-align: center; color: var(--ink-2); padding: 0; cursor: pointer; }
   .mtf-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; font-size: 17px; cursor: pointer; display:flex; align-items:center; justify-content:center; }
   .mtf-btn.active { background: var(--ink); }
+  /* Colapsado (por defecto): solo se ve el botón de la pestaña activa. Un toque expande
+     los 3 para elegir; al elegir uno (o tocar afuera) se vuelve a colapsar solo. */
+  .mobile-tab-float:not(.expanded) .mtf-btn:not(.active) { display: none; }
+  .mobile-tab-float:not(.expanded) .mtf-rotate-hint { display: none; }
 }
 
 /* Chat drawer */
@@ -471,9 +475,9 @@ body.drag-locked .cal-resize-handle { display: none; }
 
 <div class="mobile-tab-float" id="mobileTabFloat" title="Arrastrá para moverlo">
   <button class="mtf-rotate-hint" id="mtfRotateBtn" title="Cambiar a vertical/horizontal">🔃</button>
-  <button class="mtf-btn active" data-tab="semana" onclick="setTab('semana')" title="Itinerario">📅</button>
-  <button class="mtf-btn" data-tab="tabla" onclick="setTab('tabla')" title="Tabla">📋</button>
-  <button class="mtf-btn" data-tab="mapa" onclick="setTab('mapa')" title="Mapa">🗺️</button>
+  <button class="mtf-btn active" data-tab="semana" onclick="setTab('semana');mtfCollapse()" title="Itinerario">📅</button>
+  <button class="mtf-btn" data-tab="tabla" onclick="setTab('tabla');mtfCollapse()" title="Tabla">📋</button>
+  <button class="mtf-btn" data-tab="mapa" onclick="setTab('mapa');mtfCollapse()" title="Mapa">🗺️</button>
 </div>
 <button class="fab-chat" onclick="openChat()" title="Hablar con tu asistente de viaje">💬</button>
 
@@ -525,7 +529,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 16; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 17; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -3911,12 +3915,35 @@ function cerrarLightboxSiFondo(e) { if (e.target.id === 'lightboxOverlay') cerra
       try { localStorage.setItem('itin_tabFloatPos', JSON.stringify({ left: parseFloat(el.style.left), top: parseFloat(el.style.top) })); } catch (e) {}
     }
   });
-  // Si se arrastró o se disparó el mantener-presionado, que no dispare el onclick del botón
-  // que quedó debajo del dedo.
+  // Colapsado (default): solo se ve el botón de la pestaña activa. Un toque lo expande
+  // para elegir entre los 3; elegir uno (mtfCollapse() en su onclick) o tocar afuera lo
+  // vuelve a colapsar. Si se arrastró o se disparó el mantener-presionado, no dispara
+  // el onclick del botón que quedó debajo del dedo.
   el.addEventListener('click', (e) => {
-    if (moved || longPressFired) { e.stopPropagation(); e.preventDefault(); moved = false; longPressFired = false; }
+    if (moved || longPressFired) { e.stopPropagation(); e.preventDefault(); moved = false; longPressFired = false; return; }
+    if (!el.classList.contains('expanded')) {
+      e.stopPropagation(); e.preventDefault();
+      el.classList.add('expanded');
+      // Si al expandir se sale de la pantalla (quedó pegado a un borde), lo acomoda
+      // solo lo necesario para que los 3 botones queden visibles.
+      requestAnimationFrame(() => {
+        const r = el.getBoundingClientRect();
+        let left = parseFloat(el.style.left) || r.left, top = parseFloat(el.style.top) || r.top;
+        const overR = r.right - window.innerWidth + 4, overB = r.bottom - window.innerHeight + 4;
+        const overL = 4 - r.left, overT = 4 - r.top;
+        if (overR > 0) left -= overR; if (overL > 0) left += overL;
+        if (overB > 0) top -= overB; if (overT > 0) top += overT;
+        el.style.left = left + 'px'; el.style.top = top + 'px'; el.style.bottom = 'auto';
+      });
+      return;
+    }
+    if (e.target === el) el.classList.remove('expanded'); // tocaron el fondo del panel: cierra sin elegir
   }, true);
+  document.addEventListener('click', (e) => {
+    if (el.classList.contains('expanded') && !el.contains(e.target)) el.classList.remove('expanded');
+  });
 })();
+function mtfCollapse() { const el = document.getElementById('mobileTabFloat'); if (el) el.classList.remove('expanded'); }
 
 async function subirFotoPendiente(id, input) {
   const file = input.files[0]; if (!file) return;
