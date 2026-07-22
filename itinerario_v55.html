@@ -529,7 +529,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 18; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 19; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -659,7 +659,7 @@ let _gastosSumaSel = new Set(); // IDs de gastos seleccionados para sumar (cache
 let dragBloqueado = true;
 let modalEsFormulario = false; // true solo en formularios editables (no en visores de lectura)
 let miniMap = null;
-let panelCollapsed = { notas: true, sinHora: true, transporte: true, hospedaje: true, despues: true, restaurantes: true, recomendaciones: true, eventos: true, mapa: false };
+let panelCollapsed = { notas: true, sinHora: true, transporte: true, hospedaje: true, despues: true, recomendaciones: true, eventos: true, mapa: false };
 let antojosMaestros = []; // lista maestra del Sheets, separada de los pendientes con antojo
 // v57: qué grupos de "Recomendaciones gastronómicas" quedaron desplegados — vive fuera de
 // render() para que sobreviva a los re-renders (antes cada re-render los volvía a colapsar).
@@ -2185,7 +2185,7 @@ function openBlockDetail(b) {
 }
 
 // ── Panel lateral: transporte, hospedaje, pendientes sin hora ──
-const POOL_KEYS = ['mapa', 'sinHora', 'despues', 'restaurantes', 'notas', 'transporte', 'hospedaje', 'recomendaciones', 'eventos'];
+const POOL_KEYS = ['mapa', 'sinHora', 'despues', 'notas', 'transporte', 'hospedaje', 'recomendaciones', 'eventos'];
 function getPoolOrder() {
   try {
     const saved = JSON.parse(localStorage.getItem('itin_poolOrder'));
@@ -2300,12 +2300,6 @@ function renderPoolPanel() {
     despues: sectionWrap('despues', '⏳ Para después / si hay tiempo', despues.length,
       `<button class="btn-mini" onclick="openPendienteForm(null,null)" title="Agregar">＋</button>`,
       `<div id="poolDespuesZone">${listaConFlechas(despues, 'despues')}</div>`),
-    restaurantes: (function() {
-      const restos = itinerario.pendientes.filter(p => p.esRestaurante && (p.proyecto||'') === currentProyecto).sort((a,b)=>(a.orden||0)-(b.orden||0));
-      return sectionWrap('restaurantes', '🍴 Restaurantes', restos.length,
-        `<button class="btn-mini" onclick="openPendienteForm(null,null)" title="Agregar restaurante">＋</button>`,
-        restos.length ? restos.map(p => poolItemHtml(p)).join('') : `<div class="empty-mini">Sin restaurantes. Agrega un lugar y márcalo como restaurante.</div>`);
-    })(),
     recomendaciones: renderRecomendacionesGastronomicas(antojos, order),
     eventos: (function() {
       const dias = diasFiltrados();
@@ -2433,7 +2427,7 @@ function renderRecomendacionesGastronomicas(candidatos, order) {
         </div>`;
       }).join('')
     : `<div class="empty-mini">Toca "＋ Platillo" para agregar un antojo maestro.</div>`;
-  return sectionWrap('recomendaciones', '🍴 Recomendaciones gastronómicas', totalItems,
+  return sectionWrap('recomendaciones', '🍴 Platillos y restaurantes', totalItems,
     `<button class="btn-mini" onclick="agregarPlatilloMaestro()" title="Nuevo platillo/antojo">＋ Platillo</button>`,
     gruposHtml);
 }
@@ -2488,7 +2482,7 @@ function editarNombrePlatillo(antojo, spanEl) {
 function eliminarPlatilloMaestroUI(antojo) {
   const restaurantes = itinerario.pendientes.filter(p => p.antojo === antojo && (p.proyecto || '') === currentProyecto);
   const nota = restaurantes.length > 0
-    ? `Los ${restaurantes.length} restaurante(s) asociado(s) se moverán a <b>Sin categoría</b> dentro de Recomendaciones gastronómicas.`
+    ? `Los ${restaurantes.length} restaurante(s) asociado(s) se moverán a <b>Sin categoría</b> dentro de Platillos y restaurantes.`
     : 'Esta categoría no tiene restaurantes asignados.';
   modalEsFormulario = false;
   modalOpen(`
@@ -2532,7 +2526,7 @@ function poolItemHtml(p) {
   const estrella = p.prioritaria ? `<span title="Prioritaria" style="margin-left:4px">⭐</span>` : '';
   const yaAsignado = (p.diaId && p.horaInicio) ? `<div class="psub" style="color:var(--ok)">✅ Ya asignado: ${escHtml(diaLabel(p.diaId))} · ${escHtml(p.horaInicio)}–${escHtml(p.horaFin || '')}</div>` : '';
   const etiquetaFecha = (p.diaId && !p.horaInicio) ? `<span class="fecha-badge" title="Tiene día asignado, sin hora todavía">📅 ${escHtml(diaLabel(p.diaId))}</span>` : '';
-  // v57: en Restaurantes / Recomendaciones gastronómicas la dirección no aporta tanto como
+  // v57: en Platillos y restaurantes la dirección no aporta tanto como
   // las notas (o, si no hay, lo que ya dijo la IA) — igual que se ve en el visor. El resto de
   // pendientes (no-comida) sigue mostrando dirección + notas como antes.
   const esComida = p.esRestaurante || p.antojo;
@@ -4536,14 +4530,16 @@ function renderMiniMapa(diaIdActivo) {
   const puntosHoy = [];
 
   dias.forEach((dia) => {
-    const esHoy = dia.id === diaIdActivo;
+    // v57: "Mapa del día" es del DÍA, no de todo el viaje — antes dibujaba la ruta de
+    // TODOS los días en el mismo mapa (solo bajándoles la opacidad), y quedaba una
+    // maraña de líneas cruzadas encima del día activo. Ahora solo dibuja el día activo.
+    if (dia.id !== diaIdActivo) return;
+    const esHoy = true;
     const idxGlobal = dias.findIndex(d => d.id === dia.id);
     const color = DIA_COLORES[idxGlobal >= 0 ? idxGlobal % DIA_COLORES.length : 0];
-    // v57: más contraste entre "hoy" (grande, sólido, al frente) y el resto de días (chico,
-    // bien lavado, al fondo) — antes 1 vs 0.3 se sentía poco marcado.
-    const opacidad = esHoy ? 1 : 0.16;
-    const tamMarker = esHoy ? 20 : 14;
-    const zHoy = esHoy ? 2000 : 100;
+    const opacidad = 1;
+    const tamMarker = 20;
+    const zHoy = 2000;
     const hosp = hospedajeDelDia(dia.id);
 
     // Recopilar todos los puntos del día con su hora para ordenarlos igual que el mapa principal
