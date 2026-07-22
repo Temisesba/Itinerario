@@ -529,7 +529,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 17; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 18; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -661,6 +661,9 @@ let modalEsFormulario = false; // true solo en formularios editables (no en viso
 let miniMap = null;
 let panelCollapsed = { notas: true, sinHora: true, transporte: true, hospedaje: true, despues: true, restaurantes: true, recomendaciones: true, eventos: true, mapa: false };
 let antojosMaestros = []; // lista maestra del Sheets, separada de los pendientes con antojo
+// v57: qué grupos de "Recomendaciones gastronómicas" quedaron desplegados — vive fuera de
+// render() para que sobreviva a los re-renders (antes cada re-render los volvía a colapsar).
+let recoGruposAbiertos = new Set();
 function scrollPanelATransporte(id) {
   modalClose();
   // Asegura que la sección Transporte esté desplegada, luego scrollea al elemento
@@ -737,11 +740,23 @@ async function init() {
 // ajustarAlturaMapa eliminada — Flexbox maneja el layout automáticamente
 
 async function loadItinerario() {
-  if (!navigator.onLine) {
+  // v57: cache-first — si ya hay algo guardado en este dispositivo, se pinta de inmediato
+  // con eso (sin esperar al servidor) y la llamada en vivo se dispara en segundo plano nada
+  // más para refrescar. Antes, aunque "estuviera offline" la app SIEMPRE esperaba primero a
+  // que la llamada de red resolviera o fallara — en una conexión lenta/inestable eso puede
+  // tardar bastante antes de caer al respaldo local, aunque el respaldo ya estuviera ahí.
+  const baseline = cargarBaseline();
+  if (baseline) {
     reconstruirDesdeCache();
     renderSpine();
     renderItinerario();
     actualizarIndicadorConexion();
+    // No bloquean el primer pintado — cuando lleguen, refrescan solas.
+    cargarAntojosMaestros().then(() => renderItinerario()).catch(() => {});
+    cargarGastosVinculos().then(() => renderItinerario()).catch(() => {});
+  }
+  if (!navigator.onLine) {
+    if (!baseline) { reconstruirDesdeCache(); renderSpine(); renderItinerario(); actualizarIndicadorConexion(); }
     return;
   }
   try {
@@ -753,16 +768,12 @@ async function loadItinerario() {
     cargarColaPendiente().forEach(c => aplicarCambioLocal(itinerario, c)); // reaplicar lo que siga sin sincronizar
     if (currentProyecto === null) currentProyecto = pickDefaultProyecto();
     if (!currentDiaId || !diasFiltrados().some(d => d.id === currentDiaId)) currentDiaId = pickTodayOrFirst();
-    await cargarAntojosMaestros(); // carga la lista maestra de antojos del Sheets
-    await cargarGastosVinculos();  // carga gastos vinculados a eventos desde GASTOS_VINCULOS tab
+    if (!baseline) { await cargarAntojosMaestros(); await cargarGastosVinculos(); } // primera vez en este dispositivo: sin cache que mostrar mientras tanto, sí hay que esperarlas
     renderSpine();
     renderItinerario();
     actualizarIndicadorConexion();
   } catch (e) {
-    reconstruirDesdeCache();
-    renderSpine();
-    renderItinerario();
-    actualizarIndicadorConexion();
+    if (!baseline) { reconstruirDesdeCache(); renderSpine(); renderItinerario(); actualizarIndicadorConexion(); }
   }
 }
 
@@ -2262,7 +2273,7 @@ function renderPoolPanel() {
                   <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','up','${dia.id}')" ${idx===0?'disabled':''}>▲</button>
                   <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','down','${dia.id}')" ${idx===hospSorted.length-1?'disabled':''}>▼</button>
                 </div>
-                <button class="icon-btn" onclick="marcarHospedajeElegido('${h.id}')" title="${esElegido ? 'Quitar como hotel elegido' : 'Marcar como el hotel elegido'}">${esElegido ? '⭐' : '☆'}</button>
+                ${(!h.diaIdInicio || dia.id === h.diaIdInicio) ? `<button class="icon-btn" onclick="marcarHospedajeElegido('${h.id}')" title="${esElegido ? 'Quitar como hotel elegido' : 'Marcar como el hotel elegido'}">${esElegido ? '⭐' : '☆'}</button>` : ''}
                 <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorHospedaje('${h.id}')">${escHtml(h.nombre || '(sin nombre)')}</span>
                 <span style="font-size:10px; color:var(--ink-3)">${esDelDia ? '📅' : ''}</span>
                 <button class="icon-btn" onclick="openHospedajeForm('${h.id}','${h.diaIdInicio}')" title="Editar">✏️</button>
@@ -2395,6 +2406,7 @@ function renderRecomendacionesGastronomicas(candidatos, order) {
         const esMaestro = key !== '__sincategoria__';
         const items = grupos[key];
         const gId = `rec-g-${idx}`;
+        const abierto = recoGruposAbiertos.has(key);
         const itemsOrdenados = [...items].sort((a,b)=>(a.orden||0)-(b.orden||0));
         const contenido = itemsOrdenados.length
           ? itemsOrdenados.map((p, idx) => `<div style="display:flex; align-items:flex-start; gap:3px">
@@ -2411,19 +2423,28 @@ function renderRecomendacionesGastronomicas(candidatos, order) {
           : '';
         return `<div style="margin-bottom:6px">
           <div style="display:flex; align-items:center; gap:5px; margin-bottom:4px">
-            <button onclick="var el=document.getElementById('${gId}'); var abierto=el.style.display!=='none'; el.style.display=abierto?'none':''; this.textContent=abierto?'▶':'▼';" style="background:none;border:none;cursor:pointer;padding:0;font-size:11px;color:var(--ink-3)">▶</button>
+            <button onclick="toggleRecoGrupo('${escHtml(key)}','${gId}',this)" style="background:none;border:none;cursor:pointer;padding:0;font-size:11px;color:var(--ink-3)">${abierto ? '▼' : '▶'}</button>
             <span id="span-platillo-${idx}" style="padding:0; font-weight:700; color:${key === '__sincategoria__' ? 'var(--ink-3)' : 'var(--ink)'}; flex:1; font-size:12px; cursor:${esMaestro ? 'text' : 'default'}" ${esMaestro ? `ondblclick="editarNombrePlatillo('${escHtml(antojo)}', this)"` : ''}>🍴 ${escHtml(antojo)}</span>
             ${botonesExtra}
             <span style="font-size:10px;color:var(--ink-3)">${items.length}</span>
             <button class="btn-mini" onclick="agregarRestauranteAntojo('${escHtml(antojo === 'Sin categoría' ? '' : antojo)}')" style="font-size:10px">＋</button>
           </div>
-          <div id="${gId}" style="display:none">${contenido}</div>
+          <div id="${gId}" style="display:${abierto ? '' : 'none'}">${contenido}</div>
         </div>`;
       }).join('')
     : `<div class="empty-mini">Toca "＋ Platillo" para agregar un antojo maestro.</div>`;
   return sectionWrap('recomendaciones', '🍴 Recomendaciones gastronómicas', totalItems,
     `<button class="btn-mini" onclick="agregarPlatilloMaestro()" title="Nuevo platillo/antojo">＋ Platillo</button>`,
     gruposHtml);
+}
+// Se guarda en recoGruposAbiertos (fuera de este render) para que sobreviva al próximo
+// re-render — antes cada re-render volvía a colapsar todo, aunque el usuario ya lo hubiera abierto.
+function toggleRecoGrupo(key, gId, btnEl) {
+  const el = document.getElementById(gId); if (!el) return;
+  const abrir = el.style.display === 'none';
+  el.style.display = abrir ? '' : 'none';
+  if (btnEl) btnEl.textContent = abrir ? '▼' : '▶';
+  if (abrir) recoGruposAbiertos.add(key); else recoGruposAbiertos.delete(key);
 }
 
 function agregarPlatilloMaestro() {
@@ -2511,14 +2532,22 @@ function poolItemHtml(p) {
   const estrella = p.prioritaria ? `<span title="Prioritaria" style="margin-left:4px">⭐</span>` : '';
   const yaAsignado = (p.diaId && p.horaInicio) ? `<div class="psub" style="color:var(--ok)">✅ Ya asignado: ${escHtml(diaLabel(p.diaId))} · ${escHtml(p.horaInicio)}–${escHtml(p.horaFin || '')}</div>` : '';
   const etiquetaFecha = (p.diaId && !p.horaInicio) ? `<span class="fecha-badge" title="Tiene día asignado, sin hora todavía">📅 ${escHtml(diaLabel(p.diaId))}</span>` : '';
+  // v57: en Restaurantes / Recomendaciones gastronómicas la dirección no aporta tanto como
+  // las notas (o, si no hay, lo que ya dijo la IA) — igual que se ve en el visor. El resto de
+  // pendientes (no-comida) sigue mostrando dirección + notas como antes.
+  const esComida = p.esRestaurante || p.antojo;
+  const notaComida = p.notasPrevias || p.sugerenciasIA || '';
+  const subtitulo = esComida
+    ? (notaComida ? `<div class="psub">${p.notasPrevias ? '📌' : '✨'} ${escHtml(notaComida)}</div>` : '')
+    : (p.direccion ? `<div class="psub">${escHtml(p.direccion)}</div>` : '');
   return `<div class="pool-item-mini" id="pool-${p.id}" style="${p.realizado ? 'opacity:.6; background:var(--paper-2)' : ''}">
     <span class="handle">⠿</span>
     <div style="flex:1; min-width:0">
       <div style="margin-bottom:3px; display:flex; align-items:center">${reservadoToggleHtml('pendiente', p.id, p.reservado)}${comida}${estrella}</div>
       <div class="pname" style="${p.realizado ? 'text-decoration:line-through' : ''}">${p.realizado ? '✅ ' : ''}${escHtml(p.nombre || '')}</div>
-      ${p.direccion ? `<div class="psub">${escHtml(p.direccion)}</div>` : ''}
+      ${subtitulo}
       ${yaAsignado}
-      ${p.notasPrevias ? `<div class="psub">📌 ${escHtml(p.notasPrevias)}</div>` : ''}
+      ${(!esComida && p.notasPrevias) ? `<div class="psub">📌 ${escHtml(p.notasPrevias)}</div>` : ''}
       ${p.duracionMin ? `<div class="psub">⏱ ~${formatDuracion(p.duracionMin)}</div>` : ''}
     </div>
     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px">
@@ -4510,7 +4539,11 @@ function renderMiniMapa(diaIdActivo) {
     const esHoy = dia.id === diaIdActivo;
     const idxGlobal = dias.findIndex(d => d.id === dia.id);
     const color = DIA_COLORES[idxGlobal >= 0 ? idxGlobal % DIA_COLORES.length : 0];
-    const opacidad = esHoy ? 1 : 0.3;
+    // v57: más contraste entre "hoy" (grande, sólido, al frente) y el resto de días (chico,
+    // bien lavado, al fondo) — antes 1 vs 0.3 se sentía poco marcado.
+    const opacidad = esHoy ? 1 : 0.16;
+    const tamMarker = esHoy ? 20 : 14;
+    const zHoy = esHoy ? 2000 : 100;
     const hosp = hospedajeDelDia(dia.id);
 
     // Recopilar todos los puntos del día con su hora para ordenarlos igual que el mapa principal
@@ -4534,13 +4567,13 @@ function renderMiniMapa(diaIdActivo) {
       const horaOrigen = (opcionSel && opcionSel.salida) || '99:00';
       const horaDestino = (opcionSel && opcionSel.llegada) || '99:01';
       if (t.origenLat && t.origenLng) {
-        L.marker([t.origenLat, t.origenLng], { icon: shapeDivIcon(color, 'square', emoji, 18, opacidad) }).addTo(miniMap)
+        L.marker([t.origenLat, t.origenLng], { icon: shapeDivIcon(color, 'square', emoji, tamMarker, opacidad), zIndexOffset: zHoy }).addTo(miniMap)
           .on('click', () => abrirVisor('transporte', t.id));
         puntosOrdenados.push({ lat: t.origenLat, lng: t.origenLng, hora: horaOrigen, esTrans: true, transId: t.id });
         if (esHoy) puntosHoy.push([t.origenLat, t.origenLng]);
       }
       if (t.destinoLat && t.destinoLng) {
-        L.marker([t.destinoLat, t.destinoLng], { icon: shapeDivIcon(color, 'square', emoji, 18, opacidad) }).addTo(miniMap)
+        L.marker([t.destinoLat, t.destinoLng], { icon: shapeDivIcon(color, 'square', emoji, tamMarker, opacidad), zIndexOffset: zHoy }).addTo(miniMap)
           .on('click', () => abrirVisor('transporte', t.id));
         puntosOrdenados.push({ lat: t.destinoLat, lng: t.destinoLng, hora: horaDestino, esTrans: true, transId: t.id, esDestino: true });
         if (esHoy) puntosHoy.push([t.destinoLat, t.destinoLng]);
@@ -4556,7 +4589,7 @@ function renderMiniMapa(diaIdActivo) {
         pendNum++;
         const p = pt.pendiente;
         const shape = pt.esResto ? 'hexagon' : 'circle';
-        const m = L.marker([p.lat, p.lng], { icon: shapeDivIcon(p.horaInicio ? color : COLOR_SIN_HORA, shape, p.horaInicio ? pendNum : '', 18, opacidad) }).addTo(miniMap);
+        const m = L.marker([p.lat, p.lng], { icon: shapeDivIcon(p.horaInicio ? color : COLOR_SIN_HORA, shape, p.horaInicio ? pendNum : '', tamMarker, opacidad), zIndexOffset: zHoy }).addTo(miniMap);
         m.on('click', () => abrirVisor('pendiente', p.id));
       }
     });
@@ -4572,7 +4605,7 @@ function renderMiniMapa(diaIdActivo) {
     // Dibujar los hoteles relevantes
     [hIni, hFin].forEach(hh => {
       if (hh && hh.lat && hh.lng) {
-        L.marker([hh.lat, hh.lng], { icon: shapeDivIcon('#0c5f8c', 'diamond', '🏨', 18, opacidad), zIndexOffset: 1200 }).addTo(miniMap)
+        L.marker([hh.lat, hh.lng], { icon: shapeDivIcon('#0c5f8c', 'diamond', '🏨', tamMarker, opacidad), zIndexOffset: zHoy + 1200 }).addTo(miniMap)
           .on('click', () => abrirVisor('hospedaje', hh.id));
         if (esHoy) puntosHoy.push([hh.lat, hh.lng]);
       }
@@ -4591,7 +4624,7 @@ function renderMiniMapa(diaIdActivo) {
       const a = rutaFinal[i], b = rutaFinal[i + 1];
       const esTranSegment = a.esTrans && b.esTrans && a.transId && a.transId === b.transId;
       L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
-        color, weight: 2, opacity: opacidad * 0.7,
+        color, weight: esHoy ? 3 : 1.5, opacity: esHoy ? 0.85 : 0.12,
         dashArray: esTranSegment ? '6 4' : null
       }).addTo(miniMap);
     }
