@@ -462,7 +462,6 @@ body.drag-locked .cal-resize-handle { display: none; }
         </div>
       </div>
       <button class="btn-mini" id="btnToggleEtiquetas" onclick="toggleEtiquetasMapa()">👀 Etiquetas</button>
-      <button class="btn-mini" id="btnMiUbicacion" onclick="irAMiUbicacion()" title="Mostrar dónde estoy y centrar el mapa ahí">📍 Mi ubicación</button>
     </div>
     <div id="mapBox"></div>
     <div class="legend" style="position:absolute;bottom:8px;left:14px;z-index:1100;background:rgba(245,243,239,0.92);padding:5px 10px;border-radius:8px;border:1px solid var(--line);font-size:11px;display:flex;gap:12px;flex-wrap:wrap;">
@@ -530,7 +529,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 20; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 21; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2672,18 +2671,15 @@ function elFrom(ev, selector) { const el = document.elementFromPoint(ev.clientX,
 
 // ── Arrastrar transporte (sobre todo los de "solo minutos") al calendario para fijarle hora ──
 function startTransporteDrag(e, t) {
-  e.preventDefault();
+  // v57: mismo fix que en el panel de pendientes — no se preventDefault de entrada (le robaba
+  // el scroll a la tarjeta desde el primer toque). Se espera a ver si el gesto es horizontal
+  // (arrastre real hacia el calendario) o vertical (scroll), y recién ahí se decide.
   const startX = e.clientX, startY = e.clientY;
-  let moved = false;
+  let moved = false, scrolling = false, ghost = null;
   // Si tiene horario fijo ya definido (vuelo, tren, ferry, bus) y opciones con salida, no dejamos mover la hora
   const esHorarioFijo = !MODOS_SIN_HORARIO.includes(t.tipo);
   const opSel = (t.opciones || [])[t.opcionElegida || 0];
   const tieneSalida = opSel && opSel.salida;
-  const ghost = document.createElement('div');
-  ghost.className = 'drag-ghost';
-  ghost.textContent = `${t.origen || ''} → ${t.destino || ''}` || 'Mover';
-  document.body.appendChild(ghost);
-  positionGhost(ghost, e.clientX, e.clientY);
   const dur = (opSel && opSel.duracionMin !== '' && opSel.duracionMin != null) ? Number(opSel.duracionMin) : 60;
 
   function clearHighlights() {
@@ -2698,7 +2694,18 @@ function startTransporteDrag(e, t) {
     return snap15(Math.max(0, Math.min(1380, (ev.clientY - rect.top) / px)));
   }
   function onMove(ev) {
-    if (Math.abs(ev.clientX - startX) > 4 || Math.abs(ev.clientY - startY) > 4) moved = true;
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (!moved) {
+      if (scrolling) return;
+      if (Math.abs(dx) <= 6 && Math.abs(dy) <= 6) return;
+      if (Math.abs(dy) > Math.abs(dx)) { scrolling = true; return; }
+      moved = true;
+      ghost = document.createElement('div');
+      ghost.className = 'drag-ghost';
+      ghost.textContent = `${t.origen || ''} → ${t.destino || ''}` || 'Mover';
+      document.body.appendChild(ghost);
+    }
+    ev.preventDefault();
     positionGhost(ghost, ev.clientX, ev.clientY);
     clearHighlights();
     const col = elFrom(ev, '.week-col');
@@ -2711,8 +2718,9 @@ function startTransporteDrag(e, t) {
   async function onUp(ev) {
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
-    ghost.remove();
+    if (ghost) ghost.remove();
     clearHighlights();
+    if (scrolling) return;
     if (!moved) { abrirVisor('transporte', t.id); return; }
     if (esHorarioFijo && tieneSalida) {
       if (!confirm('Este transporte ya tiene el horario definido (vuelo/tren/ferry/bus). ¿Deseas moverlo de todas formas?')) return;
@@ -4251,12 +4259,12 @@ function toggleMapaMenu(id, e) {
     });
   }
 }
-// ── Mi ubicación (GPS) ──
+// ── Mi ubicación (GPS) — control de Leaflet, pegado debajo del +/- de zoom (estilo Google Maps) ──
 function irAMiUbicacion() {
   if (!navigator.geolocation) { showToast('Este navegador no soporta ubicación'); return; }
   if (!leafletMap) { showToast('Abre el mapa primero'); return; }
-  const btn = document.getElementById('btnMiUbicacion');
-  if (btn) { btn.disabled = true; btn.textContent = '📍 Ubicando…'; }
+  const btn = document.getElementById('miUbicacionBtn');
+  if (btn) btn.innerHTML = '⏳';
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
@@ -4265,15 +4273,27 @@ function irAMiUbicacion() {
       miUbicacionCirculo = L.circle([latitude, longitude], { radius: accuracy || 30, color: '#1a6fd4', weight: 1, fillColor: '#1a6fd4', fillOpacity: 0.12 }).addTo(leafletMap);
       miUbicacionMarker = L.circleMarker([latitude, longitude], { radius: 8, color: '#fff', weight: 3, fillColor: '#1a6fd4', fillOpacity: 1 }).addTo(leafletMap);
       leafletMap.flyTo([latitude, longitude], Math.max(leafletMap.getZoom() || 13, 15), { duration: 0.6 });
-      if (btn) { btn.disabled = false; btn.textContent = '📍 Mi ubicación'; }
+      if (btn) btn.innerHTML = '📍';
     },
     (err) => {
       showToast(err.code === 1 ? '⚠️ Permiso de ubicación denegado' : '⚠️ No se pudo obtener tu ubicación');
-      if (btn) { btn.disabled = false; btn.textContent = '📍 Mi ubicación'; }
+      if (btn) btn.innerHTML = '📍';
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
   );
 }
+const MiUbicacionControl = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd: function() {
+    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+    const a = L.DomUtil.create('a', '', div);
+    a.href = '#'; a.id = 'miUbicacionBtn'; a.title = 'Mi ubicación'; a.innerHTML = '📍';
+    a.style.cssText = 'width:26px;height:26px;line-height:26px;text-align:center;font-size:14px;display:block;';
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.on(a, 'click', (e) => { L.DomEvent.preventDefault(e); irAMiUbicacion(); });
+    return div;
+  }
+});
 function toggleEtiquetasMapa() {
   mapaEtiquetasVisibles = !mapaEtiquetasVisibles;
   const btn = document.getElementById('btnToggleEtiquetas');
@@ -4347,6 +4367,7 @@ function renderMapaGeneral() {
       mapResizeObsAttached = true;
       new ResizeObserver(() => leafletMap.invalidateSize()).observe(document.getElementById('mapBox'));
     }
+    new MiUbicacionControl().addTo(leafletMap); // pegado debajo del +/- de zoom, estilo Google Maps
   } else {
     leafletMap.eachLayer(l => { if (l instanceof L.Marker || l instanceof L.CircleMarker || l instanceof L.Polyline) leafletMap.removeLayer(l); });
   }
