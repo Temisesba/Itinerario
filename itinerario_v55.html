@@ -231,7 +231,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 .drag-time-preview { position: absolute; left: 2px; right: 2px; background: var(--ok-light); border: 1.5px dashed var(--ok); border-radius: 6px; font-size: 10.5px; font-weight: 500; padding: 2px 6px; color: #0d5c2a; pointer-events: none; z-index: 15; overflow: hidden; }
 
 /* Pool lateral */
-.pool-item-mini { display:flex; align-items:center; gap:8px; background:#fff; border:1px dashed var(--ink-3); border-radius:10px; padding:8px 10px; margin-bottom:7px; cursor:grab; touch-action:none; }
+.pool-item-mini { display:flex; align-items:center; gap:8px; background:#fff; border:1px dashed var(--ink-3); border-radius:10px; padding:8px 10px; margin-bottom:7px; cursor:grab; touch-action:pan-y; }
 .pool-item-mini:active { cursor: grabbing; }
 .pool-item-mini .handle { color: var(--ink-3); font-size:14px; flex-shrink:0; }
 .card .handle { color: var(--ink-3); font-size:14px; flex-shrink:0; cursor: grab; touch-action: none; padding: 2px; }
@@ -462,6 +462,7 @@ body.drag-locked .cal-resize-handle { display: none; }
         </div>
       </div>
       <button class="btn-mini" id="btnToggleEtiquetas" onclick="toggleEtiquetasMapa()">👀 Etiquetas</button>
+      <button class="btn-mini" id="btnMiUbicacion" onclick="irAMiUbicacion()" title="Mostrar dónde estoy y centrar el mapa ahí">📍 Mi ubicación</button>
     </div>
     <div id="mapBox"></div>
     <div class="legend" style="position:absolute;bottom:8px;left:14px;z-index:1100;background:rgba(245,243,239,0.92);padding:5px 10px;border-radius:8px;border:1px solid var(--line);font-size:11px;display:flex;gap:12px;flex-wrap:wrap;">
@@ -529,7 +530,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 19; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 20; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -659,6 +660,7 @@ let _gastosSumaSel = new Set(); // IDs de gastos seleccionados para sumar (cache
 let dragBloqueado = true;
 let modalEsFormulario = false; // true solo en formularios editables (no en visores de lectura)
 let miniMap = null;
+let miUbicacionMarker = null, miUbicacionCirculo = null;
 let panelCollapsed = { notas: true, sinHora: true, transporte: true, hospedaje: true, despues: true, recomendaciones: true, eventos: true, mapa: false };
 let antojosMaestros = []; // lista maestra del Sheets, separada de los pendientes con antojo
 // v57: qué grupos de "Recomendaciones gastronómicas" quedaron desplegados — vive fuera de
@@ -2336,7 +2338,7 @@ function renderPoolPanel() {
     const el = document.getElementById('pool-' + p.id);
     if (!el) return;
     el.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.icon-btn') || e.target.closest('.toggle-reservado')) return;
+      if (e.target.closest('.icon-btn') || e.target.closest('.toggle-reservado') || e.target.closest('.btn-mini')) return;
       startPoolDrag(e, { id: p.id, nombre: p.nombre });
     });
   });
@@ -2525,11 +2527,16 @@ function poolItemHtml(p) {
   const comida = p.tipoComida ? `<span title="${escHtml(TIPO_COMIDA_LABEL[p.tipoComida] || '')}" style="margin-left:4px">${TIPO_COMIDA_ICON[p.tipoComida] || ''}</span>` : '';
   const estrella = p.prioritaria ? `<span title="Prioritaria" style="margin-left:4px">⭐</span>` : '';
   const yaAsignado = (p.diaId && p.horaInicio) ? `<div class="psub" style="color:var(--ok)">✅ Ya asignado: ${escHtml(diaLabel(p.diaId))} · ${escHtml(p.horaInicio)}–${escHtml(p.horaFin || '')}</div>` : '';
-  const etiquetaFecha = (p.diaId && !p.horaInicio) ? `<span class="fecha-badge" title="Tiene día asignado, sin hora todavía">📅 ${escHtml(diaLabel(p.diaId))}</span>` : '';
   // v57: en Platillos y restaurantes la dirección no aporta tanto como
   // las notas (o, si no hay, lo que ya dijo la IA) — igual que se ve en el visor. El resto de
   // pendientes (no-comida) sigue mostrando dirección + notas como antes.
   const esComida = p.esRestaurante || p.antojo;
+  // v57: botón directo para asignar día — en el celular arrastrar hasta el calendario no
+  // siempre es confiable. Mismo criterio que ya usan las actividades de Eventos/Festivales
+  // (tocar sin arrastrar abre un formulario simple en vez de obligar al arrastre).
+  const etiquetaFecha = (p.diaId && !p.horaInicio)
+    ? `<span class="fecha-badge" title="Tiene día asignado, sin hora todavía">📅 ${escHtml(diaLabel(p.diaId))}</span>`
+    : (!p.diaId && !esComida ? `<button class="btn-mini" style="font-size:10px;padding:3px 8px" onclick="abrirAsignarPendiente('${p.id}')">📅 Asignar día</button>` : '');
   const notaComida = p.notasPrevias || p.sugerenciasIA || '';
   const subtitulo = esComida
     ? (notaComida ? `<div class="psub">${p.notasPrevias ? '📌' : '✨'} ${escHtml(notaComida)}</div>` : '')
@@ -2573,14 +2580,13 @@ function hideDragPreview() {
 }
 
 function startPoolDrag(e, item) {
-  e.preventDefault();
+  // v57: NO se hace preventDefault acá ni al arrancar el arrastre — en el celular eso le
+  // robaba el gesto de scroll al panel lateral desde el primer toque (por eso no dejaba
+  // bajar para ver más). Ahora se espera a ver hacia dónde se mueve el dedo: si es más
+  // vertical que horizontal, se asume que es scroll y no se interfiere para nada; solo si
+  // es claramente horizontal (hacia el calendario) se arma el arrastre de verdad.
   const startX = e.clientX, startY = e.clientY;
-  let moved = false;
-  const ghost = document.createElement('div');
-  ghost.className = 'drag-ghost';
-  ghost.textContent = item.nombre || 'Mover';
-  document.body.appendChild(ghost);
-  positionGhost(ghost, e.clientX, e.clientY);
+  let moved = false, scrolling = false, ghost = null;
   const pendObj = itinerario.pendientes.find(x => x.id === item.id);
   const dur = pendObj && pendObj.duracionMin ? Number(pendObj.duracionMin) : 60;
 
@@ -2602,7 +2608,18 @@ function startPoolDrag(e, item) {
   }
 
   function onMove(ev) {
-    if (Math.abs(ev.clientX - startX) > 4 || Math.abs(ev.clientY - startY) > 4) moved = true;
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (!moved) {
+      if (scrolling) return;
+      if (Math.abs(dx) <= 6 && Math.abs(dy) <= 6) return; // todavía no se sabe qué gesto es
+      if (Math.abs(dy) > Math.abs(dx)) { scrolling = true; return; } // vertical: es scroll, no tocar
+      moved = true;
+      ghost = document.createElement('div');
+      ghost.className = 'drag-ghost';
+      ghost.textContent = item.nombre || 'Mover';
+      document.body.appendChild(ghost);
+    }
+    ev.preventDefault(); // recién ahora (arrastre horizontal confirmado) se bloquea el scroll nativo
     positionGhost(ghost, ev.clientX, ev.clientY);
     clearHighlights();
 
@@ -2624,9 +2641,10 @@ function startPoolDrag(e, item) {
   async function onUp(ev) {
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
-    ghost.remove();
+    if (ghost) ghost.remove();
     clearHighlights();
 
+    if (scrolling) return; // fue scroll, no un toque ni un arrastre — no hacer nada
     if (!moved) { abrirVisor('pendiente', item.id); return; }
 
     const overDespues = elFrom(ev, '#poolDespuesZone');
@@ -2869,6 +2887,43 @@ async function guardarAsignarActividad(eventoId, actividadId) {
   await postGAS({ action: 'updateEvento', id: eventoId, sedes: ev.sedes });
   renderSpine(); renderSemana(); renderPoolPanel();
   showToast('Actividad agendada ✦');
+}
+
+// Botón "📅 Asignar día" en el panel lateral: mismo criterio que abrirAsignarActividad,
+// para no depender del arrastre (poco confiable en celular) para agendar un pendiente.
+function abrirAsignarPendiente(id) {
+  const p = itinerario.pendientes.find(x => x.id === id); if (!p) return;
+  modalEsFormulario = true;
+  modalOpen(`
+    <div class="modal-head"><span class="modal-title">📌 ${escHtml(p.nombre || 'Pendiente')}</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-body">
+      <div class="empty-mini" style="margin-bottom:10px">Todavía no tiene día ni hora — asignale uno para que aparezca en el calendario.</div>
+      <div class="field"><label>Día</label>
+        <select id="fPendAsigDia">
+          <option value="">— Sin asignar —</option>
+          ${diasFiltrados().map(d => `<option value="${d.id}" ${p.diaId===d.id?'selected':''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('')}
+        </select>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Hora inicio</label><input type="time" id="fPendAsigHoraIni" value="${p.horaInicio||''}"></div>
+        <div class="field"><label>Hora fin</label><input type="time" id="fPendAsigHoraFin" value="${p.horaFin||''}"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="modalClose(); abrirVisor('pendiente','${id}')">Ver detalle completo</button>
+        <button class="btn-save" onclick="guardarAsignarPendiente('${id}')">Guardar</button>
+      </div>
+    </div>`);
+}
+async function guardarAsignarPendiente(id) {
+  const p = itinerario.pendientes.find(x => x.id === id); if (!p) return;
+  p.diaId = document.getElementById('fPendAsigDia').value;
+  p.horaInicio = document.getElementById('fPendAsigHoraIni').value;
+  p.horaFin = document.getElementById('fPendAsigHoraFin').value;
+  modalClose();
+  showToast('Guardando...');
+  await postGAS({ action: 'updatePendiente', id, diaId: p.diaId, horaInicio: p.horaInicio, horaFin: p.horaFin });
+  renderSpine(); renderSemana(); renderPoolPanel();
+  showToast('Asignado ✦');
 }
 
 function tipoComidaToggleHtml(id, valor) {
@@ -3538,7 +3593,7 @@ function renderEventoCard(ev, esDelDia) {
         const agendada = act.diaId && act.horaInicio;
         return `<div id="actividad-${act.id}" style="display:flex; align-items:center; gap:5px; padding:3px 6px; margin-top:3px; border-radius:6px; cursor:grab; background:${agendada ? 'var(--route-light)' : 'var(--paper-2)'}">
           <span style="flex:1; font-size:11px">🎪 ${escHtml(act.nombre || '(sin nombre)')}</span>
-          <span style="font-size:10px; color:${agendada ? 'var(--route)' : 'var(--ink-3)'}; white-space:nowrap">${agendada ? `✅ ${escHtml(diaLabel(act.diaId))} · 🕐 ${escHtml(act.horaInicio)}` : '⬜ tocá para agendar'}</span>
+          <span style="font-size:10px; color:${agendada ? 'var(--route)' : 'var(--ink-3)'}; white-space:nowrap">${agendada ? `✅ ${escHtml(diaLabel(act.diaId))} · 🕐 ${escHtml(act.horaInicio)}` : '⬜ Asignar día'}</span>
         </div>`;
       }).join('')
     : `<div class="empty-mini">Sin actividades — editá el evento para agregar una (ej. la carrera, los fuegos artificiales), cada una con su propio lugar y hora.</div>`;
@@ -4196,6 +4251,29 @@ function toggleMapaMenu(id, e) {
     });
   }
 }
+// ── Mi ubicación (GPS) ──
+function irAMiUbicacion() {
+  if (!navigator.geolocation) { showToast('Este navegador no soporta ubicación'); return; }
+  if (!leafletMap) { showToast('Abre el mapa primero'); return; }
+  const btn = document.getElementById('btnMiUbicacion');
+  if (btn) { btn.disabled = true; btn.textContent = '📍 Ubicando…'; }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      if (miUbicacionMarker) { leafletMap.removeLayer(miUbicacionMarker); miUbicacionMarker = null; }
+      if (miUbicacionCirculo) { leafletMap.removeLayer(miUbicacionCirculo); miUbicacionCirculo = null; }
+      miUbicacionCirculo = L.circle([latitude, longitude], { radius: accuracy || 30, color: '#1a6fd4', weight: 1, fillColor: '#1a6fd4', fillOpacity: 0.12 }).addTo(leafletMap);
+      miUbicacionMarker = L.circleMarker([latitude, longitude], { radius: 8, color: '#fff', weight: 3, fillColor: '#1a6fd4', fillOpacity: 1 }).addTo(leafletMap);
+      leafletMap.flyTo([latitude, longitude], Math.max(leafletMap.getZoom() || 13, 15), { duration: 0.6 });
+      if (btn) { btn.disabled = false; btn.textContent = '📍 Mi ubicación'; }
+    },
+    (err) => {
+      showToast(err.code === 1 ? '⚠️ Permiso de ubicación denegado' : '⚠️ No se pudo obtener tu ubicación');
+      if (btn) { btn.disabled = false; btn.textContent = '📍 Mi ubicación'; }
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
+  );
+}
 function toggleEtiquetasMapa() {
   mapaEtiquetasVisibles = !mapaEtiquetasVisibles;
   const btn = document.getElementById('btnToggleEtiquetas');
@@ -4530,34 +4608,40 @@ function renderMiniMapa(diaIdActivo) {
   const puntosHoy = [];
 
   dias.forEach((dia) => {
-    // v57: "Mapa del día" es del DÍA, no de todo el viaje — antes dibujaba la ruta de
-    // TODOS los días en el mismo mapa (solo bajándoles la opacidad), y quedaba una
-    // maraña de líneas cruzadas encima del día activo. Ahora solo dibuja el día activo.
-    if (dia.id !== diaIdActivo) return;
-    const esHoy = true;
+    const esHoy = dia.id === diaIdActivo;
     const idxGlobal = dias.findIndex(d => d.id === dia.id);
     const color = DIA_COLORES[idxGlobal >= 0 ? idxGlobal % DIA_COLORES.length : 0];
-    const opacidad = 1;
-    const tamMarker = 20;
-    const zHoy = 2000;
+    const opacidad = esHoy ? 1 : 0.16;
+    const tamMarker = esHoy ? 20 : 14;
+    const zHoy = esHoy ? 2000 : 100;
     const hosp = hospedajeDelDia(dia.id);
 
     // Recopilar todos los puntos del día con su hora para ordenarlos igual que el mapa principal
     const puntosOrdenados = [];
 
-    // Incluir pendientes normales Y restaurantes con hora (igual que el mapa general)
-    const pendDia = itinerario.pendientes.filter(p => p.diaId === dia.id && p.lat && p.lng && !p.antojo && !p.esRestaurante);
+    // v57 fix: solo lo que tiene HORA se conecta con la línea de ruta (igual que el mapa
+    // general) — antes también se metían los pendientes "sin hora" a la ruta, y como pueden
+    // ser varios y estar lejos entre sí, la línea zigzagueaba por todo el mapa. Lo sin hora
+    // se sigue viendo como marcador suelto, nomás no se conecta con nada.
+    const pendConHora = itinerario.pendientes.filter(p => p.diaId === dia.id && p.lat && p.lng && !p.antojo && !p.esRestaurante && p.horaInicio);
+    const pendSinHora = itinerario.pendientes.filter(p => p.diaId === dia.id && p.lat && p.lng && !p.antojo && !p.esRestaurante && !p.horaInicio);
     const restoDia = itinerario.pendientes.filter(p => p.diaId === dia.id && p.lat && p.lng && (p.esRestaurante || p.antojo) && p.horaInicio);
-    pendDia.forEach(p => {
-      puntosOrdenados.push({ lat: p.lat, lng: p.lng, hora: p.horaInicio || '99:00', esTrans: false, pendiente: p });
+    pendConHora.forEach(p => {
+      puntosOrdenados.push({ lat: p.lat, lng: p.lng, hora: p.horaInicio, esTrans: false, pendiente: p });
       if (esHoy) puntosHoy.push([p.lat, p.lng]);
     });
     restoDia.forEach(p => {
-      puntosOrdenados.push({ lat: p.lat, lng: p.lng, hora: p.horaInicio || '99:00', esTrans: false, pendiente: p, esResto: true });
+      puntosOrdenados.push({ lat: p.lat, lng: p.lng, hora: p.horaInicio, esTrans: false, pendiente: p, esResto: true });
+      if (esHoy) puntosHoy.push([p.lat, p.lng]);
+    });
+    pendSinHora.forEach(p => {
+      L.marker([p.lat, p.lng], { icon: shapeDivIcon(COLOR_SIN_HORA, 'circle', '', tamMarker, opacidad), zIndexOffset: zHoy }).addTo(miniMap)
+        .on('click', () => abrirVisor('pendiente', p.id));
       if (esHoy) puntosHoy.push([p.lat, p.lng]);
     });
 
-    itinerario.transporte.filter(t => t.diaId === dia.id).forEach(t => {
+    // Igual que el mapa general: sin hora de salida fija, no entra a la ruta (mapa y calendario deben coincidir).
+    itinerario.transporte.filter(t => t.diaId === dia.id && ((t.opciones||[])[t.opcionElegida||0]||{}).salida).forEach(t => {
       const emoji = tipoEmoji(t.tipo);
       const opcionSel = (t.opciones || [])[t.opcionElegida || 0];
       const horaOrigen = (opcionSel && opcionSel.salida) || '99:00';
