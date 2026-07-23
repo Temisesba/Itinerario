@@ -534,7 +534,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 24; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 25; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -543,6 +543,7 @@ let GAS_URL_GASTOS = localStorage.getItem('itin_gasUrlGastos') || '';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
 const GASTOS_CAT_DEFAULT = '✈️ Viajes';
 let gastosVinculados = {}; // { [itemId]: [{ id, costo, moneda, ... }] } — persiste en GASTOS_VINCULOS sheet
+let gastosDelDia = {}; // { [diaItinerario]: [...] } — gastos asociados directo a un día (sin item específico), v57
 
 async function cargarGastosVinculos() {
   if (!currentProyecto || !GAS_URL_GASTOS) return; // sin URL configurada todavía, no hay de dónde leer
@@ -552,14 +553,14 @@ async function cargarGastosVinculos() {
     const resp = await fetch(GAS_URL_GASTOS, { method: 'POST', body: form });
     const d = await resp.json();
     gastosVinculados = {};
+    gastosDelDia = {};
     if (d.gastos) {
-      d.gastos.filter(g => g.proyecto === currentProyecto && g.itemId).forEach(g => {
-        if (!gastosVinculados[g.itemId]) gastosVinculados[g.itemId] = [];
+      d.gastos.filter(g => g.proyecto === currentProyecto && (g.itemId || g.diaItinerario)).forEach(g => {
         // Normalizar campos
-        gastosVinculados[g.itemId].push({
+        const norm = {
           id: g.gastoId || ('imported-' + g.rowIndex),
           rowIndex: g.rowIndex || null,  // para poder editar/eliminar del Sheet de Gastos
-          itemId: g.itemId, proyecto: g.proyecto,
+          itemId: g.itemId, proyecto: g.proyecto, diaItinerario: g.diaItinerario || '',
           costo: g.costo || '', moneda: g.moneda_pago || 'JPY',
           monedaConv: g.moneda || 'MXN', conversion: g.otra_moneda || '',
           quien_paga: g.quien_paga || '', compartido: g.compartido || '', pago: g.pago || '',
@@ -568,7 +569,15 @@ async function cargarGastosVinculos() {
           notas: g.notas || '', cotizacion: (g.compartido||'').toLowerCase().includes('cotiz'),
           foto_ticket: g.foto_ticket_url || '',
           pagadores: Array.isArray(g.pagadores) ? g.pagadores : []
-        });
+        };
+        if (g.itemId) {
+          if (!gastosVinculados[g.itemId]) gastosVinculados[g.itemId] = [];
+          gastosVinculados[g.itemId].push(norm);
+        }
+        if (g.diaItinerario) {
+          if (!gastosDelDia[g.diaItinerario]) gastosDelDia[g.diaItinerario] = [];
+          gastosDelDia[g.diaItinerario].push(norm);
+        }
       });
     }
     // Los mismos gastos ya traen las filas de producto (TipoFila='producto') — se
@@ -943,36 +952,92 @@ function gConceptoGasto(tipo, datos) {
   return `${datos.nombre||''} · ${fechaDia()}`;
 }
 
+// v57: "Asociar a" / "Día en itinerario" del formulario de gasto.
+function gPoblarDiaItinerario(diaSeleccionado) {
+  const sel = document.getElementById('gDiaItinerario');
+  if (!sel) return;
+  sel.innerHTML = diasFiltrados().map(d => `<option value="${d.id}" ${d.id===diaSeleccionado?'selected':''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
+}
+function gPoblarAsociarA(diaId, itemIdSeleccionado) {
+  const sel = document.getElementById('gAsociarA');
+  if (!sel) return;
+  const items = itemsAsignadosDelDia(diaId);
+  sel.innerHTML = '<option value="">— Pendiente (sin asociar) —</option>' +
+    items.map(it => `<option value="${it.tipo}:${it.id}" ${itemIdSeleccionado===it.id?'selected':''}>${it.icono} ${escHtml(it.nombre)}</option>`).join('');
+}
+function gOnDiaItinerarioChange() {
+  const dia = document.getElementById('gDiaItinerario').value;
+  // Al cambiar de día se resetea a "Pendiente" — el item que tenías asociado podría no aplicar ese día.
+  gPoblarAsociarA(dia, '');
+  document.getElementById('gTipo').value = 'dia';
+  document.getElementById('gItemId').value = '';
+}
+function gOnAsociarAChange() {
+  const val = document.getElementById('gAsociarA').value; // '' | 'tipo:id'
+  if (!val) {
+    document.getElementById('gTipo').value = 'dia';
+    document.getElementById('gItemId').value = '';
+    return;
+  }
+  const sep = val.indexOf(':');
+  const tipo = val.slice(0, sep), id = val.slice(sep + 1);
+  document.getElementById('gTipo').value = tipo;
+  document.getElementById('gItemId').value = id;
+  let datos = {};
+  if (tipo === 'pendiente') { const p = itinerario.pendientes.find(x=>x.id===id); if (p) datos = { nombre: p.nombre, antojo: p.antojo, direccion: p.direccion }; }
+  else if (tipo === 'transporte') { const t = itinerario.transporte.find(x=>x.id===id); if (t) datos = { origen: t.origen, destino: t.destino, diaId: t.diaId, tipo: t.tipo }; }
+  else if (tipo === 'hospedaje') { const h = itinerario.hospedaje.find(x=>x.id===id); if (h) datos = { nombre: h.nombre, diaIdInicio: h.diaIdInicio, diaIdFin: h.diaIdFin }; }
+  else if (tipo === 'evento') { const ev = itinerario.eventos.find(x=>x.id===id); if (ev) datos = { nombre: ev.nombre }; }
+  // "las reglas que ya tenemos": mismo cálculo de concepto que al abrir el form desde ese item.
+  // Lo que ya estaba escrito en concepto no se pierde — pasa a notas.
+  const nuevoConcepto = gConceptoGasto(tipo, datos);
+  const concEl = document.getElementById('gConc'), notasEl = document.getElementById('gNotas');
+  const anterior = concEl.value.trim();
+  if (anterior && anterior !== nuevoConcepto) {
+    notasEl.value = notasEl.value.trim() ? (anterior + ' · ' + notasEl.value.trim()) : anterior;
+  }
+  concEl.value = nuevoConcepto;
+}
+
 // v57: helpers que arman "datos" en JS (no interpolando texto libre dentro del atributo
 // onclick) — antes, un nombre/dirección/antojo con un apóstrofe (muy común en restaurantes,
 // ej. "Domino's") rompía el JavaScript embebido en el onclick y el botón "💴 Gasto" no hacía
 // nada al tocarlo, sin ningún error visible.
 function abrirGastoDesdePendiente(id) {
   const p = itinerario.pendientes.find(x => x.id === id); if (!p) return;
-  abrirGastosForm('pendiente', id, { nombre: p.nombre || '', antojo: p.antojo || '', direccion: p.direccion || '' });
+  abrirGastosForm('pendiente', id, { nombre: p.nombre || '', antojo: p.antojo || '', direccion: p.direccion || '' }, null, p.diaId || '');
 }
 function abrirGastoDesdeTransporte(id) {
   const t = itinerario.transporte.find(x => x.id === id); if (!t) return;
-  abrirGastosForm('transporte', id, { origen: t.origen || '', destino: t.destino || '', diaId: t.diaId || '', tipo: t.tipo || '' });
+  abrirGastosForm('transporte', id, { origen: t.origen || '', destino: t.destino || '', diaId: t.diaId || '', tipo: t.tipo || '' }, null, t.diaId || '');
 }
 function abrirGastoDesdeHospedaje(id) {
   const h = itinerario.hospedaje.find(x => x.id === id); if (!h) return;
-  abrirGastosForm('hospedaje', id, { nombre: h.nombre || '', diaIdInicio: h.diaIdInicio || '', diaIdFin: h.diaIdFin || '' });
+  abrirGastosForm('hospedaje', id, { nombre: h.nombre || '', diaIdInicio: h.diaIdInicio || '', diaIdFin: h.diaIdFin || '' }, null, h.diaIdInicio || '');
 }
 function abrirGastoDesdeEvento(id) {
   const ev = itinerario.eventos.find(x => x.id === id); if (!ev) return;
-  abrirGastosForm('evento', id, { nombre: ev.nombre || '' });
+  abrirGastosForm('evento', id, { nombre: ev.nombre || '' }, null, ev.diaIdInicio || '');
 }
-function abrirGastosForm(tipo, itemId, datosStr, editGastoId) {
+// v57: diaIdInicial — de qué día del panel lateral cuelga (campo "Día en itinerario"); si no se
+// pasa, se usa el día del item asociado o el día activo del itinerario.
+function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   if (!requiereGasUrlGastos()) return;
   const datos = (() => { try { return typeof datosStr==='string' ? JSON.parse(datosStr) : (datosStr||{}); } catch(e) { return {}; } })();
   const hoy = fechaLocalISO(new Date());
-  const concepto = gConceptoGasto(tipo, datos);
-  const prev = editGastoId ? (gastosVinculados[itemId]||[]).find(g=>g.id===editGastoId) : null;
+  const concepto = itemId ? gConceptoGasto(tipo, datos) : '';
+  const prev = editGastoId
+    ? ((itemId && gastosVinculados[itemId] && gastosVinculados[itemId].find(g=>g.id===editGastoId))
+      || (gastosDelDia[diaIdInicial] && gastosDelDia[diaIdInicial].find(g=>g.id===editGastoId))
+      || null)
+    : null;
+  const diaEfectivo = diaIdInicial || (prev && prev.diaItinerario) || currentDiaId || '';
   // Llenar el overlay fijo
   document.getElementById('gItemId').value = itemId;
   document.getElementById('gTipo').value = tipo;
   document.getElementById('gEditId').value = editGastoId || '';
+  gPoblarDiaItinerario(diaEfectivo);
+  gPoblarAsociarA(diaEfectivo, itemId);
   document.getElementById('gTitle').textContent = prev ? '💴 Editar gasto' : '💴 Registrar gasto';
   document.getElementById('gFecha').value = hoy;  // siempre hoy, el usuario cambia
   document.getElementById('gHoraCompra').value = '';
@@ -1196,7 +1261,11 @@ async function gAnalyzeIA() {
   if(!gTb64) { showToast('⚠️ Sube una imagen primero'); return; }
   const btn=document.getElementById('gBtnGem'); btn.disabled=true; btn.textContent='🤖 Analizando…';
   const banner=document.getElementById('gAiBanner'); banner.style.display='block'; banner.innerHTML='Analizando con Gemini…';
-  const payload = { action:'analyzeGemini', base64:gTb64, mimeType:gTMime||'image/jpeg', moneda_local:'JPY', moneda_conv:'MXN' };
+  // v57: candidatos = lo que ya está asignado el día elegido en "Día en itinerario" — si el
+  // ticket lo deja claro, la IA devuelve "asociado_a" y se preselecciona solo en "Asociar a".
+  const diaElegido = (document.getElementById('gDiaItinerario')||{}).value || '';
+  const candidatos = diaElegido ? itemsAsignadosDelDia(diaElegido).map(it => ({ id: it.id, nombre: it.nombre })) : [];
+  const payload = { action:'analyzeGemini', base64:gTb64, mimeType:gTMime||'image/jpeg', moneda_local:'JPY', moneda_conv:'MXN', candidatos };
   let r = null;
   // Intento 1: Gemini
   try {
@@ -1246,6 +1315,15 @@ async function gAnalyzeIA() {
       banner.innerHTML='✅ IA llenó los campos — calculando conversión…';
       await gConvertirIA();
       banner.innerHTML='✅ IA llenó los campos.'+(gProdDraft.length?' + '+gProdDraft.length+' productos':'');
+    }
+    // Si la IA reconoció claramente a qué está asociado el ticket, preseleccionarlo en "Asociar a".
+    if (res.asociado_a) {
+      const match = candidatos.find(c => c.nombre === res.asociado_a) || candidatos.find(c => c.nombre.toLowerCase().includes(String(res.asociado_a).toLowerCase()));
+      if (match) {
+        const sel = document.getElementById('gAsociarA');
+        const opt = sel && [...sel.options].find(o => o.value.endsWith(':' + match.id));
+        if (opt) { sel.value = opt.value; gOnAsociarAChange(); banner.innerHTML += '<br>🔗 Asociado a: ' + escHtml(match.nombre); }
+      }
     }
   } else { banner.innerHTML='⚠️ ' + (r&&r.error ? r.error : 'No se pudieron extraer datos'); }
   btn.disabled=false; btn.textContent='🤖 Analizar foto con IA';
@@ -1325,19 +1403,29 @@ function gProdAdd() {
 }
 
 // ── Guardar ──
+function _gQuitarDeCachesLocales(gastoId) {
+  Object.keys(gastosVinculados).forEach(k => { gastosVinculados[k] = gastosVinculados[k].filter(g => g.id !== gastoId); });
+  Object.keys(gastosDelDia).forEach(k => { gastosDelDia[k] = gastosDelDia[k].filter(g => g.id !== gastoId); });
+}
 async function gGuardar() {
   const itemId = document.getElementById('gItemId').value;
   const tipo = document.getElementById('gTipo').value;
   const editId = document.getElementById('gEditId').value;
+  const diaItinerarioEl = document.getElementById('gDiaItinerario');
+  const diaItinerario = diaItinerarioEl ? diaItinerarioEl.value : '';
   const costo = document.getElementById('gCosto').value;
   const conc = document.getElementById('gConc').value.trim();
   const tienda = document.getElementById('gTienda').value.trim();
   if(!conc && !tienda) { showToast('Escribe el concepto o la tienda'); return; }
   const concepto_final = tienda ? `${conc||''} — ${tienda}` : (conc||'');
-  // Si es edición, buscar el rowIndex del gasto para hacer updateGasto (evita duplicar)
+  // Si es edición, buscar el rowIndex del gasto para hacer updateGasto (evita duplicar) — puede
+  // estar en gastosVinculados (si tiene item asociado) o en gastosDelDia (si no tiene o cambió).
   let editRowIndex = null;
-  if (editId && gastosVinculados[itemId]) {
-    const gExist = gastosVinculados[itemId].find(g => g.id === editId);
+  if (editId) {
+    const gExist = (itemId && gastosVinculados[itemId] && gastosVinculados[itemId].find(g => g.id === editId))
+      || (gastosDelDia[diaItinerario] && gastosDelDia[diaItinerario].find(g => g.id === editId))
+      || Object.values(gastosVinculados).flat().find(g => g.id === editId)
+      || Object.values(gastosDelDia).flat().find(g => g.id === editId);
     if (gExist && gExist.rowIndex) editRowIndex = gExist.rowIndex;
   }
   // Varios pagan (idéntico a saveExpense() de Compras): cada quien puso lo
@@ -1371,7 +1459,8 @@ async function gGuardar() {
     // ★ ITINERARIO — vínculo con evento del itinerario
     gastoId:   editId || ('GV-' + Date.now().toString(36).toUpperCase()),
     itemId:    itemId,
-    proyecto:  currentProyecto || ''
+    proyecto:  currentProyecto || '',
+    diaItinerario: diaItinerario
   };
   const btn=document.querySelector('#gModal .g-bsave');
   if(btn) { btn.disabled=true; btn.textContent='Guardando…'; }
@@ -1380,12 +1469,11 @@ async function gGuardar() {
     const resp=await fetch(GAS_URL_GASTOS,{method:'POST',body:form});
     const d=await resp.json();
     if(d.ok!==false) {
-      if(!gastosVinculados[itemId]) gastosVinculados[itemId]=[];
       // Objeto local para mostrar en memoria (moneda = moneda de pago)
       const nuevo = {
         id: body.gastoId,
         rowIndex: editRowIndex || null,
-        itemId, proyecto: currentProyecto || '',
+        itemId, proyecto: currentProyecto || '', diaItinerario,
         costo: costo||'0', moneda: document.getElementById('gMoneda').value,
         conversion: document.getElementById('gConversion').value,
         monedaConv: document.getElementById('gMonedaConv').value,
@@ -1396,10 +1484,16 @@ async function gGuardar() {
         categoria: body.categoria, notas: body.notas,
         cotizacion: document.getElementById('gChkCot').checked
       };
-      if(editId) {
-        gastosVinculados[itemId]=gastosVinculados[itemId].map(g=>g.id===editId?nuevo:g);
-      } else {
+      // Si se estaba editando, primero se saca de cualquier bucket viejo (por si cambió a qué
+      // item o a qué día está asociado) y luego se vuelve a meter donde corresponda ahora.
+      if (editId) _gQuitarDeCachesLocales(editId);
+      if (itemId) {
+        if (!gastosVinculados[itemId]) gastosVinculados[itemId] = [];
         gastosVinculados[itemId].push(nuevo);
+      }
+      if (diaItinerario) {
+        if (!gastosDelDia[diaItinerario]) gastosDelDia[diaItinerario] = [];
+        gastosDelDia[diaItinerario].push(nuevo);
       }
       // Productos del ticket: reemplaza (replace:true) todos los productos ligados
       // a este gastoId — mismo comportamiento que saveExpense() en Compras.
@@ -1427,6 +1521,7 @@ async function gGuardar() {
       // Los gastos se guardan SOLO en el Sheet de Gastos (GAS_URL_GASTOS).
       // No uses GASTOS_VINCULOS — esa pestaña ya no se utiliza.
       gCloseModal(true); showToast('Gasto registrado 💴 ✦' + (prodsLimpios.length ? ' + ' + prodsLimpios.length + ' productos' : ''));
+      renderPoolPanel(); // refresca "Gastos del día" y los totales de Hospedaje/Eventos
       // Refrescar el visor si hay uno abierto (para ver el gasto inmediatamente)
       const modalEl = document.getElementById('modalBox');
       if (modalEl && modalEl.dataset.visorTipo && modalEl.dataset.visorId) {
@@ -1502,12 +1597,47 @@ async function eliminarGastoResumen(itemId, gastoId) {
     borrarEnSheet().catch(e => console.warn('Error al borrar del Sheet:', e));
   }
   if (gastosVinculados[itemId]) gastosVinculados[itemId] = lista.filter(x => x.id !== gastoId);
+  if (g && g.diaItinerario && gastosDelDia[g.diaItinerario]) gastosDelDia[g.diaItinerario] = gastosDelDia[g.diaItinerario].filter(x => x.id !== gastoId);
   showToast('Gasto eliminado 🗑');
+  renderPoolPanel();
   // Refrescar el visor abierto
   const box = document.getElementById('modalBox');
   if (box && box.dataset.visorTipo && box.dataset.visorId) {
     setTimeout(() => abrirVisor(box.dataset.visorTipo, box.dataset.visorId), 100);
   }
+}
+
+// v57: editar/eliminar un gasto de "Gastos del día" — puede o no estar asociado a un item real.
+function editarGastoDelDia(gastoId, diaId) {
+  const g = (gastosDelDia[diaId] || []).find(x => x.id === gastoId);
+  if (!g) return;
+  let tipo = 'dia', datos = {};
+  if (g.itemId) {
+    const p = itinerario.pendientes.find(x => x.id === g.itemId);
+    const t = itinerario.transporte.find(x => x.id === g.itemId);
+    const h = itinerario.hospedaje.find(x => x.id === g.itemId);
+    const ev = itinerario.eventos.find(x => x.id === g.itemId);
+    if (p) { tipo = 'pendiente'; datos = { nombre: p.nombre, antojo: p.antojo, direccion: p.direccion }; }
+    else if (t) { tipo = 'transporte'; datos = { origen: t.origen, destino: t.destino, diaId: t.diaId, tipo: t.tipo }; }
+    else if (h) { tipo = 'hospedaje'; datos = { nombre: h.nombre, diaIdInicio: h.diaIdInicio, diaIdFin: h.diaIdFin }; }
+    else if (ev) { tipo = 'evento'; datos = { nombre: ev.nombre }; }
+  }
+  abrirGastosForm(tipo, g.itemId || '', datos, gastoId, diaId);
+}
+async function eliminarGastoDelDia(diaId, gastoId) {
+  if (!confirm('¿Eliminar este gasto? Se borrará del Sheet de Gastos también.')) return;
+  const lista = gastosDelDia[diaId] || [];
+  const g = lista.find(x => x.id === gastoId);
+  if (g && g.rowIndex) {
+    const f = new FormData(); f.append('payload', JSON.stringify({ action: 'deleteGasto', rowIndex: g.rowIndex }));
+    fetch(GAS_URL_GASTOS, { method: 'POST', body: f }).catch(e => console.warn('Error al borrar del Sheet:', e));
+  }
+  gastosDelDia[diaId] = lista.filter(x => x.id !== gastoId);
+  if (g && g.itemId && gastosVinculados[g.itemId]) {
+    gastosVinculados[g.itemId] = gastosVinculados[g.itemId].filter(x => x.id !== gastoId);
+  }
+  showToast('Gasto eliminado 🗑');
+  renderPoolPanel();
 }
 
 function moverPendienteGrupo(id, grupoKey, delta) {
@@ -2211,7 +2341,7 @@ function openBlockDetail(b) {
 }
 
 // ── Panel lateral: transporte, hospedaje, pendientes sin hora ──
-const POOL_KEYS = ['mapa', 'sinHora', 'despues', 'notas', 'transporte', 'hospedaje', 'recomendaciones', 'eventos'];
+const POOL_KEYS = ['mapa', 'sinHora', 'despues', 'notas', 'transporte', 'hospedaje', 'recomendaciones', 'eventos', 'gastosDia'];
 function getPoolOrder() {
   try {
     const saved = JSON.parse(localStorage.getItem('itin_poolOrder'));
@@ -2236,6 +2366,74 @@ function sectionArrows(key, order) {
     <button class="icon-btn" style="font-size:9px;line-height:1;padding:1px" ${up} onclick="movePoolSection('${key}',-1)" title="Subir sección">▲</button>
     <button class="icon-btn" style="font-size:9px;line-height:1;padding:1px" ${down} onclick="movePoolSection('${key}',1)" title="Bajar sección">▼</button>
   </span>`;
+}
+
+// v57: noches que abarca un hospedaje activo — SIEMPRE recalculado en vivo de
+// diaIdInicio/diaIdFin (nunca un valor guardado), para "Gastos del día" y para la notita del
+// formulario de hospedaje.
+function nochesDeHospedaje(h) {
+  if (!h || !h.diaIdInicio || !h.diaIdFin) return 1;
+  const dias = diasFiltrados();
+  const i1 = dias.findIndex(d => d.id === h.diaIdInicio);
+  const i2 = dias.findIndex(d => d.id === h.diaIdFin);
+  if (i1 < 0 || i2 < 0 || i2 <= i1) return 1;
+  return i2 - i1;
+}
+function eventosDelDiaFn(diaId) {
+  const dias = diasFiltrados();
+  const idx = dias.findIndex(d => d.id === diaId);
+  if (idx < 0) return [];
+  return itinerario.eventos.filter(e => {
+    const i1 = dias.findIndex(d => d.id === e.diaIdInicio);
+    const i2 = dias.findIndex(d => d.id === e.diaIdFin);
+    if (i1 < 0) return false;
+    const fin = i2 < 0 ? i1 : i2;
+    return idx >= i1 && idx <= fin;
+  });
+}
+// v57: todo lo que ya está asignado/activo ese día — para el selector "Asociar a" del formulario
+// de gasto y para armar "Gastos del día".
+function itemsAsignadosDelDia(diaId) {
+  const pend = itinerario.pendientes.filter(p => p.diaId === diaId && (p.proyecto||'') === currentProyecto)
+    .map(p => ({ tipo: 'pendiente', id: p.id, nombre: p.nombre || '(sin nombre)', icono: '📌' }));
+  const trans = itinerario.transporte.filter(t => t.diaId === diaId)
+    .map(t => ({ tipo: 'transporte', id: t.id, nombre: `${TIPO_LABEL[t.tipo]||t.tipo}: ${t.origen||''} → ${t.destino||''}`, icono: '🚆' }));
+  const hosp = hospedajeOrdenParaDia(diaId).hospDelDia
+    .map(h => ({ tipo: 'hospedaje', id: h.id, nombre: h.nombre || '(sin nombre)', icono: '🏨' }));
+  const evt = eventosDelDiaFn(diaId)
+    .map(e => ({ tipo: 'evento', id: e.id, nombre: e.nombre || '(sin nombre)', icono: '🎪' }));
+  return [...pend, ...trans, ...hosp, ...evt];
+}
+// v57: gastos que le tocan a este día en el panel lateral: los asociados explícitamente a él
+// (gastosDelDia, campo "Día en itinerario") + los de cualquier item que ya se muestra ese día
+// (pendiente/transporte/evento completos). El hospedaje es un caso aparte: en vez de repetir el
+// gasto completo en cada día de la estadía, se reparte el total de sus gastos entre las noches
+// actuales (pedido explícito del usuario — siempre recalculado en vivo, nunca un valor guardado).
+function gastosDeEsteDia(diaId) {
+  const lista = [];
+  const vistos = new Set();
+  const agregar = (g) => { if (vistos.has(g.id)) return; vistos.add(g.id); lista.push(g); };
+  (gastosDelDia[diaId] || []).forEach(agregar);
+  itinerario.pendientes.filter(p => p.diaId === diaId).forEach(p => (gastosVinculados[p.id]||[]).forEach(agregar));
+  itinerario.transporte.filter(t => t.diaId === diaId).forEach(t => (gastosVinculados[t.id]||[]).forEach(agregar));
+  eventosDelDiaFn(diaId).forEach(e => (gastosVinculados[e.id]||[]).forEach(agregar));
+  hospedajeOrdenParaDia(diaId).hospDelDia.forEach(h => {
+    const gastosH = (gastosVinculados[h.id] || []).filter(g => !g.cotizacion);
+    if (!gastosH.length) return;
+    const totalH = gastosH.reduce((s,g) => s + Number(g.costo||0), 0);
+    if (!totalH) return;
+    const porNoche = Math.round((totalH / nochesDeHospedaje(h)) * 100) / 100;
+    // Una sola línea sintética por hotel ese día (no una por cada gasto del hotel), para no
+    // repetir N notas del mismo hotel — el gasto real (completo) se sigue editando desde ✏️ en
+    // el hotel mismo, no desde acá.
+    lista.push({
+      id: 'hotelnoche-' + h.id + '-' + diaId, itemId: h.id, esHotelPorNoche: true,
+      concepto: (h.nombre || 'Hotel') + ' (por noche)', costo: porNoche,
+      notas: gastosH.map(g => g.notas).filter(Boolean).join(' · '),
+      moneda: gastosH[0].moneda, cotizacion: false
+    });
+  });
+  return lista;
 }
 
 function renderPoolPanel() {
@@ -2348,6 +2546,30 @@ function renderPoolPanel() {
       return sectionWrap('eventos', '🎪 Eventos/Festivales', eventosSorted.length,
         `<button class="btn-mini" onclick="openEventoForm(null,'${dia.id}')" title="Agregar evento">＋</button>`,
         contenido);
+    })(),
+    gastosDia: (function() {
+      const lista = gastosDeEsteDia(dia.id);
+      const reales = lista.filter(g => !g.cotizacion);
+      const total = reales.reduce((s,g) => s + Number(g.costo||0), 0);
+      const rowsHtml = lista.length ? lista.map(g => `
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:4px 0; border-top:1px solid var(--line)">
+          <div style="flex:1; min-width:0">
+            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${g.cotizacion?'💬 ':''}${escHtml(g.concepto||'(sin concepto)')}</div>
+            ${g.notas ? `<div style="font-size:10.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap">📌 ${escHtml(g.notas)}</div>` : ''}
+          </div>
+          <div style="display:flex; gap:3px; align-items:center; flex-shrink:0; margin-left:6px">
+            <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
+            ${g.esHotelPorNoche
+              ? `<button class="icon-btn" style="font-size:12px" onclick="abrirVisorHospedaje('${g.itemId}')" title="Ver hotel">🏨</button>`
+              : `<button class="icon-btn" style="font-size:12px" onclick="editarGastoDelDia('${g.id}','${dia.id}')" title="Editar">✏️</button>
+                 <button class="icon-btn" style="font-size:12px" onclick="eliminarGastoDelDia('${dia.id}','${g.id}')" title="Eliminar">🗑</button>`}
+          </div>
+        </div>`).join('')
+        : `<div class="empty-mini">Sin gastos todavía.</div>`;
+      return sectionWrap('gastosDia', '💴 Gastos del día', lista.length,
+        `<span style="font-size:11px; font-weight:600; color:var(--ink-2); margin-right:4px">¥${total.toLocaleString()}</span>
+         <button class="btn-mini" onclick="abrirGastosForm('dia','','',null,'${dia.id}')" title="Agregar gasto">＋</button>`,
+        rowsHtml);
     })(),
     mapa: sectionWrap('mapa', '🗺️ Mapa del día', 0, '',
       `<div id="miniMapBox" style="height:220px; border-radius:10px; overflow:hidden; border:1px solid var(--line)"></div>`)
@@ -6155,13 +6377,14 @@ function openHospedajeForm(id, diaId) {
 
 
       <div class="row-2">
-        <div class="field"><label>Día inicio (Check-in)</label><select id="fHospInicio">${diaOptions}</select></div>
+        <div class="field"><label>Día inicio (Check-in)</label><select id="fHospInicio" onchange="fHospActualizarNoches()">${diaOptions}</select></div>
         <div class="field"><label>Hora Check-in</label><input type="time" id="fHospCheckIn" value="${h && h.horaCheckIn ? h.horaCheckIn : '14:00'}"></div>
       </div>
       <div class="row-2">
-        <div class="field"><label>Día fin (Check-out)</label><select id="fHospFin">${diaOptionsFin}</select></div>
+        <div class="field"><label>Día fin (Check-out)</label><select id="fHospFin" onchange="fHospActualizarNoches()">${diaOptionsFin}</select></div>
         <div class="field"><label>Hora Check-out</label><input type="time" id="fHospCheckOut" value="${h && h.horaCheckOut ? h.horaCheckOut : '11:00'}"></div>
       </div>
+      <div class="empty-mini" id="fHospNochesHint" style="margin:-8px 0 13px">🌙 —</div>
       <div class="field"><label>Reservado</label>
         ${reservadoSelectHtml('fHospReservado', h ? h.reservado : 'pendiente')}
       </div>
@@ -6186,8 +6409,18 @@ function openHospedajeForm(id, diaId) {
     document.getElementById('fHospFin').value = (h && h.diaIdFin) ? h.diaIdFin : finDefault;
   }
   if (h) { if (h.diaIdInicio) document.getElementById('fHospInicio').value = h.diaIdInicio; if (h.diaIdFin) document.getElementById('fHospFin').value = h.diaIdFin; }
+  fHospActualizarNoches();
 }
-
+// v57: solo informativo mientras se llena el form — no se guarda, se recalcula siempre de
+// diaIdInicio/diaIdFin (mismo criterio que nochesDeHospedaje, usado para repartir el gasto del
+// hotel entre los días en "Gastos del día").
+function fHospActualizarNoches() {
+  const hint = document.getElementById('fHospNochesHint'); if (!hint) return;
+  const ini = document.getElementById('fHospInicio').value, fin = document.getElementById('fHospFin').value;
+  if (!ini || !fin) { hint.textContent = '🌙 —'; return; }
+  const noches = nochesDeHospedaje({ diaIdInicio: ini, diaIdFin: fin });
+  hint.textContent = noches >= 1 ? `🌙 ${noches} noche${noches===1?'':'s'} · ${noches+1} días` : '🌙 —';
+}
 
 async function guardarHospedaje() {
   const id = document.getElementById('fHospId').value;
@@ -7399,6 +7632,16 @@ init();
           <input type="number" id="gMsiMeses" placeholder="meses" min="2" class="g-input" style="width:80px; display:none">
         </div>
         <div id="gTarjetaHint" class="empty-mini" style="display:none">No tenés tarjetas registradas todavía — agregalas en Gastos → Finanzas → Tarjetas.</div>
+      </div>
+      <div class="g-row2" style="margin-bottom:13px">
+        <div class="g-field" style="margin-bottom:0">
+          <label>Día en itinerario <span style="text-transform:none;font-weight:400;color:var(--ink-3)">(de qué día cuelga)</span></label>
+          <select id="gDiaItinerario" class="g-select" onchange="gOnDiaItinerarioChange()"></select>
+        </div>
+        <div class="g-field" style="margin-bottom:0">
+          <label>Asociar a</label>
+          <select id="gAsociarA" class="g-select" onchange="gOnAsociarAChange()"></select>
+        </div>
       </div>
       <div class="g-field"><label>Notas</label><input type="text" id="gNotas" class="g-input" placeholder="Observaciones…"></div>
 
