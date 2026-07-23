@@ -534,7 +534,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 25; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 26; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2417,7 +2417,18 @@ function gastosDeEsteDia(diaId) {
   itinerario.pendientes.filter(p => p.diaId === diaId).forEach(p => (gastosVinculados[p.id]||[]).forEach(agregar));
   itinerario.transporte.filter(t => t.diaId === diaId).forEach(t => (gastosVinculados[t.id]||[]).forEach(agregar));
   eventosDelDiaFn(diaId).forEach(e => (gastosVinculados[e.id]||[]).forEach(agregar));
-  hospedajeOrdenParaDia(diaId).hospDelDia.forEach(h => {
+  // v57 fix: el día de checkout NO es una noche pagada ahí (esa noche ya se contó en el
+  // checkin) — antes se usaba hospDelDia (incluye el día de checkout, para mostrarlo en el
+  // calendario) y eso hacía que se sumara una noche de más en cada estadía.
+  const _dias = diasFiltrados();
+  const _idxHoy = _dias.findIndex(d => d.id === diaId);
+  const hotelesConNocheHoy = itinerario.hospedaje.filter(h => {
+    const i1 = _dias.findIndex(d => d.id === h.diaIdInicio);
+    const i2 = _dias.findIndex(d => d.id === h.diaIdFin);
+    if (i1 < 0 || i2 < 0) return false;
+    return i2 > i1 ? (_idxHoy >= i1 && _idxHoy < i2) : (_idxHoy === i1); // i2<=i1: reserva de un solo día
+  });
+  hotelesConNocheHoy.forEach(h => {
     const gastosH = (gastosVinculados[h.id] || []).filter(g => !g.cotizacion);
     if (!gastosH.length) return;
     const totalH = gastosH.reduce((s,g) => s + Number(g.costo||0), 0);
@@ -2550,21 +2561,25 @@ function renderPoolPanel() {
     gastosDia: (function() {
       const lista = gastosDeEsteDia(dia.id);
       const reales = lista.filter(g => !g.cotizacion);
+      const cots = lista.filter(g => g.cotizacion);
       const total = reales.reduce((s,g) => s + Number(g.costo||0), 0);
-      const rowsHtml = lista.length ? lista.map(g => `
+      const filaHtml = (g) => `
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:4px 0; border-top:1px solid var(--line)">
           <div style="flex:1; min-width:0">
-            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${g.cotizacion?'💬 ':''}${escHtml(g.concepto||'(sin concepto)')}</div>
+            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escHtml(g.concepto||'(sin concepto)')}</div>
             ${g.notas ? `<div style="font-size:10.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap">📌 ${escHtml(g.notas)}</div>` : ''}
           </div>
           <div style="display:flex; gap:3px; align-items:center; flex-shrink:0; margin-left:6px">
             <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
             ${g.esHotelPorNoche
-              ? `<button class="icon-btn" style="font-size:12px" onclick="abrirVisorHospedaje('${g.itemId}')" title="Ver hotel">🏨</button>`
+              ? `<button class="icon-btn" style="font-size:12px" onclick="abrirVisorHospedaje('${g.itemId}')" title="Ver hotel">✏️</button>`
               : `<button class="icon-btn" style="font-size:12px" onclick="editarGastoDelDia('${g.id}','${dia.id}')" title="Editar">✏️</button>
                  <button class="icon-btn" style="font-size:12px" onclick="eliminarGastoDelDia('${dia.id}','${g.id}')" title="Eliminar">🗑</button>`}
           </div>
-        </div>`).join('')
+        </div>`;
+      const rowsHtml = lista.length
+        ? reales.map(filaHtml).join('')
+          + (cots.length ? `<div style="color:#b85c8a; font-size:11px; font-weight:600; margin:6px 0 2px; padding-top:4px; border-top:1px solid var(--line)">💬 Cotizaciones (${cots.length})</div>${cots.map(filaHtml).join('')}` : '')
         : `<div class="empty-mini">Sin gastos todavía.</div>`;
       return sectionWrap('gastosDia', '💴 Gastos del día', lista.length,
         `<span style="font-size:11px; font-weight:600; color:var(--ink-2); margin-right:4px">¥${total.toLocaleString()}</span>
