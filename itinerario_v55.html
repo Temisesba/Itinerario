@@ -302,12 +302,16 @@ body.drag-locked .cal-resize-handle { display: none; }
   .mobile-tab-float.mtf-dragging { cursor: grabbing; opacity: 0.85; }
   /* Botón chico y discreto para alternar horizontal/vertical, en la esquina del panel. */
   .mtf-rotate-hint { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--paper); border: 1px solid var(--line); font-size: 10px; line-height: 16px; text-align: center; color: var(--ink-2); padding: 0; cursor: pointer; }
+  .mtf-pin-hint { position: absolute; top: -6px; left: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--paper); border: 1px solid var(--line); font-size: 10px; line-height: 16px; text-align: center; color: var(--ink-2); padding: 0; cursor: pointer; }
+  .mtf-pin-hint.on { background: var(--ink); color: #fff; border-color: var(--ink); }
   .mtf-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; font-size: 17px; cursor: pointer; display:flex; align-items:center; justify-content:center; }
   .mtf-btn.active { background: var(--ink); }
   /* Colapsado (por defecto): solo se ve el botón de la pestaña activa. Un toque expande
      los 3 para elegir; al elegir uno (o tocar afuera) se vuelve a colapsar solo. */
   .mobile-tab-float:not(.expanded) .mtf-btn:not(.active) { display: none; }
   .mobile-tab-float:not(.expanded) .mtf-rotate-hint { display: none; }
+  .mobile-tab-float:not(.expanded) .mtf-pin-hint { display: none; }
+  .mobile-tab-float.fijado { cursor: default; }
 }
 
 /* Chat drawer */
@@ -474,6 +478,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 </div>
 
 <div class="mobile-tab-float" id="mobileTabFloat" title="Arrastrá para moverlo">
+  <button class="mtf-pin-hint" id="mtfPinBtn" title="Fijar en esta posición (no se puede arrastrar)">📌</button>
   <button class="mtf-rotate-hint" id="mtfRotateBtn" title="Cambiar a vertical/horizontal">🔃</button>
   <button class="mtf-btn active" data-tab="semana" onclick="setTab('semana');mtfCollapse()" title="Itinerario">📅</button>
   <button class="mtf-btn" data-tab="tabla" onclick="setTab('tabla');mtfCollapse()" title="Tabla">📋</button>
@@ -529,7 +534,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 23; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 24; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -3974,10 +3979,30 @@ function cerrarLightboxSiFondo(e) { if (e.target.id === 'lightboxOverlay') cerra
 
 // Menú flotante de abajo (Itinerario/Tabla/Mapa en el celular): arrastrable, se puede dejar donde
 // quieras y recuerda la posición entre sesiones.
+// v57: expandir/colapsar ahora ancla la esquina inferior-derecha del panel (antes anclaba la
+// izquierda/arriba, así que si lo dejabas pegado a la derecha, al expandir se salía de la
+// pantalla o "saltaba" — y al volver a colapsar el círculo no quedaba en el mismo lugar).
+function mtfToggleExpand(el, activar) {
+  const before = el.getBoundingClientRect();
+  if (activar) el.classList.add('expanded'); else el.classList.remove('expanded');
+  requestAnimationFrame(() => {
+    const after = el.getBoundingClientRect();
+    const dw = after.width - before.width, dh = after.height - before.height;
+    const maxLeft = window.innerWidth - after.width - 4, maxTop = window.innerHeight - after.height - 4;
+    let left = (parseFloat(el.style.left) || before.left) - dw;
+    let top = (parseFloat(el.style.top) || before.top) - dh;
+    left = Math.max(4, Math.min(maxLeft, left));
+    top = Math.max(4, Math.min(maxTop, top));
+    el.style.left = left + 'px'; el.style.top = top + 'px'; el.style.bottom = 'auto';
+  });
+}
 (function () {
   const el = document.getElementById('mobileTabFloat');
   if (!el) return;
   let dragging = false, moved = false, startX, startY, startLeft, startTop, pid;
+  let fijado = false;
+  try { fijado = localStorage.getItem('itin_tabFloatFijado') === '1'; } catch (e) {}
+  el.classList.toggle('fijado', fijado);
 
   try {
     const pos = JSON.parse(localStorage.getItem('itin_tabFloatPos'));
@@ -3997,7 +4022,20 @@ function cerrarLightboxSiFondo(e) { if (e.target.id === 'lightboxOverlay') cerra
   }
   const rotateBtn = document.getElementById('mtfRotateBtn');
   if (rotateBtn) rotateBtn.addEventListener('click', (e) => { e.stopPropagation(); alternarOrientacion(); });
+  const pinBtn = document.getElementById('mtfPinBtn');
+  if (pinBtn) {
+    pinBtn.classList.toggle('on', fijado);
+    pinBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fijado = !fijado;
+      try { localStorage.setItem('itin_tabFloatFijado', fijado ? '1' : '0'); } catch (err) {}
+      el.classList.toggle('fijado', fijado);
+      pinBtn.classList.toggle('on', fijado);
+      showToast(fijado ? '📌 Fijado en esta posición' : '📌 Ya se puede volver a arrastrar');
+    });
+  }
   el.addEventListener('pointerdown', (e) => {
+    if (fijado) return; // fijado: no arma arrastre ni rotación por mantener-presionado, solo toques
     dragging = true; moved = false; longPressFired = false; pid = e.pointerId;
     const r = el.getBoundingClientRect();
     startX = e.clientX; startY = e.clientY;
@@ -4042,27 +4080,16 @@ function cerrarLightboxSiFondo(e) { if (e.target.id === 'lightboxOverlay') cerra
     if (moved || longPressFired) { e.stopPropagation(); e.preventDefault(); moved = false; longPressFired = false; return; }
     if (!el.classList.contains('expanded')) {
       e.stopPropagation(); e.preventDefault();
-      el.classList.add('expanded');
-      // Si al expandir se sale de la pantalla (quedó pegado a un borde), lo acomoda
-      // solo lo necesario para que los 3 botones queden visibles.
-      requestAnimationFrame(() => {
-        const r = el.getBoundingClientRect();
-        let left = parseFloat(el.style.left) || r.left, top = parseFloat(el.style.top) || r.top;
-        const overR = r.right - window.innerWidth + 4, overB = r.bottom - window.innerHeight + 4;
-        const overL = 4 - r.left, overT = 4 - r.top;
-        if (overR > 0) left -= overR; if (overL > 0) left += overL;
-        if (overB > 0) top -= overB; if (overT > 0) top += overT;
-        el.style.left = left + 'px'; el.style.top = top + 'px'; el.style.bottom = 'auto';
-      });
+      mtfToggleExpand(el, true);
       return;
     }
-    if (e.target === el) el.classList.remove('expanded'); // tocaron el fondo del panel: cierra sin elegir
+    if (e.target === el) mtfToggleExpand(el, false); // tocaron el fondo del panel: cierra sin elegir
   }, true);
   document.addEventListener('click', (e) => {
-    if (el.classList.contains('expanded') && !el.contains(e.target)) el.classList.remove('expanded');
+    if (el.classList.contains('expanded') && !el.contains(e.target)) mtfToggleExpand(el, false);
   });
 })();
-function mtfCollapse() { const el = document.getElementById('mobileTabFloat'); if (el) el.classList.remove('expanded'); }
+function mtfCollapse() { const el = document.getElementById('mobileTabFloat'); if (el && el.classList.contains('expanded')) mtfToggleExpand(el, false); }
 
 async function subirFotoPendiente(id, input) {
   const file = input.files[0]; if (!file) return;
