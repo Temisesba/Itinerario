@@ -529,7 +529,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 22; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 23; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -938,6 +938,26 @@ function gConceptoGasto(tipo, datos) {
   return `${datos.nombre||''} · ${fechaDia()}`;
 }
 
+// v57: helpers que arman "datos" en JS (no interpolando texto libre dentro del atributo
+// onclick) — antes, un nombre/dirección/antojo con un apóstrofe (muy común en restaurantes,
+// ej. "Domino's") rompía el JavaScript embebido en el onclick y el botón "💴 Gasto" no hacía
+// nada al tocarlo, sin ningún error visible.
+function abrirGastoDesdePendiente(id) {
+  const p = itinerario.pendientes.find(x => x.id === id); if (!p) return;
+  abrirGastosForm('pendiente', id, { nombre: p.nombre || '', antojo: p.antojo || '', direccion: p.direccion || '' });
+}
+function abrirGastoDesdeTransporte(id) {
+  const t = itinerario.transporte.find(x => x.id === id); if (!t) return;
+  abrirGastosForm('transporte', id, { origen: t.origen || '', destino: t.destino || '', diaId: t.diaId || '', tipo: t.tipo || '' });
+}
+function abrirGastoDesdeHospedaje(id) {
+  const h = itinerario.hospedaje.find(x => x.id === id); if (!h) return;
+  abrirGastosForm('hospedaje', id, { nombre: h.nombre || '', diaIdInicio: h.diaIdInicio || '', diaIdFin: h.diaIdFin || '' });
+}
+function abrirGastoDesdeEvento(id) {
+  const ev = itinerario.eventos.find(x => x.id === id); if (!ev) return;
+  abrirGastosForm('evento', id, { nombre: ev.nombre || '' });
+}
 function abrirGastosForm(tipo, itemId, datosStr, editGastoId) {
   if (!requiereGasUrlGastos()) return;
   const datos = (() => { try { return typeof datosStr==='string' ? JSON.parse(datosStr) : (datosStr||{}); } catch(e) { return {}; } })();
@@ -2519,6 +2539,10 @@ function agregarRestauranteAntojo(antojo) {
   setTimeout(() => {
     const fAntojo = document.getElementById('fPendAntojo');
     if (fAntojo) { fAntojo.value = antojo; }
+    // v57: si lo agregas desde Platillos y restaurantes, ya sabemos que es un restaurante —
+    // no tiene sentido pedirte que marques la casilla a mano cada vez.
+    const fResto = document.getElementById('fPendEsRestaurante');
+    if (fResto) { fResto.checked = true; }
   }, 80);
 }
 
@@ -3066,7 +3090,7 @@ function abrirVisorPendiente(id) {
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           ${p.diaId || p.horaInicio ? `<button class="btn-cancel" onclick="desasignarDia('${p.id}')" title="Quita la hora y el día, y lo regresa al panel">↩️ Quitar de este día</button>` : ''}
           ${p.lat && p.lng ? `<button class="btn-cancel" onclick="verEnMapa('pendiente','${p.id}','${p.diaId || ''}')">🗺️ Ver mapa</button>` : ''}
-          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastosForm('pendiente','${p.id}',JSON.stringify({nombre:'${p.nombre}',antojo:'${p.antojo||''}',direccion:'${p.direccion||''}'}))">💴 ${(gastosVinculados[p.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[p.id]||[]).length>0?' ('+(gastosVinculados[p.id]||[]).length+')':''}</button>
+          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdePendiente('${p.id}')">💴 ${(gastosVinculados[p.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[p.id]||[]).length>0?' ('+(gastosVinculados[p.id]||[]).length+')':''}</button>
           <button class="btn-save" onclick="openPendienteForm('${p.id}', ${p.diaId ? `'${p.diaId}'` : 'null'})">✏️ Editar</button>
         </div>
       </div>
@@ -3133,7 +3157,7 @@ function abrirVisorTransporte(id) {
         <button class="btn-cancel" onclick="eliminarTransporte('${t.id}')" style="color:#b91c1c">🗑 Eliminar</button>
         <div style="display:flex; gap:8px">
           ${t.origenLat && t.origenLng ? `<button class="btn-cancel" onclick="verEnMapa('transporte','${t.id}','${t.diaId || ''}')">🗺️ Ver mapa</button>` : ''}
-          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastosForm('transporte','${t.id}',JSON.stringify({origen:'${t.origen||''}',destino:'${t.destino||''}',diaId:'${t.diaId||''}',tipo:'${t.tipo||''}'}))">💴 ${(gastosVinculados[t.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[t.id]||[]).length>0?' ('+(gastosVinculados[t.id]||[]).length+')':''}</button>
+          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdeTransporte('${t.id}')">💴 ${(gastosVinculados[t.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[t.id]||[]).length>0?' ('+(gastosVinculados[t.id]||[]).length+')':''}</button>
           <button class="btn-save" onclick="openTransporteForm('${t.id}','${t.diaId}')">✏️ Editar</button>
         </div>
       </div>
@@ -3159,7 +3183,7 @@ function abrirVisorHospedaje(id) {
         <button class="btn-cancel" onclick="eliminarHospedaje('${h.id}')" style="color:#b91c1c">🗑 Eliminar</button>
         <div style="display:flex; gap:8px">
           ${h.lat && h.lng ? `<button class="btn-cancel" onclick="verEnMapa('hospedaje','${h.id}','${h.diaIdInicio || ''}')">🗺️ Ver mapa</button>` : ''}
-          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastosForm('hospedaje','${h.id}',JSON.stringify({nombre:'${h.nombre||''}',diaIdInicio:'${h.diaIdInicio||''}',diaIdFin:'${h.diaIdFin||''}'}))">💴 ${(gastosVinculados[h.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[h.id]||[]).length>0?' ('+(gastosVinculados[h.id]||[]).length+')':''}</button>
+          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdeHospedaje('${h.id}')">💴 ${(gastosVinculados[h.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[h.id]||[]).length>0?' ('+(gastosVinculados[h.id]||[]).length+')':''}</button>
           <button class="btn-save" onclick="openHospedajeForm('${h.id}','${h.diaIdInicio}')">✏️ Editar</button>
         </div>
       </div>
@@ -3892,7 +3916,7 @@ function abrirVisorEvento(id) {
       <div class="modal-actions" style="justify-content:space-between">
         <button class="btn-cancel" onclick="eliminarEvento('${ev.id}')" style="color:#b91c1c">🗑 Eliminar</button>
         <div style="display:flex; gap:8px">
-          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastosForm('evento','${ev.id}',JSON.stringify({nombre:${JSON.stringify(ev.nombre||'')}}))">💴 ${(gastosVinculados[ev.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[ev.id]||[]).length>0?' ('+(gastosVinculados[ev.id]||[]).length+')':''}</button>
+          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdeEvento('${ev.id}')">💴 ${(gastosVinculados[ev.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[ev.id]||[]).length>0?' ('+(gastosVinculados[ev.id]||[]).length+')':''}</button>
           <button class="btn-save" onclick="openEventoForm('${ev.id}')">✏️ Editar</button>
         </div>
       </div>
@@ -4930,12 +4954,22 @@ function startWeekMove(e, b, el, origDiaId) {
   el.appendChild(fill);
   requestAnimationFrame(() => { fill.style.width = '100%'; });
 
+  let rect0 = null;
   const armTimer = setTimeout(() => {
     document.removeEventListener('pointermove', onArmandoMove);
     document.removeEventListener('pointerup', onArmandoUp);
     fill.remove();
     el.classList.add('dragging');
     el.setPointerCapture(e.pointerId);
+    // v57: pasa a position:fixed (coordenadas de pantalla) para poder seguir al dedo también
+    // de lado a lado — antes solo se movía verticalmente DENTRO de su columna de origen, así
+    // que cambiar de día quedaba invisible mientras arrastrabas (recién se notaba al soltar).
+    rect0 = el.getBoundingClientRect();
+    el.style.position = 'fixed';
+    el.style.left = rect0.left + 'px';
+    el.style.width = rect0.width + 'px';
+    el.style.right = 'auto';
+    el.style.zIndex = 3000;
     document.addEventListener('pointermove', onMove);
     document.addEventListener('pointerup', onUp);
   }, HOLD_MS);
@@ -4960,7 +4994,6 @@ function startWeekMove(e, b, el, origDiaId) {
     const px = pxPerMin();
     const dy = (ev.clientY - startY) / px;
     const newIni = Math.max(0, Math.min(1439 - dur, snap15(origIni + dy)));
-    el.style.top = (newIni * px) + 'px';
     el.querySelector('.cbtime').textContent = `${minToHHMM(newIni)}–${minToHHMM(newIni + dur)}`;
     document.querySelectorAll('.week-col').forEach(c => c.classList.remove('drop-target'));
     const dz = document.getElementById('poolDespuesZone');
@@ -4968,9 +5001,23 @@ function startWeekMove(e, b, el, origDiaId) {
     if (dz) dz.style.background = '';
     if (shz) shz.style.background = '';
     hideDragPreview();
+
+    const col = elFrom(ev, '.week-col');
+    const body = col ? col.querySelector('.week-col-body') : null;
+    if (body) {
+      // Encaja de verdad en la columna del día que estás tocando (no solo un aviso aparte).
+      const bRect = body.getBoundingClientRect();
+      el.style.left = (bRect.left + 2) + 'px';
+      el.style.width = (bRect.width - 4) + 'px';
+      el.style.top = (bRect.top + newIni * px) + 'px';
+    } else {
+      // Fuera de cualquier columna (p.ej. sobre el panel lateral): sigue al dedo tal cual.
+      el.style.left = (rect0.left + (ev.clientX - startX)) + 'px';
+      el.style.top = (rect0.top + (ev.clientY - startY)) + 'px';
+    }
+
     if (elFrom(ev, '#poolDespuesZone')) { if (dz) dz.style.background = 'var(--ok-light)'; return; }
     if (elFrom(ev, '#poolSinHoraZone')) { if (shz) shz.style.background = 'var(--ok-light)'; return; }
-    const col = elFrom(ev, '.week-col');
     if (col) {
       col.classList.add('drop-target');
       if (col.dataset.dia !== origDiaId) showDragPreview(col, newIni, dur);
