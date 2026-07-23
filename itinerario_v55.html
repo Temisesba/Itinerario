@@ -302,7 +302,7 @@ body.drag-locked .cal-resize-handle { display: none; }
   .mobile-tab-float.mtf-dragging { cursor: grabbing; opacity: 0.85; }
   /* Botón chico y discreto para alternar horizontal/vertical, en la esquina del panel. */
   .mtf-rotate-hint { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--paper); border: 1px solid var(--line); font-size: 10px; line-height: 16px; text-align: center; color: var(--ink-2); padding: 0; cursor: pointer; }
-  .mtf-pin-hint { position: absolute; top: -6px; left: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--paper); border: 1px solid var(--line); font-size: 10px; line-height: 16px; text-align: center; color: var(--ink-2); padding: 0; cursor: pointer; }
+  .mtf-pin-hint { position: absolute; bottom: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--paper); border: 1px solid var(--line); font-size: 10px; line-height: 16px; text-align: center; color: var(--ink-2); padding: 0; cursor: pointer; }
   .mtf-pin-hint.on { background: var(--ink); color: #fff; border-color: var(--ink); }
   .mtf-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; font-size: 17px; cursor: pointer; display:flex; align-items:center; justify-content:center; }
   .mtf-btn.active { background: var(--ink); }
@@ -534,7 +534,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 26; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 27; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
