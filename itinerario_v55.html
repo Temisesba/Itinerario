@@ -574,7 +574,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 38; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 39; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1889,7 +1889,14 @@ function selectDay(id) {
 function hospedajeOrdenParaDia(diaId) {
   const dias = diasFiltrados();
   const idx = dias.findIndex(d => d.id === diaId);
-  const todosHosp = itinerario.hospedaje.filter(h => (h.proyecto || currentProyecto) === currentProyecto || true).sort((a,b)=>(a.orden||0)-(b.orden||0));
+  const idxDeDia = (id) => { const i = dias.findIndex(d => d.id === id); return i < 0 ? Infinity : i; };
+  // Orden: primero los elegidos (⭐), luego por fecha de check-in, y por último el orden manual.
+  const todosHosp = itinerario.hospedaje.filter(h => (h.proyecto || currentProyecto) === currentProyecto || true).sort((a, b) => {
+    if (!!b.elegido !== !!a.elegido) return (b.elegido ? 1 : 0) - (a.elegido ? 1 : 0);
+    const fa = idxDeDia(a.diaIdInicio), fb = idxDeDia(b.diaIdInicio);
+    if (fa !== fb) return fa - fb;
+    return (a.orden || 0) - (b.orden || 0);
+  });
   // Comparar por POSICIÓN en la lista ordenada por fecha, no por el id (los ids son timestamps de creación,
   // no de fecha del viaje — un día agregado después puede tener un id "mayor" aunque sea cronológicamente antes).
   const hospDelDia = idx < 0 ? [] : todosHosp.filter(h => {
@@ -2013,7 +2020,7 @@ async function marcarHospedajeElegido(id) {
 }
 
 function moverHospedajeOrden(id, dir, diaId) {
-  const lista = diaId ? hospedajeOrdenParaDia(diaId).hospSorted : [...itinerario.hospedaje].sort((a,b)=>(a.orden||0)-(b.orden||0));
+  const lista = diaId ? hospedajeOrdenParaDia(diaId).hospSorted : hospedajeOrdenParaDia(null).todosHosp;
   const idx = lista.findIndex(h=>h.id===id);
   if(idx<0) return;
   const otro = dir==='up' ? idx-1 : idx+1;
@@ -5290,7 +5297,7 @@ function renderMiniMapa(diaIdActivo) {
     // v57 fix: si hay más de un candidato para el mismo rol ese día, preferir el elegido (antes
     // .find() tomaba el primero que hubiera en itinerario.hospedaje, sin importar cuál estuviera
     // realmente activo/reservado — se abría el marcador/visor del hotel equivocado).
-    const elegirMini = (cands) => cands.find(h => h.elegido) || cands[0] || null;
+    const elegirMini = (cands) => cands.find(h => h.elegido) || null;
     const hCheckOut = elegirMini(itinerario.hospedaje.filter(h => h.lat && h.lng && h.diaIdFin && fechaDiaMini(h.diaIdFin) === dFechaMini));
     const hCheckIn  = elegirMini(itinerario.hospedaje.filter(h => h.lat && h.lng && h.diaIdInicio && fechaDiaMini(h.diaIdInicio) === dFechaMini));
     const hActivo   = elegirMini(itinerario.hospedaje.filter(h => h.lat && h.lng && h.diaIdInicio && h.diaIdFin && fechaDiaMini(h.diaIdInicio) < dFechaMini && fechaDiaMini(h.diaIdFin) > dFechaMini));
