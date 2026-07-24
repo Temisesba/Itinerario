@@ -567,7 +567,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 30; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 31; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2718,7 +2718,7 @@ function renderPoolPanel() {
                   <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','up','${dia.id}')" ${idx===0?'disabled':''}>▲</button>
                   <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','down','${dia.id}')" ${idx===hospSorted.length-1?'disabled':''}>▼</button>
                 </div>
-                ${(!h.diaIdInicio || dia.id === h.diaIdInicio) ? `<button class="icon-btn" onclick="marcarHospedajeElegido('${h.id}')" title="${esElegido ? 'Quitar como hotel elegido' : 'Marcar como el hotel elegido'}">${esElegido ? '⭐' : '☆'}</button>` : ''}
+                <button class="icon-btn" onclick="marcarHospedajeElegido('${h.id}')" title="${esElegido ? 'Quitar como hotel elegido' : 'Marcar como el hotel elegido'}">${esElegido ? '⭐' : '☆'}</button>
                 <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorHospedaje('${h.id}')">${escHtml(h.nombre || '(sin nombre)')}</span>
                 <span style="font-size:10px; color:var(--ink-3)">${esDelDia ? '📅' : ''}</span>
                 <button class="icon-btn" onclick="openHospedajeForm('${h.id}','${h.diaIdInicio}')" title="Editar">✏️</button>
