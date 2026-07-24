@@ -395,8 +395,14 @@ body.drag-locked .cal-resize-handle { display: none; }
 
 /* v57: Resumen imprimible del viaje */
 #printResumenOverlay { position: fixed; inset: 0; background: #fff; z-index: 9000; overflow-y: auto; }
-.pr-barra { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; background: var(--paper); border-bottom: 1px solid var(--line); font-weight: 600; z-index: 1; }
+.pr-barra { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; background: var(--paper); border-bottom: 1px solid var(--line); font-weight: 600; z-index: 1; flex-wrap: wrap; }
 .pr-barra div { display: flex; gap: 8px; }
+.pr-cols { align-items: center; gap: 10px !important; font-size: 11.5px; font-weight: 400; color: var(--ink-2); }
+.pr-cols label { display: flex; align-items: center; gap: 3px; cursor: pointer; white-space: nowrap; }
+.pr-blanco { min-width: 160px; }
+#printResumenOverlay.oculta-hora .pr-col-hora,
+#printResumenOverlay.oculta-notas .pr-col-notas,
+#printResumenOverlay.oculta-costo .pr-col-costo { display: none; }
 .pr-contenido { max-width: 760px; margin: 0 auto; padding: 20px 24px 60px; font-family: var(--font-sans); color: var(--ink); }
 .pr-contenido h1 { font-family: var(--font-serif); font-size: 24px; margin: 0 0 18px; }
 .pr-dia { margin-bottom: 26px; page-break-inside: avoid; }
@@ -561,7 +567,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 29; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 30; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2583,18 +2589,18 @@ function abrirResumenImprimible() {
     const { filas, total } = filasImprimirDia(dia);
     const filasHtml = filas.length ? filas.map(f => `
       <tr>
-        <td class="pr-hora">${escHtml(f.hora || '—')}</td>
-        <td>${escHtml(f.nombre || '')}</td>
-        <td class="pr-notas">${escHtml(f.notas || '')}</td>
-        <td class="pr-costo">${f.costo ? '¥' + Math.round(f.costo).toLocaleString() : ''}</td>
+        <td class="pr-hora pr-col-hora">${escHtml(f.hora || '—')}</td>
+        <td class="pr-col-que">${escHtml(f.nombre || '')}</td>
+        <td class="pr-notas pr-col-notas">${escHtml(f.notas || '')}</td>
+        <td class="pr-costo pr-col-costo">${f.costo ? '¥' + Math.round(f.costo).toLocaleString() : ''}</td>
       </tr>`).join('') : `<tr><td colspan="4" class="pr-vacio">Sin actividades registradas.</td></tr>`;
     return `
       <div class="pr-dia">
         <h2>${escHtml(dia.fecha || '')}${dia.zona ? ' · ' + escHtml(dia.zona) : ''}</h2>
         <table class="pr-tabla">
-          <thead><tr><th>Hora</th><th>Qué se hizo</th><th>Notas</th><th>Costo</th></tr></thead>
+          <thead><tr><th class="pr-col-hora">Hora</th><th class="pr-col-que">Qué se hizo</th><th class="pr-col-notas">Notas</th><th class="pr-col-costo">Costo</th></tr></thead>
           <tbody>${filasHtml}</tbody>
-          <tfoot><tr><td colspan="3">Total del día</td><td class="pr-costo">¥${Math.round(total).toLocaleString()}</td></tr></tfoot>
+          <tfoot><tr><td colspan="3">Total del día</td><td class="pr-costo pr-col-costo">¥${Math.round(total).toLocaleString()}</td></tr></tfoot>
         </table>
         ${dia.notas ? `<div class="pr-notagen"><b>📝 Notas generales:</b> ${escHtml(dia.notas)}</div>` : ''}
       </div>`;
@@ -2604,11 +2610,27 @@ function abrirResumenImprimible() {
   const catLabel = { hospedaje: '🏨 Hospedaje', transporte: '🚆 Transporte', comida: '🍴 Comida/Restaurantes', eventos: '🎪 Eventos', otros: '💴 Otros' };
   const totalesHtml = Object.keys(cats).filter(k => cats[k] > 0).map(k => `
     <tr><td>${catLabel[k]}</td><td class="pr-costo">¥${Math.round(cats[k]).toLocaleString()}</td></tr>`).join('');
+  // v57: "Para después / si hay tiempo" — lugares sin día asignado, con una columna en blanco
+  // para anotar a mano por qué no se visitaron.
+  const paraDespues = itinerario.pendientes.filter(p => (p.proyecto||'')===currentProyecto && !p.antojo && !p.esRestaurante && !p.diaId);
+  const paraDespuesHtml = paraDespues.length ? paraDespues.map(p => `
+    <tr>
+      <td>${escHtml(p.nombre || '(sin nombre)')}</td>
+      <td class="pr-notas">${escHtml(p.notasPrevias || '')}</td>
+      <td class="pr-blanco"></td>
+    </tr>`).join('') : '';
   const overlay = document.createElement('div');
   overlay.id = 'printResumenOverlay';
   overlay.innerHTML = `
     <div class="pr-barra">
       <span>🖨️ Resumen del viaje${currentProyecto ? ' — ' + escHtml(currentProyecto) : ''}</span>
+      <div class="pr-cols">
+        <span>Columnas:</span>
+        <label><input type="checkbox" checked onchange="prToggleCol('hora',this.checked)"> Hora</label>
+        <label><input type="checkbox" checked disabled> Qué se hizo</label>
+        <label><input type="checkbox" checked onchange="prToggleCol('notas',this.checked)"> Notas</label>
+        <label><input type="checkbox" checked onchange="prToggleCol('costo',this.checked)"> Costo</label>
+      </div>
       <div>
         <button class="btn-mini" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
         <button class="btn-mini" onclick="document.getElementById('printResumenOverlay').remove()">✕ Cerrar</button>
@@ -2625,8 +2647,20 @@ function abrirResumenImprimible() {
           <tfoot><tr><td>Total del viaje</td><td class="pr-costo">¥${Math.round(granTotal).toLocaleString()}</td></tr></tfoot>
         </table>
       </div>
+      ${paraDespues.length ? `
+      <div class="pr-dia">
+        <h2>⏳ Para después / si hay tiempo</h2>
+        <table class="pr-tabla">
+          <thead><tr><th>Lugar</th><th>Notas</th><th>¿Por qué no se visitó?</th></tr></thead>
+          <tbody>${paraDespuesHtml}</tbody>
+        </table>
+      </div>` : ''}
     </div>`;
   document.body.appendChild(overlay);
+}
+function prToggleCol(col, visible) {
+  const overlay = document.getElementById('printResumenOverlay');
+  if (overlay) overlay.classList.toggle('oculta-' + col, !visible);
 }
 
 function renderPoolPanel() {
@@ -2671,16 +2705,10 @@ function renderPoolPanel() {
         ? hospSorted.map((h, idx) => {
             const esElegido = !!h.elegido || (todosHosp.length === 1);
             const esDelDia = hospDelDia.some(x => x.id === h.id);
-            // Candidato real solo si hay OTRO hotel ese mismo día que NO sea un simple relevo
-            // (checkout de uno = checkin del otro no es competencia, es una transición normal).
-            const esCheckinAqui = dia.id === h.diaIdInicio;
-            const esCheckoutAqui = dia.id === h.diaIdFin;
-            const hayConflictoReal = hospDelDia.some(x => {
-              if (x.id === h.id) return false;
-              const esHandoff = (esCheckoutAqui && x.diaIdInicio === dia.id) || (esCheckinAqui && x.diaIdFin === dia.id);
-              return !esHandoff;
-            });
-            const esElegidoDelDia = !hayConflictoReal || esElegido;
+            // v57: antes un "relevo normal" (checkout de uno = checkin de otro el mismo día) se
+            // mostraba confirmado (verde) aunque ninguno tuviera la estrella — pedido explícito
+            // del usuario: ahora el verde SIEMPRE requiere la estrella, sin excepción.
+            const esElegidoDelDia = esElegido;
             const gastosH = gastosVinculados[h.id] || [];
             const gRealesH = gastosH.filter(g => !g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
             const gCotsH = gastosH.filter(g => g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
@@ -4187,6 +4215,7 @@ function openEventoForm(id, diaId) {
 }
 
 async function guardarEvento() {
+  if (!guardarBtnLock(true)) return;
   const id = document.getElementById('fEventoId').value;
   const sedes = currentEventoSedes.map((s, i) => ({
     id: s.id,
@@ -4223,6 +4252,7 @@ async function guardarEvento() {
   }
   const r = await postGAS(body);
   if (r.ok) { modalClose(); showToast('Evento guardado ✦'); await loadItinerario(); }
+  guardarBtnLock(false);
 }
 // Igual que refinarConIALocal (hotel/lugar), pero para eventos: la IA corrige el nombre,
 // propone la sede principal (dirección + coords) y deja tips en "Sugerencias IA".
@@ -5887,6 +5917,24 @@ async function sendMainChat() {
   }
 }
 
+// v57: evita que un doble-toque en "Guardar" (frecuente con internet lenta, viajando) mande la
+// misma acción dos veces y cree el registro duplicado — deshabilita el botón mientras la llamada
+// sigue en curso. Se usa como guardia al inicio de cada guardarX() y se libera con guardarBtnLock(false).
+function guardarBtnLock(activar) {
+  const btn = document.querySelector('#modalBox .btn-save');
+  if (!btn) return true;
+  if (activar) {
+    if (btn.disabled) return false; // ya había una llamada en curso — no dejar que siga
+    btn.disabled = true;
+    if (btn.dataset.textoOriginal === undefined) btn.dataset.textoOriginal = btn.textContent;
+    btn.textContent = 'Guardando…';
+  } else {
+    btn.disabled = false;
+    if (btn.dataset.textoOriginal !== undefined) btn.textContent = btn.dataset.textoOriginal;
+  }
+  return true;
+}
+
 // ── Modal genérico ──────────────────────────────────────────
 function modalOpen(html) {
   document.getElementById('modalBox').innerHTML = html;
@@ -5960,14 +6008,16 @@ function openDiaForm(existingId) {
     </div>`);
 }
 async function guardarDia() {
+  if (!guardarBtnLock(true)) return;
   const id = document.getElementById('fDiaId').value;
   const fecha = document.getElementById('fDiaFecha').value;
-  if (!fecha) { showToast('Pon una fecha'); return; }
+  if (!fecha) { showToast('Pon una fecha'); guardarBtnLock(false); return; }
   const body = { fecha, zona: document.getElementById('fDiaZona').value, notas: document.getElementById('fDiaNotas').value };
   body.action = id ? 'updateDia' : 'saveDia';
   if (id) body.id = id; else body.proyecto = currentProyecto;
   const r = await postGAS(body);
   if (r.ok) { modalClose(); showToast('Guardado ✦'); currentDiaId = id || r.id; await loadItinerario(); }
+  guardarBtnLock(false);
 }
 async function eliminarDia(id) {
   if (!confirm('¿Eliminar este día? El transporte, hospedaje y pendientes que tenía quedarán sin día asignado, no se borran.')) return;
@@ -6284,6 +6334,21 @@ function actualizarEtiquetasDireccion() {
   if (lo) lo.textContent = et.origen;
   if (ld) ld.textContent = et.destino;
 }
+// v57 fix: "Horarios por modo" arrancaba SIEMPRE en "Otro" (hardcoded), sin importar lo que se
+// eligiera arriba en "Tipo" — si llenabas el form a mano (sin usar sugerencias IA) y nunca
+// tocabas el editor de modos, se guardaba como "Otro" aunque arriba dijera "Bus". Mientras el
+// editor siga teniendo un solo bloque (el caso común: recién abierto, sin tocar todavía), se
+// renombra para que coincida con lo elegido arriba. Si ya se agregó un segundo modo a mano, se
+// deja como está (ya es una elección real, no hay "el único" que renombrar).
+function sincronizarTipoConModoUnico() {
+  actualizarEtiquetasDireccion();
+  const nuevoTipo = document.getElementById('fTransTipo').value;
+  if (currentModosData && currentModosData.modos && currentModosData.modos.length === 1) {
+    currentModosData.modos[0].modo = nuevoTipo;
+    if (currentModosData._elegido) currentModosData._elegido.modo = nuevoTipo;
+    renderModosEditor();
+  }
+}
 
 function openTransporteForm(id, diaId) {
   modalEsFormulario = true;
@@ -6298,7 +6363,7 @@ function openTransporteForm(id, diaId) {
       <input type="hidden" id="fTransDiaOriginal" value="${diaActualId}">
       <div class="row-2">
         <div class="field"><label>Tipo</label>
-          <select id="fTransTipo" onchange="actualizarEtiquetasDireccion()">
+          <select id="fTransTipo" onchange="sincronizarTipoConModoUnico()">
             ${['vuelo', 'tren', 'bus', 'caminando', 'carro', 'ferry', 'bicicleta', 'otro'].map(v => `<option value="${v}" ${(t ? t.tipo === v : v === 'otro') ? 'selected' : ''}>${TIPO_LABEL[v]}</option>`).join('')}
           </select>
         </div>
@@ -6501,13 +6566,14 @@ async function sugerirTransporteCompletoForm(btnEl) {
 }
 
 async function guardarTransporte() {
+  if (!guardarBtnLock(true)) return;
   const id = document.getElementById('fTransId').value;
   const diaNuevoId = document.getElementById('fTransDia').value;
   const diaOriginalId = document.getElementById('fTransDiaOriginal').value;
   if (id && diaNuevoId !== diaOriginalId) {
     const fechaDe = (itinerario.dias.find(d => d.id === diaOriginalId) || {}).fecha || '(sin fecha)';
     const fechaA = (itinerario.dias.find(d => d.id === diaNuevoId) || {}).fecha || '(sin fecha)';
-    if (!confirm(`Estás moviendo esto de ${fechaDe} a ${fechaA}. ¿Estás de acuerdo?`)) return;
+    if (!confirm(`Estás moviendo esto de ${fechaDe} a ${fechaA}. ¿Estás de acuerdo?`)) { guardarBtnLock(false); return; }
   }
   const elegido = (currentModosData && currentModosData._elegido) || {};
   const modoFinal = currentModosData.modos.find(m => m.modo === elegido.modo) || currentModosData.modos[0];
@@ -6549,6 +6615,7 @@ async function guardarTransporte() {
   const r = await postGAS(body);
   if (r.ok) { modalClose(); showToast('Guardado ✦'); await loadItinerario(); }
   else { showToast('⚠️ El servidor no guardó el cambio. Intenta de nuevo.'); }
+  guardarBtnLock(false);
 }
 
 // ── Form: hospedaje ───────────────────────────────────────────
@@ -6629,6 +6696,7 @@ function fHospActualizarNoches() {
 }
 
 async function guardarHospedaje() {
+  if (!guardarBtnLock(true)) return;
   const id = document.getElementById('fHospId').value;
   const body = {
     nombre: document.getElementById('fHospNombre').value,
@@ -6649,6 +6717,7 @@ async function guardarHospedaje() {
   if (id) body.id = id;
   const r = await postGAS(body);
   if (r.ok) { modalClose(); showToast('Guardado ✦'); await loadItinerario(); }
+  guardarBtnLock(false);
 }
 
 // ── Form: pendiente / diario ───────────────────────────────────
@@ -6778,6 +6847,7 @@ function openPendienteForm(id, diaId) {
 }
 
 async function guardarPendiente() {
+  if (!guardarBtnLock(true)) return;
   const id = document.getElementById('fPendId').value;
   const diaId = document.getElementById('fPendDia').value;
   const body = {
@@ -6811,6 +6881,7 @@ async function guardarPendiente() {
   }
   const r = await postGAS(body);
   if (r.ok) { modalClose(); showToast('Guardado ✦'); await loadItinerario(); }
+  guardarBtnLock(false);
 }
 
 // ── Helpers generales ──────────────────────────────────────────
