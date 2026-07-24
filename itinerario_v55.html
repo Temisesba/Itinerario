@@ -573,7 +573,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 32; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 33; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1983,6 +1983,7 @@ async function marcarHospedajeElegido(id) {
   const yaElegido = !!h0.elegido;
   // Solo "compite" (se desmarca) con hoteles que comparten fecha con este — un día de check-out/check-in
   // puede tener dos hoteles distintos elegidos a la vez, uno para salir y otro para entrar.
+  const cambios = [];
   itinerario.hospedaje.forEach(h => {
     let val;
     if (h.id === id) val = !yaElegido;
@@ -1990,10 +1991,19 @@ async function marcarHospedajeElegido(id) {
     else return;
     if (h.elegido !== val) {
       h.elegido = val;
-      postGAS({ action: 'updateHospedaje', id: h.id, elegido: val });
+      cambios.push({ h, val });
     }
   });
-  renderPoolPanel(); renderMapaGeneral();
+  renderPoolPanel(); renderMapaGeneral(); // feedback visual inmediato
+  // v57 fix: antes esto era fire-and-forget (no se esperaba) — si justo después se disparaba
+  // otra recarga (ej. editar el mismo hotel y guardar), esa recarga podía llegar antes de que el
+  // cambio de estrella terminara de guardarse, y la pisaba: la estrella "no se guardaba" en
+  // apariencia. Ahora se espera la confirmación del servidor antes de dar el asunto por hecho.
+  const resultados = await Promise.all(cambios.map(c => postGAS({ action: 'updateHospedaje', id: c.h.id, elegido: c.val })));
+  if (resultados.some(r => !r || r.ok === false)) {
+    showToast('⚠️ La estrella no se guardó bien — intentá de nuevo');
+    return;
+  }
   showToast(yaElegido ? 'Hotel deseleccionado' : 'Hotel marcado como elegido ✓');
 }
 
@@ -2750,7 +2760,7 @@ function renderPoolPanel() {
                   <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','up','${dia.id}')" ${idx===0?'disabled':''}>▲</button>
                   <button class="icon-btn" style="font-size:10px;line-height:1;padding:0" onclick="moverHospedajeOrden('${h.id}','down','${dia.id}')" ${idx===hospSorted.length-1?'disabled':''}>▼</button>
                 </div>
-                <button class="icon-btn" onclick="marcarHospedajeElegido('${h.id}')" title="${esElegido ? 'Quitar como hotel elegido' : 'Marcar como el hotel elegido'}">${esElegido ? '⭐' : '☆'}</button>
+                ${(!h.diaIdInicio || dia.id === h.diaIdInicio) ? `<button class="icon-btn" onclick="marcarHospedajeElegido('${h.id}')" title="${esElegido ? 'Quitar como hotel elegido' : 'Marcar como el hotel elegido'}">${esElegido ? '⭐' : '☆'}</button>` : ''}
                 <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorHospedaje('${h.id}')">${escHtml(h.nombre || '(sin nombre)')}</span>
                 <span style="font-size:10px; color:var(--ink-3)">${esDelDia ? '📅' : ''}</span>
                 <button class="icon-btn" onclick="openHospedajeForm('${h.id}','${h.diaIdInicio}')" title="Editar">✏️</button>
