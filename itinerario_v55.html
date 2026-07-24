@@ -573,7 +573,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 36; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 37; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1939,7 +1939,7 @@ function hospedajesParaHeaderDia(diaId) {
   // el candidato no elegido pierde y no debe mostrarse — ya sabemos cuál es el real.
   const elegidosDelGrupo = candidatos.filter(h => h.elegido);
   const candidatosFiltrados = candidatos.filter(h => h.elegido || !elegidosDelGrupo.some(e => hospedajesSeSolapan(h, e)));
-  const elegirDeGrupo = (grupo) => grupo.find(h => h.elegido) || (itinerario.hospedaje.length === 1 ? grupo[0] : null);
+  const elegirDeGrupo = (grupo) => grupo.find(h => h.elegido) || null;
   const soloCheckout = candidatosFiltrados.filter(h => h.diaIdFin === diaId && h.diaIdInicio !== diaId);
   const soloCheckin = candidatosFiltrados.filter(h => h.diaIdInicio === diaId && h.diaIdFin !== diaId);
   const ambos = candidatosFiltrados.filter(h => h.diaIdInicio === diaId && h.diaIdFin === diaId);
