@@ -573,7 +573,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 33; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 34; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2532,10 +2532,12 @@ function gastosDeEsteDia(diaId) {
 
 // ── v57: Resumen imprimible del viaje (tabla día por día para PDF) ──────────
 // Arma, para un día, la línea de tiempo de "qué se hizo" (pendientes, transporte, actividades de
-// eventos, hospedaje activo esa noche) ordenada por hora — sin costo todavía. Solo entra a la
-// tabla del día lo que tiene día Y hora (como se ve en el visor/calendario); transporte y
-// hospedaje son la excepción — van siempre, no tienen "hora suelta" del mismo modo. Lo que queda
-// afuera (pendientes/actividades con día pero sin hora) se devuelve aparte, para "Para después".
+// eventos, hospedaje elegido esa noche) ordenada por hora — sin costo todavía. Solo entra a la
+// tabla del día lo que tiene día Y hora (como se ve en el visor/calendario). El hospedaje es la
+// única excepción a lo de "hora" — pero solo el hotel con ⭐ elegido entra (candidatos sin
+// confirmar, o transporte sin hora definida, no se meten al reporte — ni siquiera a "Para
+// después", que es solo para pendientes). Lo que sí queda afuera por falta de hora (pendientes/
+// actividades) se devuelve aparte, para esa sección.
 function construirTimelineDia(dia) {
   const filas = [], extras = [];
   itinerario.pendientes.filter(p => p.diaId === dia.id && (p.proyecto||'') === currentProyecto).forEach(p => {
@@ -2548,8 +2550,9 @@ function construirTimelineDia(dia) {
   });
   itinerario.transporte.filter(t => t.diaId === dia.id).forEach(t => {
     const op = (t.opciones || [])[t.opcionElegida || 0];
+    if (!(op && op.salida)) return; // sin hora de salida definida: no entra al reporte
     filas.push({
-      hora: (op && op.salida) || '', nombre: '🚆 ' + (TIPO_LABEL[t.tipo] || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''),
+      hora: op.salida, nombre: '🚆 ' + (TIPO_LABEL[t.tipo] || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''),
       notas: t.notas || '', direccion: [t.direccionOrigen, t.direccionDestino].filter(Boolean).join(' → '), diario: '',
       iaComentario: [t.sugerenciasIAOrigen, t.sugerenciasIADestino].filter(Boolean).join(' · '), itemId: t.id
     });
@@ -2565,6 +2568,7 @@ function construirTimelineDia(dia) {
   });
   const _dias = diasFiltrados(); const _idxHoy = _dias.findIndex(d => d.id === dia.id);
   itinerario.hospedaje.filter(h => {
+    if (!h.elegido && itinerario.hospedaje.length > 1) return false; // candidato sin confirmar: no entra
     const i1 = _dias.findIndex(d => d.id === h.diaIdInicio), i2 = _dias.findIndex(d => d.id === h.diaIdFin);
     if (i1 < 0 || i2 < 0) return false;
     return i2 > i1 ? (_idxHoy >= i1 && _idxHoy < i2) : (_idxHoy === i1);
