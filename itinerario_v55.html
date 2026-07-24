@@ -573,7 +573,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 34; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 35; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1935,11 +1935,15 @@ function hospedajesParaHeaderDia(diaId) {
     return idx >= i1 && idx <= fin;
   });
   if (!candidatos.length) return [];
+  // Si ya hay un hospedaje elegido que se solapa con otro candidato (misma competencia de fechas),
+  // el candidato no elegido pierde y no debe mostrarse — ya sabemos cuál es el real.
+  const elegidosDelGrupo = candidatos.filter(h => h.elegido);
+  const candidatosFiltrados = candidatos.filter(h => h.elegido || !elegidosDelGrupo.some(e => hospedajesSeSolapan(h, e)));
   const elegirDeGrupo = (grupo) => grupo.length === 1 ? grupo[0] : (grupo.find(h => h.elegido) || null);
-  const soloCheckout = candidatos.filter(h => h.diaIdFin === diaId && h.diaIdInicio !== diaId);
-  const soloCheckin = candidatos.filter(h => h.diaIdInicio === diaId && h.diaIdFin !== diaId);
-  const ambos = candidatos.filter(h => h.diaIdInicio === diaId && h.diaIdFin === diaId);
-  const activo = candidatos.filter(h => h.diaIdInicio !== diaId && h.diaIdFin !== diaId);
+  const soloCheckout = candidatosFiltrados.filter(h => h.diaIdFin === diaId && h.diaIdInicio !== diaId);
+  const soloCheckin = candidatosFiltrados.filter(h => h.diaIdInicio === diaId && h.diaIdFin !== diaId);
+  const ambos = candidatosFiltrados.filter(h => h.diaIdInicio === diaId && h.diaIdFin === diaId);
+  const activo = candidatosFiltrados.filter(h => h.diaIdInicio !== diaId && h.diaIdFin !== diaId);
   const resultado = [];
   const hCheckout = elegirDeGrupo(soloCheckout); if (hCheckout) resultado.push({ h: hCheckout, icono: '🚪🔑' });
   const hCheckin = elegirDeGrupo(soloCheckin); if (hCheckin) resultado.push({ h: hCheckin, icono: '🛎️🛏️' });
@@ -2735,7 +2739,7 @@ function renderPoolPanel() {
       `<button class="btn-mini" onclick="openPendienteForm(null,'${dia.id}')" title="Agregar">＋</button>`,
       `<div id="poolSinHoraZone">${listaConFlechas(sinHora, 'sinHora')}</div>`),
     transporte: sectionWrap('transporte', '🚆 Transporte', transDia.length,
-      `<button class="btn-mini ai" onclick="sugerirTransportesDelDia('${dia.id}')" title="Sugerir transportes entre los eventos de este día">✨</button>
+      `<button class="btn-mini ai" onclick="abrirInstruccionTransporteIA('${dia.id}')" title="Sugerir transportes entre los eventos de este día">✨</button>
        <button class="btn-mini" onclick="openTransporteForm(null,'${dia.id}')" title="Agregar">＋</button>`,
       transDia.length ? transDia.map((t, idx) => `
         <div style="display:flex; align-items:flex-start; gap:4px">
@@ -3916,10 +3920,28 @@ async function elegirModoEnCard(transporteId, modo, idx) {
   showToast('Cambiado a ' + (TIPO_LABEL[modo] || modo));
 }
 
+// ── Cuadrito de instrucción opcional antes de pedir sugerencias de transporte del día ──
+function abrirInstruccionTransporteIA(diaId) {
+  modalEsFormulario = true;
+  modalOpen(`
+    <div class="modal-head"><span class="modal-title">✨ Sugerir transportes del día</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Instrucción para la IA (opcional)</label>
+        <textarea id="fTransIAInstruccion" placeholder="Ej: que todos sean bus. Ej: agrega además después del ferry un bus al Team Labs." style="min-height:70px;"></textarea>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+        <button class="btn-mini" onclick="modalClose()">Cancelar</button>
+        <button class="btn-save" onclick="(function(){ const instr = document.getElementById('fTransIAInstruccion').value.trim(); modalClose(); sugerirTransportesDelDia('${diaId}', instr); })()">Sugerir</button>
+      </div>
+    </div>
+  `);
+}
+
 // ── Sugerir transportes entre TODOS los eventos con hora de un día ──
 // Encadena: hotel del día → evento1 → evento2 → ... → hotel, y por cada hueco sin transporte ya
 // agendado, le pide a la IA una sugerencia (acotada a la ventana de tiempo disponible entre eventos).
-async function sugerirTransportesDelDia(diaId) {
+async function sugerirTransportesDelDia(diaId, instruccion) {
   const dia = itinerario.dias.find(d => d.id === diaId);
   if (!dia) return;
   const eventos = getCalendarBlocks(diaId)
@@ -3960,6 +3982,7 @@ async function sugerirTransportesDelDia(diaId) {
     if (s.finA && s.iniB) pista = `Debe salir después de las ${s.finA} y llegar antes de las ${s.iniB}`;
     else if (s.finA) pista = `Debe salir después de las ${s.finA}`;
     else if (s.iniB) pista = `Debe llegar antes de las ${s.iniB}`;
+    if (instruccion) pista = pista ? `${pista}. Instrucción del usuario: ${instruccion}` : `Instrucción del usuario: ${instruccion}`;
     const r = await postGAS({ action: 'sugerirTransporteCompleto', origenTexto: s.A.nombre, destinoTexto: s.B.nombre, pista, zona: dia.zona || '', fecha: dia.fecha || '' });
     if (r.ok && r.data) propuestas.push({ A: s.A, B: s.B, finA: s.finA, iniB: s.iniB, data: r.data, modos: normalizarModosIA(r.data.modos), chosenModo: r.data.tipoSugerido, chosenIdx: 0, incluir: true });
   }
