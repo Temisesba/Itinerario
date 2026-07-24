@@ -419,6 +419,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 .pr-tabla tfoot td { font-weight: 700; border-top: 2px solid var(--ink); border-bottom: none; }
 .pr-hora { white-space: nowrap; color: var(--ink-2); }
 .pr-costo { text-align: right; white-space: nowrap; }
+.pr-col-costo { width: 90px; }
 .pr-notas { color: var(--ink-2); font-size: 11px; }
 .pr-vacio { color: var(--ink-3); font-style: italic; text-align: center; }
 .pr-notagen { margin-top: 6px; font-size: 12px; background: #fffbe8; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
@@ -573,7 +574,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 37; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 38; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2704,6 +2705,11 @@ function abrirResumenImprimible() {
           <thead><tr><th>Lugar</th><th>Notas</th></tr></thead>
           <tbody>${paraDespuesHtml}</tbody>
         </table>
+      </div>` : ''}
+      ${notaProyectoCargada ? `
+      <div class="pr-dia">
+        <h2>📝 Notas generales del viaje</h2>
+        <div class="pr-notagen">${escHtml(notaProyectoCargada)}</div>
       </div>` : ''}
     </div>`;
   document.body.appendChild(overlay);
