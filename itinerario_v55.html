@@ -397,12 +397,18 @@ body.drag-locked .cal-resize-handle { display: none; }
 #printResumenOverlay { position: fixed; inset: 0; background: #fff; z-index: 9000; overflow-y: auto; }
 .pr-barra { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; background: var(--paper); border-bottom: 1px solid var(--line); font-weight: 600; z-index: 1; flex-wrap: wrap; }
 .pr-barra div { display: flex; gap: 8px; }
-.pr-cols { align-items: center; gap: 10px !important; font-size: 11.5px; font-weight: 400; color: var(--ink-2); }
-.pr-cols label { display: flex; align-items: center; gap: 3px; cursor: pointer; white-space: nowrap; }
+.pr-cols-dropdown { position: relative; font-size: 12px; }
+.pr-cols-dropdown summary { cursor: pointer; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius); list-style: none; }
+.pr-cols-dropdown summary::-webkit-details-marker { display: none; }
+.pr-cols { position: absolute; top: calc(100% + 4px); left: 0; display: flex !important; flex-direction: column; gap: 6px !important; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 8px 12px; font-size: 12px; font-weight: 400; color: var(--ink-2); z-index: 5; min-width: 150px; }
+.pr-cols label { display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
 .pr-blanco { min-width: 160px; }
-#printResumenOverlay.oculta-hora .pr-col-hora,
-#printResumenOverlay.oculta-notas .pr-col-notas,
-#printResumenOverlay.oculta-costo .pr-col-costo { display: none; }
+.pr-contenido.oculta-hora .pr-col-hora,
+.pr-contenido.oculta-notas .pr-col-notas,
+.pr-contenido.oculta-direccion .pr-col-direccion,
+.pr-contenido.oculta-diario .pr-col-diario,
+.pr-contenido.oculta-ia .pr-col-ia,
+.pr-contenido.oculta-costo .pr-col-costo { display: none; }
 .pr-contenido { max-width: 760px; margin: 0 auto; padding: 20px 24px 60px; font-family: var(--font-sans); color: var(--ink); }
 .pr-contenido h1 { font-family: var(--font-serif); font-size: 24px; margin: 0 0 18px; }
 .pr-dia { margin-bottom: 26px; page-break-inside: avoid; }
@@ -567,7 +573,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 31; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 32; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2516,13 +2522,17 @@ function gastosDeEsteDia(diaId) {
 
 // ── v57: Resumen imprimible del viaje (tabla día por día para PDF) ──────────
 // Arma, para un día, la línea de tiempo de "qué se hizo" (pendientes, transporte, actividades de
-// eventos, hospedaje activo esa noche) ordenada por hora — sin costo todavía.
+// eventos, hospedaje activo esa noche) ordenada por hora — sin costo todavía. Solo entra a la
+// tabla del día lo que tiene día Y hora (como se ve en el visor/calendario); transporte y
+// hospedaje son la excepción — van siempre, no tienen "hora suelta" del mismo modo. Lo que queda
+// afuera (pendientes/actividades con día pero sin hora) se devuelve aparte, para "Para después".
 function construirTimelineDia(dia) {
-  const filas = [];
+  const filas = [], extras = [];
   itinerario.pendientes.filter(p => p.diaId === dia.id && (p.proyecto||'') === currentProyecto).forEach(p => {
+    if (!p.horaInicio) { extras.push({ nombre: p.nombre || '(sin nombre)', notas: p.notasPrevias || '' }); return; }
     filas.push({
-      hora: p.horaInicio || '', nombre: (p.esRestaurante ? '🍴 ' : '📌 ') + (p.nombre || '(sin nombre)'),
-      notas: [p.notasPrevias ? '📌 ' + p.notasPrevias : '', p.notasDiario ? '📓 ' + p.notasDiario : ''].filter(Boolean).join(' · '),
+      hora: p.horaInicio, nombre: (p.esRestaurante ? '🍴 ' : '📌 ') + (p.nombre || '(sin nombre)'),
+      notas: p.notasPrevias || '', direccion: p.direccion || '', diario: p.notasDiario || '', iaComentario: p.sugerenciasIA || '',
       itemId: p.id
     });
   });
@@ -2530,12 +2540,17 @@ function construirTimelineDia(dia) {
     const op = (t.opciones || [])[t.opcionElegida || 0];
     filas.push({
       hora: (op && op.salida) || '', nombre: '🚆 ' + (TIPO_LABEL[t.tipo] || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''),
-      notas: t.notas || '', itemId: t.id
+      notas: t.notas || '', direccion: [t.direccionOrigen, t.direccionDestino].filter(Boolean).join(' → '), diario: '',
+      iaComentario: [t.sugerenciasIAOrigen, t.sugerenciasIADestino].filter(Boolean).join(' · '), itemId: t.id
     });
   });
   eventosDelDiaFn(dia.id).forEach(ev => {
     (ev.sedes || []).filter(act => act.diaId === dia.id).forEach(act => {
-      filas.push({ hora: act.horaInicio || '', nombre: '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), notas: '', itemId: ev.id });
+      if (!act.horaInicio) { extras.push({ nombre: '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), notas: '' }); return; }
+      filas.push({
+        hora: act.horaInicio, nombre: '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), notas: '',
+        direccion: act.direccion || '', diario: '', iaComentario: ev.sugerenciasIA || '', itemId: ev.id
+      });
     });
   });
   const _dias = diasFiltrados(); const _idxHoy = _dias.findIndex(d => d.id === dia.id);
@@ -2545,15 +2560,18 @@ function construirTimelineDia(dia) {
     return i2 > i1 ? (_idxHoy >= i1 && _idxHoy < i2) : (_idxHoy === i1);
   }).forEach(h => {
     const esCheckin = h.diaIdInicio === dia.id;
-    filas.push({ hora: esCheckin ? (h.horaCheckIn || '') : '', nombre: '🏨 ' + (h.nombre || '') + (esCheckin ? ' (check-in)' : ' (noche)'), notas: h.notas || '', itemId: h.id });
+    filas.push({
+      hora: esCheckin ? (h.horaCheckIn || '') : '', nombre: '🏨 ' + (h.nombre || '') + (esCheckin ? ' (check-in)' : ' (noche)'),
+      notas: h.notas || '', direccion: h.direccion || '', diario: '', iaComentario: h.sugerenciasIA || '', itemId: h.id
+    });
   });
   filas.sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'));
-  return filas;
+  return { filas, extras };
 }
 // Junta la línea de tiempo con el costo real de gastosDeEsteDia (que ya sabe repartir el hotel
 // por noche) — un gasto sin nada que calzarle en la línea de tiempo se agrega suelto al final.
 function filasImprimirDia(dia) {
-  const timeline = construirTimelineDia(dia);
+  const { filas: timeline, extras } = construirTimelineDia(dia);
   const gastos = gastosDeEsteDia(dia.id).filter(g => !g.cotizacion);
   const usados = new Set();
   timeline.forEach(f => {
@@ -2564,7 +2582,7 @@ function filasImprimirDia(dia) {
     hora: '', nombre: '💴 ' + (g.concepto || '(sin concepto)'), notas: g.notas || '', costo: Number(g.costo || 0)
   }));
   const total = gastos.reduce((s, g) => s + Number(g.costo || 0), 0);
-  return { filas: [...timeline, ...sueltos], total };
+  return { filas: [...timeline, ...sueltos], total, extras };
 }
 // Total de todo el viaje, agrupado por apartado — se acumula sobre gastosDeEsteDia de cada día
 // (el hotel ya viene repartido por noche ahí, así que sumar día por día no lo duplica).
@@ -2585,22 +2603,31 @@ function totalesPorApartado() {
 function abrirResumenImprimible() {
   const dias = diasFiltrados();
   if (!dias.length) { showToast('Agregá días primero'); return; }
+  const extrasGlobales = []; // pendientes/actividades con día pero sin hora — van a "Para después"
   const diasHtml = dias.map(dia => {
-    const { filas, total } = filasImprimirDia(dia);
+    const { filas, total, extras } = filasImprimirDia(dia);
+    extrasGlobales.push(...extras);
     const filasHtml = filas.length ? filas.map(f => `
       <tr>
         <td class="pr-hora pr-col-hora">${escHtml(f.hora || '—')}</td>
         <td class="pr-col-que">${escHtml(f.nombre || '')}</td>
         <td class="pr-notas pr-col-notas">${escHtml(f.notas || '')}</td>
+        <td class="pr-notas pr-col-direccion">${escHtml(f.direccion || '')}</td>
+        <td class="pr-notas pr-col-diario">${escHtml(f.diario || '')}</td>
+        <td class="pr-notas pr-col-ia">${escHtml(f.iaComentario || '')}</td>
         <td class="pr-costo pr-col-costo">${f.costo ? '¥' + Math.round(f.costo).toLocaleString() : ''}</td>
-      </tr>`).join('') : `<tr><td colspan="4" class="pr-vacio">Sin actividades registradas.</td></tr>`;
+      </tr>`).join('') : `<tr><td colspan="7" class="pr-vacio">Sin actividades registradas.</td></tr>`;
     return `
       <div class="pr-dia">
         <h2>${escHtml(dia.fecha || '')}${dia.zona ? ' · ' + escHtml(dia.zona) : ''}</h2>
         <table class="pr-tabla">
-          <thead><tr><th class="pr-col-hora">Hora</th><th class="pr-col-que">Qué se hizo</th><th class="pr-col-notas">Notas</th><th class="pr-col-costo">Costo</th></tr></thead>
+          <thead><tr>
+            <th class="pr-col-hora">Hora</th><th class="pr-col-que">Qué se hizo</th><th class="pr-col-notas">Notas</th>
+            <th class="pr-col-direccion">Dirección</th><th class="pr-col-diario">Diario</th><th class="pr-col-ia">Comentario IA</th>
+            <th class="pr-col-costo">Costo</th>
+          </tr></thead>
           <tbody>${filasHtml}</tbody>
-          <tfoot><tr><td colspan="3">Total del día</td><td class="pr-costo pr-col-costo">¥${Math.round(total).toLocaleString()}</td></tr></tfoot>
+          <tfoot><tr><td colspan="6">Total del día</td><td class="pr-costo pr-col-costo">¥${Math.round(total).toLocaleString()}</td></tr></tfoot>
         </table>
         ${dia.notas ? `<div class="pr-notagen"><b>📝 Notas generales:</b> ${escHtml(dia.notas)}</div>` : ''}
       </div>`;
@@ -2610,33 +2637,38 @@ function abrirResumenImprimible() {
   const catLabel = { hospedaje: '🏨 Hospedaje', transporte: '🚆 Transporte', comida: '🍴 Comida/Restaurantes', eventos: '🎪 Eventos', otros: '💴 Otros' };
   const totalesHtml = Object.keys(cats).filter(k => cats[k] > 0).map(k => `
     <tr><td>${catLabel[k]}</td><td class="pr-costo">¥${Math.round(cats[k]).toLocaleString()}</td></tr>`).join('');
-  // v57: "Para después / si hay tiempo" — lugares sin día asignado, con una columna en blanco
-  // para anotar a mano por qué no se visitaron.
-  const paraDespues = itinerario.pendientes.filter(p => (p.proyecto||'')===currentProyecto && !p.antojo && !p.esRestaurante && !p.diaId);
-  const paraDespuesHtml = paraDespues.length ? paraDespues.map(p => `
-    <tr>
-      <td>${escHtml(p.nombre || '(sin nombre)')}</td>
-      <td class="pr-notas">${escHtml(p.notasPrevias || '')}</td>
-      <td class="pr-blanco"></td>
-    </tr>`).join('') : '';
+  // "Para después / si hay tiempo": lugares sin día asignado + lo que quedó con día pero sin
+  // hora (movido acá desde la tabla del día de arriba).
+  const paraDespues = [
+    ...itinerario.pendientes.filter(p => (p.proyecto||'')===currentProyecto && !p.antojo && !p.esRestaurante && !p.diaId)
+      .map(p => ({ nombre: p.nombre || '(sin nombre)', notas: p.notasPrevias || '' })),
+    ...extrasGlobales
+  ];
+  const paraDespuesHtml = paraDespues.map(p => `
+    <tr><td>${escHtml(p.nombre)}</td><td class="pr-notas">${escHtml(p.notas || '')}</td></tr>`).join('');
   const overlay = document.createElement('div');
   overlay.id = 'printResumenOverlay';
   overlay.innerHTML = `
     <div class="pr-barra">
       <span>🖨️ Resumen del viaje${currentProyecto ? ' — ' + escHtml(currentProyecto) : ''}</span>
-      <div class="pr-cols">
-        <span>Columnas:</span>
-        <label><input type="checkbox" checked onchange="prToggleCol('hora',this.checked)"> Hora</label>
-        <label><input type="checkbox" checked disabled> Qué se hizo</label>
-        <label><input type="checkbox" checked onchange="prToggleCol('notas',this.checked)"> Notas</label>
-        <label><input type="checkbox" checked onchange="prToggleCol('costo',this.checked)"> Costo</label>
-      </div>
+      <details class="pr-cols-dropdown">
+        <summary>Columnas ▾</summary>
+        <div class="pr-cols">
+          <label><input type="checkbox" checked onchange="prToggleCol('hora',this.checked)"> Hora</label>
+          <label><input type="checkbox" checked disabled> Qué se hizo</label>
+          <label><input type="checkbox" checked onchange="prToggleCol('notas',this.checked)"> Notas</label>
+          <label><input type="checkbox" onchange="prToggleCol('direccion',this.checked)"> Dirección</label>
+          <label><input type="checkbox" onchange="prToggleCol('diario',this.checked)"> Diario</label>
+          <label><input type="checkbox" onchange="prToggleCol('ia',this.checked)"> Comentario IA</label>
+          <label><input type="checkbox" checked onchange="prToggleCol('costo',this.checked)"> Costo</label>
+        </div>
+      </details>
       <div>
         <button class="btn-mini" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
         <button class="btn-mini" onclick="document.getElementById('printResumenOverlay').remove()">✕ Cerrar</button>
       </div>
     </div>
-    <div class="pr-contenido">
+    <div class="pr-contenido oculta-direccion oculta-diario oculta-ia">
       <h1>${currentProyecto ? escHtml(currentProyecto) : 'Resumen del viaje'}</h1>
       ${diasHtml}
       <div class="pr-dia">
@@ -2651,7 +2683,7 @@ function abrirResumenImprimible() {
       <div class="pr-dia">
         <h2>⏳ Para después / si hay tiempo</h2>
         <table class="pr-tabla">
-          <thead><tr><th>Lugar</th><th>Notas</th><th>¿Por qué no se visitó?</th></tr></thead>
+          <thead><tr><th>Lugar</th><th>Notas</th></tr></thead>
           <tbody>${paraDespuesHtml}</tbody>
         </table>
       </div>` : ''}
@@ -2659,8 +2691,8 @@ function abrirResumenImprimible() {
   document.body.appendChild(overlay);
 }
 function prToggleCol(col, visible) {
-  const overlay = document.getElementById('printResumenOverlay');
-  if (overlay) overlay.classList.toggle('oculta-' + col, !visible);
+  const cont = document.querySelector('#printResumenOverlay .pr-contenido');
+  if (cont) cont.classList.toggle('oculta-' + col, !visible);
 }
 
 function renderPoolPanel() {
