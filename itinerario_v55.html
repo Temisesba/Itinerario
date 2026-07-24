@@ -534,7 +534,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 27; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 28; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -965,24 +965,35 @@ function gPoblarAsociarA(diaId, itemIdSeleccionado) {
   sel.innerHTML = '<option value="">— Pendiente (sin asociar) —</option>' +
     items.map(it => `<option value="${it.tipo}:${it.id}" ${itemIdSeleccionado===it.id?'selected':''}>${it.icono} ${escHtml(it.nombre)}</option>`).join('');
 }
+// "Día en itinerario" solo tiene efecto en gastos "Pendiente" (sin item asociado) — un gasto
+// asociado a algo ya se ubica solo por el día de ese item (o, si es hotel, por noche). Se
+// deshabilita (mostrándolo igual, de referencia) para que no parezca que hace algo que no hace.
+function gActualizarEstadoDiaItinerario() {
+  const itemId = document.getElementById('gItemId').value;
+  const sel = document.getElementById('gDiaItinerario');
+  if (sel) sel.disabled = !!itemId;
+}
 function gOnDiaItinerarioChange() {
   const dia = document.getElementById('gDiaItinerario').value;
   // Al cambiar de día se resetea a "Pendiente" — el item que tenías asociado podría no aplicar ese día.
   gPoblarAsociarA(dia, '');
   document.getElementById('gTipo').value = 'dia';
   document.getElementById('gItemId').value = '';
+  gActualizarEstadoDiaItinerario();
 }
 function gOnAsociarAChange() {
   const val = document.getElementById('gAsociarA').value; // '' | 'tipo:id'
   if (!val) {
     document.getElementById('gTipo').value = 'dia';
     document.getElementById('gItemId').value = '';
+    gActualizarEstadoDiaItinerario();
     return;
   }
   const sep = val.indexOf(':');
   const tipo = val.slice(0, sep), id = val.slice(sep + 1);
   document.getElementById('gTipo').value = tipo;
   document.getElementById('gItemId').value = id;
+  gActualizarEstadoDiaItinerario();
   let datos = {};
   if (tipo === 'pendiente') { const p = itinerario.pendientes.find(x=>x.id===id); if (p) datos = { nombre: p.nombre, antojo: p.antojo, direccion: p.direccion }; }
   else if (tipo === 'transporte') { const t = itinerario.transporte.find(x=>x.id===id); if (t) datos = { origen: t.origen, destino: t.destino, diaId: t.diaId, tipo: t.tipo }; }
@@ -1038,6 +1049,7 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   document.getElementById('gEditId').value = editGastoId || '';
   gPoblarDiaItinerario(diaEfectivo);
   gPoblarAsociarA(diaEfectivo, itemId);
+  gActualizarEstadoDiaItinerario();
   document.getElementById('gTitle').textContent = prev ? '💴 Editar gasto' : '💴 Registrar gasto';
   document.getElementById('gFecha').value = hoy;  // siempre hoy, el usuario cambia
   document.getElementById('gHoraCompra').value = '';
@@ -1412,7 +1424,11 @@ async function gGuardar() {
   const tipo = document.getElementById('gTipo').value;
   const editId = document.getElementById('gEditId').value;
   const diaItinerarioEl = document.getElementById('gDiaItinerario');
-  const diaItinerario = diaItinerarioEl ? diaItinerarioEl.value : '';
+  // v57 fix: "Día en itinerario" solo aplica a gastos SIN item asociado ("Pendiente") — un gasto
+  // con itemId ya se ubica solo por el día del item (o, si es hotel, se reparte por noche). Si
+  // se guardaba diaItinerario también ahí, ese gasto aparecía DOBLE: una vez como parte del
+  // reparto del hotel y otra vez como línea suelta en "Gastos del día" de currentDiaId.
+  const diaItinerario = itemId ? '' : (diaItinerarioEl ? diaItinerarioEl.value : '');
   const costo = document.getElementById('gCosto').value;
   const conc = document.getElementById('gConc').value.trim();
   const tienda = document.getElementById('gTienda').value.trim();
@@ -1872,13 +1888,14 @@ function hospedajesParaHeaderDia(diaId) {
   const hCheckout = elegirDeGrupo(soloCheckout); if (hCheckout) resultado.push({ h: hCheckout, icono: '🚪🔑' });
   const hCheckin = elegirDeGrupo(soloCheckin); if (hCheckin) resultado.push({ h: hCheckin, icono: '🛎️🛏️' });
   const hAmbos = elegirDeGrupo(ambos); if (hAmbos) resultado.push({ h: hAmbos, icono: '🛎️🛏️🚪🔑' });
-  if (!resultado.length) {
-    const hActivo = elegirDeGrupo(activo);
-    if (hActivo) {
-      const iInicio = dias.findIndex(d => d.id === hActivo.diaIdInicio);
-      const numeroDia = iInicio >= 0 ? (idx - iInicio + 1) : null;
-      resultado.push({ h: hActivo, icono: '🛏️', sufijo: numeroDia ? ` (día ${numeroDia})` : '' });
-    }
+  // v57 fix: antes esto solo se calculaba "si resultado sigue vacío" — un hotel candidato con
+  // checkin ese mismo día tapaba por completo al hotel ACTIVO de verdad (elegido), como si ya no
+  // estuvieras ahí. "Activo" es un rol aparte (ni entra ni sale ese día) — siempre se calcula.
+  const hActivo = elegirDeGrupo(activo);
+  if (hActivo) {
+    const iInicio = dias.findIndex(d => d.id === hActivo.diaIdInicio);
+    const numeroDia = iInicio >= 0 ? (idx - iInicio + 1) : null;
+    resultado.push({ h: hActivo, icono: '🛏️', sufijo: numeroDia ? ` (día ${numeroDia})` : '' });
   }
   return resultado;
 }
@@ -2563,20 +2580,21 @@ function renderPoolPanel() {
       const reales = lista.filter(g => !g.cotizacion);
       const cots = lista.filter(g => g.cotizacion);
       const total = reales.reduce((s,g) => s + Number(g.costo||0), 0);
-      const filaHtml = (g) => `
+      const filaHtml = (g) => {
+        const abrir = g.esHotelPorNoche ? `abrirVisorHospedaje('${g.itemId}')` : `editarGastoDelDia('${g.id}','${dia.id}')`;
+        return `
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:4px 0; border-top:1px solid var(--line)">
-          <div style="flex:1; min-width:0">
+          <div style="flex:1; min-width:0; cursor:pointer" onclick="${abrir}">
             <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escHtml(g.concepto||'(sin concepto)')}</div>
             ${g.notas ? `<div style="font-size:10.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap">📌 ${escHtml(g.notas)}</div>` : ''}
           </div>
           <div style="display:flex; gap:3px; align-items:center; flex-shrink:0; margin-left:6px">
             <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
-            ${g.esHotelPorNoche
-              ? `<button class="icon-btn" style="font-size:12px" onclick="abrirVisorHospedaje('${g.itemId}')" title="Ver hotel">✏️</button>`
-              : `<button class="icon-btn" style="font-size:12px" onclick="editarGastoDelDia('${g.id}','${dia.id}')" title="Editar">✏️</button>
-                 <button class="icon-btn" style="font-size:12px" onclick="eliminarGastoDelDia('${dia.id}','${g.id}')" title="Eliminar">🗑</button>`}
+            <button class="icon-btn" style="font-size:12px" onclick="${abrir}" title="${g.esHotelPorNoche ? 'Ver hotel' : 'Editar'}">✏️</button>
+            ${g.esHotelPorNoche ? '' : `<button class="icon-btn" style="font-size:12px" onclick="eliminarGastoDelDia('${dia.id}','${g.id}')" title="Eliminar">🗑</button>`}
           </div>
         </div>`;
+      };
       const rowsHtml = lista.length
         ? reales.map(filaHtml).join('')
           + (cots.length ? `<div style="color:#b85c8a; font-size:11px; font-weight:600; margin:6px 0 2px; padding-top:4px; border-top:1px solid var(--line)">💬 Cotizaciones (${cots.length})</div>${cots.map(filaHtml).join('')}` : '')
@@ -4995,9 +5013,13 @@ function renderMiniMapa(diaIdActivo) {
     // Hotel: misma lógica que el mapa general (checkout al inicio, checkin al final, activo ambos)
     const dFechaMini = dia.fecha || '';
     const fechaDiaMini = (dId) => ((itinerario.dias.find(d=>d.id===dId)||{}).fecha||'');
-    const hCheckOut = itinerario.hospedaje.find(h => h.lat && h.lng && h.diaIdFin && fechaDiaMini(h.diaIdFin) === dFechaMini);
-    const hCheckIn  = itinerario.hospedaje.find(h => h.lat && h.lng && h.diaIdInicio && fechaDiaMini(h.diaIdInicio) === dFechaMini);
-    const hActivo   = itinerario.hospedaje.find(h => h.lat && h.lng && h.diaIdInicio && h.diaIdFin && fechaDiaMini(h.diaIdInicio) < dFechaMini && fechaDiaMini(h.diaIdFin) > dFechaMini);
+    // v57 fix: si hay más de un candidato para el mismo rol ese día, preferir el elegido (antes
+    // .find() tomaba el primero que hubiera en itinerario.hospedaje, sin importar cuál estuviera
+    // realmente activo/reservado — se abría el marcador/visor del hotel equivocado).
+    const elegirMini = (cands) => cands.find(h => h.elegido) || cands[0] || null;
+    const hCheckOut = elegirMini(itinerario.hospedaje.filter(h => h.lat && h.lng && h.diaIdFin && fechaDiaMini(h.diaIdFin) === dFechaMini));
+    const hCheckIn  = elegirMini(itinerario.hospedaje.filter(h => h.lat && h.lng && h.diaIdInicio && fechaDiaMini(h.diaIdInicio) === dFechaMini));
+    const hActivo   = elegirMini(itinerario.hospedaje.filter(h => h.lat && h.lng && h.diaIdInicio && h.diaIdFin && fechaDiaMini(h.diaIdInicio) < dFechaMini && fechaDiaMini(h.diaIdFin) > dFechaMini));
     const hIni = hCheckOut || hActivo;
     const hFin = hCheckIn  || hActivo;
     // Dibujar los hoteles relevantes
