@@ -392,6 +392,30 @@ body.drag-locked .cal-resize-handle { display: none; }
 .toast { position: fixed; bottom: 90px; left:50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 30px; font-size: 12.5px; z-index: 9998; }
 .spinner { display:inline-block; width:12px; height:12px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* v57: Resumen imprimible del viaje */
+#printResumenOverlay { position: fixed; inset: 0; background: #fff; z-index: 9000; overflow-y: auto; }
+.pr-barra { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; background: var(--paper); border-bottom: 1px solid var(--line); font-weight: 600; z-index: 1; }
+.pr-barra div { display: flex; gap: 8px; }
+.pr-contenido { max-width: 760px; margin: 0 auto; padding: 20px 24px 60px; font-family: var(--font-sans); color: var(--ink); }
+.pr-contenido h1 { font-family: var(--font-serif); font-size: 24px; margin: 0 0 18px; }
+.pr-dia { margin-bottom: 26px; page-break-inside: avoid; }
+.pr-dia h2 { font-family: var(--font-serif); font-size: 16px; margin: 0 0 8px; border-bottom: 2px solid var(--ink); padding-bottom: 4px; }
+.pr-tabla { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pr-tabla th { text-align: left; padding: 5px 8px; background: var(--paper-2); border-bottom: 1px solid var(--line); font-weight: 600; }
+.pr-tabla td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.pr-tabla tfoot td { font-weight: 700; border-top: 2px solid var(--ink); border-bottom: none; }
+.pr-hora { white-space: nowrap; color: var(--ink-2); }
+.pr-costo { text-align: right; white-space: nowrap; }
+.pr-notas { color: var(--ink-2); font-size: 11px; }
+.pr-vacio { color: var(--ink-3); font-style: italic; text-align: center; }
+.pr-notagen { margin-top: 6px; font-size: 12px; background: #fffbe8; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+@media print {
+  body > *:not(#printResumenOverlay) { display: none !important; }
+  #printResumenOverlay { position: static !important; inset: auto !important; }
+  .pr-barra { display: none !important; }
+  .pr-contenido { max-width: none; padding: 0; }
+}
 </style>
 </head>
 <body>
@@ -406,7 +430,10 @@ body.drag-locked .cal-resize-handle { display: none; }
           <button id="btnConexion" onclick="sincronizarPendientes()" style="display:none; border:none; cursor:pointer; font-size:10px; padding:2px 8px; white-space:nowrap; background:#fef3c7; border-radius:10px; color:#92400e"></button>
         </div>
         <button class="btn-mini" id="btnProyecto" onclick="openProyectoSelector()" style="font-size:10px; padding:2px 7px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;">📁 Viaje ▾</button>
-        <button class="dev-btn" onclick="openDevInfo()" title="Info técnica" style="font-size:9px; text-align:left">⚙</button>
+        <div style="display:flex; gap:6px; align-items:center">
+          <button class="dev-btn" onclick="openDevInfo()" title="Info técnica" style="font-size:9px; text-align:left">⚙</button>
+          <button class="dev-btn" onclick="abrirResumenImprimible()" title="Imprimir / Guardar PDF del resumen del viaje" style="font-size:9px; text-align:left">🖨️</button>
+        </div>
       </div>
       <!-- Spine inline (días) -->
       <div class="spine-wrap" style="flex:1; min-width:0">
@@ -534,7 +561,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 28; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 29; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1624,8 +1651,12 @@ async function eliminarGastoResumen(itemId, gastoId) {
 }
 
 // v57: editar/eliminar un gasto de "Gastos del día" — puede o no estar asociado a un item real.
+// v57 fix: buscar en gastosDeEsteDia(diaId) — no solo en gastosDelDia — porque la mayoría de los
+// gastos que aparecen en "Gastos del día" llegan ahí por estar vinculados a un pendiente/
+// transporte/evento de ese día (gastosVinculados), no por tener diaItinerario propio. Buscar
+// solo en gastosDelDia los dejaba sin encontrar (✏️/🗑 no hacían nada, sin error visible).
 function editarGastoDelDia(gastoId, diaId) {
-  const g = (gastosDelDia[diaId] || []).find(x => x.id === gastoId);
+  const g = gastosDeEsteDia(diaId).find(x => x.id === gastoId);
   if (!g) return;
   let tipo = 'dia', datos = {};
   if (g.itemId) {
@@ -1640,15 +1671,28 @@ function editarGastoDelDia(gastoId, diaId) {
   }
   abrirGastosForm(tipo, g.itemId || '', datos, gastoId, diaId);
 }
+// Tocar el NOMBRE de una fila en "Gastos del día": si tiene un item asociado, abre la vista de
+// ESE item (donde se ve todo su contexto, no solo el gasto); si no tiene nada asociado, no hay
+// otra vista que mostrar y abre directo para editar.
+function verGastoDelDia(gastoId, diaId) {
+  const g = gastosDeEsteDia(diaId).find(x => x.id === gastoId);
+  if (!g) return;
+  if (g.itemId) {
+    if (itinerario.pendientes.some(x => x.id === g.itemId)) return abrirVisor('pendiente', g.itemId);
+    if (itinerario.transporte.some(x => x.id === g.itemId)) return abrirVisor('transporte', g.itemId);
+    if (itinerario.hospedaje.some(x => x.id === g.itemId)) return abrirVisor('hospedaje', g.itemId);
+    if (itinerario.eventos.some(x => x.id === g.itemId)) return abrirVisorEvento(g.itemId);
+  }
+  editarGastoDelDia(gastoId, diaId);
+}
 async function eliminarGastoDelDia(diaId, gastoId) {
   if (!confirm('¿Eliminar este gasto? Se borrará del Sheet de Gastos también.')) return;
-  const lista = gastosDelDia[diaId] || [];
-  const g = lista.find(x => x.id === gastoId);
+  const g = gastosDeEsteDia(diaId).find(x => x.id === gastoId);
   if (g && g.rowIndex) {
     const f = new FormData(); f.append('payload', JSON.stringify({ action: 'deleteGasto', rowIndex: g.rowIndex }));
     fetch(GAS_URL_GASTOS, { method: 'POST', body: f }).catch(e => console.warn('Error al borrar del Sheet:', e));
   }
-  gastosDelDia[diaId] = lista.filter(x => x.id !== gastoId);
+  if (gastosDelDia[diaId]) gastosDelDia[diaId] = gastosDelDia[diaId].filter(x => x.id !== gastoId);
   if (g && g.itemId && gastosVinculados[g.itemId]) {
     gastosVinculados[g.itemId] = gastosVinculados[g.itemId].filter(x => x.id !== gastoId);
   }
@@ -2464,6 +2508,127 @@ function gastosDeEsteDia(diaId) {
   return lista;
 }
 
+// ── v57: Resumen imprimible del viaje (tabla día por día para PDF) ──────────
+// Arma, para un día, la línea de tiempo de "qué se hizo" (pendientes, transporte, actividades de
+// eventos, hospedaje activo esa noche) ordenada por hora — sin costo todavía.
+function construirTimelineDia(dia) {
+  const filas = [];
+  itinerario.pendientes.filter(p => p.diaId === dia.id && (p.proyecto||'') === currentProyecto).forEach(p => {
+    filas.push({
+      hora: p.horaInicio || '', nombre: (p.esRestaurante ? '🍴 ' : '📌 ') + (p.nombre || '(sin nombre)'),
+      notas: [p.notasPrevias ? '📌 ' + p.notasPrevias : '', p.notasDiario ? '📓 ' + p.notasDiario : ''].filter(Boolean).join(' · '),
+      itemId: p.id
+    });
+  });
+  itinerario.transporte.filter(t => t.diaId === dia.id).forEach(t => {
+    const op = (t.opciones || [])[t.opcionElegida || 0];
+    filas.push({
+      hora: (op && op.salida) || '', nombre: '🚆 ' + (TIPO_LABEL[t.tipo] || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''),
+      notas: t.notas || '', itemId: t.id
+    });
+  });
+  eventosDelDiaFn(dia.id).forEach(ev => {
+    (ev.sedes || []).filter(act => act.diaId === dia.id).forEach(act => {
+      filas.push({ hora: act.horaInicio || '', nombre: '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), notas: '', itemId: ev.id });
+    });
+  });
+  const _dias = diasFiltrados(); const _idxHoy = _dias.findIndex(d => d.id === dia.id);
+  itinerario.hospedaje.filter(h => {
+    const i1 = _dias.findIndex(d => d.id === h.diaIdInicio), i2 = _dias.findIndex(d => d.id === h.diaIdFin);
+    if (i1 < 0 || i2 < 0) return false;
+    return i2 > i1 ? (_idxHoy >= i1 && _idxHoy < i2) : (_idxHoy === i1);
+  }).forEach(h => {
+    const esCheckin = h.diaIdInicio === dia.id;
+    filas.push({ hora: esCheckin ? (h.horaCheckIn || '') : '', nombre: '🏨 ' + (h.nombre || '') + (esCheckin ? ' (check-in)' : ' (noche)'), notas: h.notas || '', itemId: h.id });
+  });
+  filas.sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'));
+  return filas;
+}
+// Junta la línea de tiempo con el costo real de gastosDeEsteDia (que ya sabe repartir el hotel
+// por noche) — un gasto sin nada que calzarle en la línea de tiempo se agrega suelto al final.
+function filasImprimirDia(dia) {
+  const timeline = construirTimelineDia(dia);
+  const gastos = gastosDeEsteDia(dia.id).filter(g => !g.cotizacion);
+  const usados = new Set();
+  timeline.forEach(f => {
+    const g = gastos.find(x => x.itemId && x.itemId === f.itemId && !usados.has(x.id));
+    if (g) { f.costo = Number(g.costo || 0); usados.add(g.id); }
+  });
+  const sueltos = gastos.filter(g => !usados.has(g.id)).map(g => ({
+    hora: '', nombre: '💴 ' + (g.concepto || '(sin concepto)'), notas: g.notas || '', costo: Number(g.costo || 0)
+  }));
+  const total = gastos.reduce((s, g) => s + Number(g.costo || 0), 0);
+  return { filas: [...timeline, ...sueltos], total };
+}
+// Total de todo el viaje, agrupado por apartado — se acumula sobre gastosDeEsteDia de cada día
+// (el hotel ya viene repartido por noche ahí, así que sumar día por día no lo duplica).
+function totalesPorApartado() {
+  const cats = { hospedaje: 0, transporte: 0, comida: 0, eventos: 0, otros: 0 };
+  diasFiltrados().forEach(dia => {
+    gastosDeEsteDia(dia.id).filter(g => !g.cotizacion).forEach(g => {
+      const costo = Number(g.costo || 0);
+      if (g.esHotelPorNoche || itinerario.hospedaje.some(h => h.id === g.itemId)) cats.hospedaje += costo;
+      else if (itinerario.transporte.some(t => t.id === g.itemId)) cats.transporte += costo;
+      else if (itinerario.eventos.some(e => e.id === g.itemId)) cats.eventos += costo;
+      else if (itinerario.pendientes.some(p => p.id === g.itemId)) cats.comida += costo;
+      else cats.otros += costo;
+    });
+  });
+  return cats;
+}
+function abrirResumenImprimible() {
+  const dias = diasFiltrados();
+  if (!dias.length) { showToast('Agregá días primero'); return; }
+  const diasHtml = dias.map(dia => {
+    const { filas, total } = filasImprimirDia(dia);
+    const filasHtml = filas.length ? filas.map(f => `
+      <tr>
+        <td class="pr-hora">${escHtml(f.hora || '—')}</td>
+        <td>${escHtml(f.nombre || '')}</td>
+        <td class="pr-notas">${escHtml(f.notas || '')}</td>
+        <td class="pr-costo">${f.costo ? '¥' + Math.round(f.costo).toLocaleString() : ''}</td>
+      </tr>`).join('') : `<tr><td colspan="4" class="pr-vacio">Sin actividades registradas.</td></tr>`;
+    return `
+      <div class="pr-dia">
+        <h2>${escHtml(dia.fecha || '')}${dia.zona ? ' · ' + escHtml(dia.zona) : ''}</h2>
+        <table class="pr-tabla">
+          <thead><tr><th>Hora</th><th>Qué se hizo</th><th>Notas</th><th>Costo</th></tr></thead>
+          <tbody>${filasHtml}</tbody>
+          <tfoot><tr><td colspan="3">Total del día</td><td class="pr-costo">¥${Math.round(total).toLocaleString()}</td></tr></tfoot>
+        </table>
+        ${dia.notas ? `<div class="pr-notagen"><b>📝 Notas generales:</b> ${escHtml(dia.notas)}</div>` : ''}
+      </div>`;
+  }).join('');
+  const cats = totalesPorApartado();
+  const granTotal = Object.values(cats).reduce((s, v) => s + v, 0);
+  const catLabel = { hospedaje: '🏨 Hospedaje', transporte: '🚆 Transporte', comida: '🍴 Comida/Restaurantes', eventos: '🎪 Eventos', otros: '💴 Otros' };
+  const totalesHtml = Object.keys(cats).filter(k => cats[k] > 0).map(k => `
+    <tr><td>${catLabel[k]}</td><td class="pr-costo">¥${Math.round(cats[k]).toLocaleString()}</td></tr>`).join('');
+  const overlay = document.createElement('div');
+  overlay.id = 'printResumenOverlay';
+  overlay.innerHTML = `
+    <div class="pr-barra">
+      <span>🖨️ Resumen del viaje${currentProyecto ? ' — ' + escHtml(currentProyecto) : ''}</span>
+      <div>
+        <button class="btn-mini" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+        <button class="btn-mini" onclick="document.getElementById('printResumenOverlay').remove()">✕ Cerrar</button>
+      </div>
+    </div>
+    <div class="pr-contenido">
+      <h1>${currentProyecto ? escHtml(currentProyecto) : 'Resumen del viaje'}</h1>
+      ${diasHtml}
+      <div class="pr-dia">
+        <h2>💴 Total final por apartado</h2>
+        <table class="pr-tabla">
+          <thead><tr><th colspan="2">Apartado</th></tr></thead>
+          <tbody>${totalesHtml || '<tr><td colspan="2" class="pr-vacio">Sin gastos registrados.</td></tr>'}</tbody>
+          <tfoot><tr><td>Total del viaje</td><td class="pr-costo">¥${Math.round(granTotal).toLocaleString()}</td></tr></tfoot>
+        </table>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
 function renderPoolPanel() {
   const host = document.getElementById('poolHost');
   const dia = itinerario.dias.find(d => d.id === currentDiaId);
@@ -2581,16 +2746,20 @@ function renderPoolPanel() {
       const cots = lista.filter(g => g.cotizacion);
       const total = reales.reduce((s,g) => s + Number(g.costo||0), 0);
       const filaHtml = (g) => {
-        const abrir = g.esHotelPorNoche ? `abrirVisorHospedaje('${g.itemId}')` : `editarGastoDelDia('${g.id}','${dia.id}')`;
+        // Nombre = ver (abre la vista de lo que esté asociado — hotel, pendiente, transporte,
+        // evento — o el propio gasto si no tiene nada asociado). Lápiz = editar el gasto en sí
+        // (el hotel no tiene un solo gasto que editar, así que su lápiz también abre su vista).
+        const ver = `verGastoDelDia('${g.id}','${dia.id}')`;
+        const editar = g.esHotelPorNoche ? ver : `editarGastoDelDia('${g.id}','${dia.id}')`;
         return `
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:4px 0; border-top:1px solid var(--line)">
-          <div style="flex:1; min-width:0; cursor:pointer" onclick="${abrir}">
+          <div style="flex:1; min-width:0; cursor:pointer" onclick="${ver}">
             <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escHtml(g.concepto||'(sin concepto)')}</div>
             ${g.notas ? `<div style="font-size:10.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap">📌 ${escHtml(g.notas)}</div>` : ''}
           </div>
           <div style="display:flex; gap:3px; align-items:center; flex-shrink:0; margin-left:6px">
             <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
-            <button class="icon-btn" style="font-size:12px" onclick="${abrir}" title="${g.esHotelPorNoche ? 'Ver hotel' : 'Editar'}">✏️</button>
+            <button class="icon-btn" style="font-size:12px" onclick="${editar}" title="${g.esHotelPorNoche ? 'Ver hotel' : 'Editar'}">✏️</button>
             ${g.esHotelPorNoche ? '' : `<button class="icon-btn" style="font-size:12px" onclick="eliminarGastoDelDia('${dia.id}','${g.id}')" title="Eliminar">🗑</button>`}
           </div>
         </div>`;
