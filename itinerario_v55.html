@@ -580,7 +580,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 41; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 42; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2799,7 +2799,7 @@ function renderPoolPanel() {
                 </span>` : `<span style="font-size:10px; font-weight:600; color:var(--ink-2); background:var(--paper-2); border:1px solid var(--line); padding:1px 5px; border-radius:4px; flex-shrink:0">🤔 Candidato</span>`) : ''}
                 <div style="flex:1; line-height:1.5; min-width:0">
                   <div style="font-size:12px">📅 ${escHtml(h.diaIdInicio ? (itinerario.dias.find(d=>d.id===h.diaIdInicio)||{}).fecha||'-' : '-')} → ${escHtml(h.diaIdFin ? (itinerario.dias.find(d=>d.id===h.diaIdFin)||{}).fecha||'-' : '-')}</div>
-                  ${(h.horaCheckIn||h.horaCheckOut) ? `<div style="font-size:11px; color:var(--ink-2)">${h.horaCheckIn?'🔑 '+escHtml(h.horaCheckIn):''}${h.horaCheckIn&&h.horaCheckOut?' · ':''}${h.horaCheckOut?'🚪 '+escHtml(h.horaCheckOut):''}</div>` : ''}
+                  ${(h.horaCheckIn||h.horaCheckOut) ? `<div style="font-size:11px; color:var(--ink-2)">${h.horaCheckIn?'🛎️ '+escHtml(h.horaCheckIn):''}${h.horaCheckIn&&h.horaCheckOut?' · ':''}${h.horaCheckOut?'🚪 '+escHtml(h.horaCheckOut):''}</div>` : ''}
                   <div style="font-size:11px; color:var(--ink-3)">${RESERVADO_LABEL[h.reservado||'pendiente']||''}${h.notas?' · '+escHtml(h.notas.substring(0,85)):''}</div>
                   ${(gRealesH>0||gCotsH>0) ? `<div style="font-size:10.5px; margin-top:2px">${gRealesH>0?`<span style="color:#15803d;font-weight:600">💴 ¥${gRealesH.toLocaleString()}</span>`:''}${gRealesH>0&&gCotsH>0?' · ':''}${gCotsH>0?`<span style="color:#b85c8a;font-weight:600">💬 ¥${gCotsH.toLocaleString()}</span>`:''}</div>` : ''}
                 </div>
