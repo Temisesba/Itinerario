@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 49; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 50; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1365,7 +1365,10 @@ async function gAnalyzeIA() {
         cantidad: p.cantidad != null ? String(p.cantidad) : '',
         unidad: GUNIDADES.includes(String(p.unidad || '').toLowerCase()) ? String(p.unidad).toLowerCase() : 'unidad',
         precioInd: p.precio != null ? String(p.precio) : '',
-        caducidad: '', inventario: p.inventario === true
+        // v57: el prompt de IA es compartido con Compras (donde "inventario" = despensa de casa
+        // tiene sentido); acá en un viaje no aplica — siempre arranca desmarcado, sin importar
+        // lo que haya sugerido la IA.
+        caducidad: '', inventario: false
       })).filter(p => p.concepto);
       gRenderProdDraft();
     }
@@ -1460,7 +1463,7 @@ function gRenderProdDraft() {
     </div>`).join('');
 }
 function gProdAdd() {
-  gProdDraft.push({ concepto:'', marca:'', categoria:'', ubicacion:'', notas:'', piezas:'1', cantidad:'', unidad:'unidad', precioInd:'', caducidad:'', inventario:true });
+  gProdDraft.push({ concepto:'', marca:'', categoria:'', ubicacion:'', notas:'', piezas:'1', cantidad:'', unidad:'unidad', precioInd:'', caducidad:'', inventario:false });
   gRenderProdDraft();
 }
 
@@ -5450,6 +5453,15 @@ function renderSemana() {
         <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#f3e8ff; border:1px solid #c4b5fd; display:inline-block"></span>🎪 Evento</span>
         <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#dcf5e3; border:1px solid #7fc99a; display:inline-block"></span>🍳 Des. &nbsp;🍜 Com. &nbsp;🍷 Cena &nbsp;🍪 Col.</span>
       </span>`;
+
+  // El encabezado de días vive fuera de .week-scroll (para no depender de sticky), pero cuando
+  // las columnas no caben en el ancho visible (ej. 7 días + zoom alto) .week-scroll sí scrollea
+  // horizontalmente — hay que espejar ese desplazamiento en el encabezado para que no se desalinee.
+  const weekScrollEl = document.getElementById('weekScroll');
+  const headerColsEl = host.querySelector('.week-header-cols');
+  if (weekScrollEl && headerColsEl) {
+    weekScrollEl.onscroll = () => { headerColsEl.style.transform = 'translateX(' + (-weekScrollEl.scrollLeft) + 'px)'; };
+  }
 
   visibleDias.forEach(d => {
     getCalendarBlocks(d.id).forEach(b => {
