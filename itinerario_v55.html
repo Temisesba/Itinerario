@@ -152,7 +152,9 @@ body.drag-locked .cal-resize-handle { display: none; }
 .semana-wrap { padding: 12px 18px 40px; height: calc(100vh - 56px); overflow-y: auto; }
 .semana-controls { display:flex; gap:16px; flex-wrap:wrap; margin-bottom: 10px; }
 .semana-group { display:flex; align-items:center; gap:6px; }
-.week-scroll { position: relative; height: 64vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; display: flex; }
+/* Sin border-radius acá: Safari rompe position:sticky en los hijos cuando el contenedor con
+   scroll también tiene border-radius (bug conocido de WebKit). */
+.week-scroll { position: relative; height: 64vh; overflow: auto; border: 1px solid var(--line); background: #fff; display: flex; }
 .week-gutter { position: sticky; left: 0; z-index: 10; width: 48px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--line); will-change: transform; }
 .week-gutter-labels { background: #fff; }
 .week-cols { display: flex; }
@@ -579,7 +581,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 47; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 48; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2730,6 +2732,10 @@ function abrirResumenImprimible() {
       </div>` : ''}
     </div>`;
   document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => {
+    const dd = overlay.querySelector('.pr-cols-dropdown');
+    if (dd && dd.open && !dd.contains(e.target)) dd.open = false;
+  });
 }
 function prToggleCol(col, visible) {
   const cont = document.querySelector('#printResumenOverlay .pr-contenido');
