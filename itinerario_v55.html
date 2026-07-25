@@ -580,7 +580,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 42; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 43; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -5593,7 +5593,7 @@ function startWeekMove(e, b, el, origDiaId) {
     if (elFrom(ev, '#poolSinHoraZone')) { if (shz) shz.style.background = 'var(--ok-light)'; return; }
     if (col) {
       col.classList.add('drop-target');
-      if (col.dataset.dia !== origDiaId) showDragPreview(col, newIni, dur);
+      showDragPreview(col, newIni, dur);
     }
   }
   function onUp(ev) {
