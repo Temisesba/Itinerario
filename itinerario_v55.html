@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 50; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 51; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1120,11 +1120,18 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   const catAuto = esResto ? '🍽️ Restaurante' : catPorTipo;
   document.getElementById('gCat').value = prev ? (prev.categoria||catAuto) : catAuto;
   document.getElementById('gChkCot').checked = prev ? !!prev.cotizacion : true;
-  document.getElementById('gStoredPhoto').value = '';
   gTb64 = ''; gTMime = '';
-  // Restablecer foto
-  document.getElementById('gPrevArea').style.display = 'none';
-  document.getElementById('gUzone').style.display = 'block';
+  // Foto: si el gasto ya tenía una guardada, restaurarla en la vista previa (antes se
+  // borraba siempre, aunque estuvieras editando/viendo un gasto que sí tenía foto).
+  document.getElementById('gStoredPhoto').value = (prev && prev.foto_ticket) ? prev.foto_ticket : '';
+  if (prev && prev.foto_ticket) {
+    document.getElementById('gPrevImg').src = prev.foto_ticket;
+    document.getElementById('gPrevArea').style.display = 'block';
+    document.getElementById('gUzone').style.display = 'none';
+  } else {
+    document.getElementById('gPrevArea').style.display = 'none';
+    document.getElementById('gUzone').style.display = 'block';
+  }
   document.getElementById('gAiBanner').style.display = 'none';
   document.getElementById('gAiBanner').innerHTML = '';
   document.getElementById('gBtnGem').disabled = false;
