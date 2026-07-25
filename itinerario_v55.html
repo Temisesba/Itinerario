@@ -124,11 +124,16 @@ body.drag-locked .cal-resize-handle { display: none; }
 .cal-block.pendiente { background: var(--route-light); border-color: #eab98a; color: #8a3a0c; }
 .cal-block.transporte { background: var(--sky-light); border-color: #9cc6dc; color: #0c4a68; }
 .cal-block.comida { background: #dcf5e3; border-color: #7fc99a; color: #14532d; }
-.cal-block.evento { background: #f3e8ff; border-color: #c4b5fd; color: #5b21b6; }
+.cal-block.evento, .cal-block.eventoActividad { background: #f3e8ff; border-color: #c4b5fd; color: #5b21b6; }
 .cal-block.prioritaria { background: #fff3c4; border-color: #e8c44a; color: #7a5d00; border-width: 2px; }
 .cal-block.comida.prioritaria { background: #c5ecd1; border-color: #e8c44a; color: #7a5d00; border-width: 3px; }
-.cal-block.realizado { background: #e9e9e6; border-color: #c7c7c0; color: #8a8a82; opacity: 0.75; }
+/* Realizado: no se pone gris parejo — se desatura hacia una versión pálida del color de su tipo */
+.cal-block.realizado { opacity: 0.75; }
 .cal-block.realizado .cbtitle { text-decoration: line-through; }
+.cal-block.pendiente.realizado { background: #ece5dd; border-color: #cdb499; color: #8a7360; }
+.cal-block.transporte.realizado { background: #e2e9eb; border-color: #a7bdc5; color: #5c7178; }
+.cal-block.comida.realizado { background: #e1e9e3; border-color: #a7c4ae; color: #55705f; }
+.cal-block.evento.realizado, .cal-block.eventoActividad.realizado { background: #e9e2ec; border-color: #bfaec8; color: #6b5878; }
 .cbnota { font-size: 9.5px; opacity: 0.8; margin-top: 1px; line-height: 1.25; }
 .cal-block.dragging { opacity: 0.75; z-index: 20; box-shadow: 0 4px 14px rgba(0,0,0,0.18); cursor: grabbing; }
 .drag-arm-fill { position: absolute; left: 0; bottom: 0; height: 5px; width: 0; background: var(--ink); opacity: 0.75; transition: width 1.6s linear; border-radius: 0 0 6px 6px; pointer-events: none; z-index: 2; }
@@ -573,7 +578,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 45; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 46; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2171,14 +2176,15 @@ function getCalendarBlocks(diaId) {
     if (ini === null || fin === null) return;
     const icono = RESERVADO_ICON[t.reservado || 'pendiente'];
     const emoji = tipoEmoji(t.tipo);
-    blocks.push({ id: t.id, kind: 'transporte', title: `${emoji} 📅${icono} ` + (TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''), ini, fin: Math.max(fin, ini + 15) });
+    const checkT = t.realizado ? '✅ ' : '';
+    blocks.push({ id: t.id, kind: 'transporte', esRealizado: !!t.realizado, title: `${checkT}${emoji} 📅${icono} ` + (TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''), ini, fin: Math.max(fin, ini + 15) });
   });
   itinerario.eventos.forEach(ev => {
     (ev.sedes || []).forEach(act => {
       if (act.diaId !== diaId) return;
       const ini = hhmmToMin(act.horaInicio), fin = hhmmToMin(act.horaFin);
       if (ini === null || fin === null) return;
-      blocks.push({ id: act.id, eventoId: ev.id, kind: 'eventoActividad', title: '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+      blocks.push({ id: act.id, eventoId: ev.id, kind: 'eventoActividad', esRealizado: !!ev.realizado, title: (ev.realizado ? '✅ ' : '') + '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
     });
   });
   return blocks;
@@ -3083,10 +3089,9 @@ function poolItemHtml(p) {
   const etiquetaFecha = (p.diaId && !p.horaInicio)
     ? `<span class="fecha-badge" title="Tiene día asignado, sin hora todavía">📅 ${escHtml(diaLabel(p.diaId))}</span>`
     : (!p.diaId && !esComida ? `<button class="btn-mini" style="font-size:10px;padding:3px 8px" onclick="abrirAsignarPendiente('${p.id}')">📅 Asignar día</button>` : '');
-  const notaComida = p.notasPrevias || p.sugerenciasIA || '';
-  const subtitulo = esComida
-    ? (notaComida ? `<div class="psub">${p.notasPrevias ? '📌' : '✨'} ${escHtml(notaComida)}</div>` : '')
-    : (p.direccion ? `<div class="psub">${escHtml(p.direccion)}</div>` : '');
+  // v57: para lugares (no-comida) ya no se muestra la dirección acá — notas y notas IA aportan
+  // más de un vistazo en esta lista compacta (la dirección se sigue viendo en el visor completo).
+  const subtitulo = `${p.notasPrevias ? `<div class="psub">📌 ${escHtml(p.notasPrevias)}</div>` : ''}${p.sugerenciasIA ? `<div class="psub">✨ ${escHtml(p.sugerenciasIA)}</div>` : ''}`;
   return `<div class="pool-item-mini" id="pool-${p.id}" style="${p.realizado ? 'opacity:.6; background:var(--paper-2)' : ''}">
     <span class="handle">⠿</span>
     <div style="flex:1; min-width:0">
@@ -3094,7 +3099,6 @@ function poolItemHtml(p) {
       <div class="pname" style="${p.realizado ? 'text-decoration:line-through' : ''}">${p.realizado ? '✅ ' : ''}${escHtml(p.nombre || '')}</div>
       ${subtitulo}
       ${yaAsignado}
-      ${(!esComida && p.notasPrevias) ? `<div class="psub">📌 ${escHtml(p.notasPrevias)}</div>` : ''}
       ${p.duracionMin ? `<div class="psub">⏱ ~${formatDuracion(p.duracionMin)}</div>` : ''}
     </div>
     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px">
@@ -3534,6 +3538,28 @@ async function toggleRealizadoPendiente(id, btnEl) {
   await postGAS({ action: 'updatePendiente', id, realizado: p.realizado });
   renderSemana(); renderPoolPanel();
 }
+async function toggleRealizadoTransporte(id, btnEl) {
+  const t = itinerario.transporte.find(x => x.id === id);
+  if (!t) return;
+  t.realizado = !t.realizado;
+  if (btnEl) {
+    btnEl.textContent = t.realizado ? '✅ Realizado' : '⬜ Marcar como realizado';
+    btnEl.style.cssText = t.realizado ? 'background:var(--ok-light);border-color:var(--ok);color:#0d5c2a' : '';
+  }
+  await postGAS({ action: 'updateTransporte', id, realizado: t.realizado });
+  renderSemana(); renderPoolPanel();
+}
+async function toggleRealizadoEvento(id, btnEl) {
+  const ev = itinerario.eventos.find(x => x.id === id);
+  if (!ev) return;
+  ev.realizado = !ev.realizado;
+  if (btnEl) {
+    btnEl.textContent = ev.realizado ? '✅ Realizado' : '⬜ Marcar como realizado';
+    btnEl.style.cssText = ev.realizado ? 'background:var(--ok-light);border-color:var(--ok);color:#0d5c2a' : '';
+  }
+  await postGAS({ action: 'updateEvento', id, realizado: ev.realizado });
+  renderSemana(); renderPoolPanel();
+}
 async function desasignarDia(id) {
   modalClose();
   const p = itinerario.pendientes.find(x => x.id === id);
@@ -3634,7 +3660,7 @@ function abrirVisorTransporte(id) {
   const vOtrosId = 'visor-otros-modos-' + t.id;
   modalOpen(`
     <div class="modal-head">
-      <span class="modal-title">${TIPO_LABEL[t.tipo] || t.tipo}</span>
+      <span class="modal-title">${t.realizado ? '✅ ' : ''}${TIPO_LABEL[t.tipo] || t.tipo}</span>
       <div style="display:flex; align-items:center; gap:10px">
         <button class="icon-btn" title="${sinHora ? 'Sin hora fija — toca para ponerle una y que se vea en mapa/calendario' : oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
         <button class="icon-btn" title="Ver en panel lateral" onclick="scrollPanelATransporte('${t.id}')">👉</button>
@@ -3643,6 +3669,9 @@ function abrirVisorTransporte(id) {
       </div>
     </div>
     <div class="modal-body">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px">
+        <button class="btn-mini" style="${t.realizado ? 'background:var(--ok-light);border-color:var(--ok);color:#0d5c2a' : ''}" onclick="toggleRealizadoTransporte('${t.id}', this)">${t.realizado ? '✅ Realizado' : '⬜ Marcar como realizado'}</button>
+      </div>
       <div class="visor-row" style="margin-bottom:8px">${reservadoToggleHtml('transporte', t.id, t.reservado)}</div>
       <div class="visor-row" style="font-size:14.5px; font-weight:500">${escHtml(t.origen || '')} → ${escHtml(t.destino || '')}</div>
       <div class="visor-block" style="background:var(--paper-2); border-radius:10px; padding:8px 10px; margin-bottom:10px">
@@ -3740,13 +3769,14 @@ function renderTransporteCard(t) {
   const tId = 'transporte-horarios-' + t.id;
 
   return `
-  <div class="card" id="trans-${t.id}">
+  <div class="card" id="trans-${t.id}" style="${t.realizado ? 'opacity:.7' : ''}">
     <div class="card-top">
       <div style="display:flex; align-items:center; gap:6px">
         <span class="handle" title="Arrastra al calendario para fijar la hora">⠿</span>
         <span class="badge sky">${tipoEmojiBadge} ${TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo}</span>
       </div>
       <div class="icon-row">
+        <button class="icon-btn" title="${t.realizado ? 'Quitar Realizado' : 'Marcar como realizado'}" onclick="toggleRealizadoTransporte('${t.id}', this)">${t.realizado ? '✅' : '⬜'}</button>
         <button class="icon-btn" title="${sinHora ? 'Sin hora fija — toca para ponerle una y que se vea en mapa/calendario' : oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
         <button class="icon-btn" onclick="openTransporteForm('${t.id}','${t.diaId}')" title="Editar">✏️</button>
         <button class="icon-btn" onclick="eliminarTransporte('${t.id}')" title="Eliminar">🗑</button>
@@ -3756,7 +3786,7 @@ function renderTransporteCard(t) {
       <span style="font-size:16px">${tipoEmojiBadge}</span>${reservadoToggleHtml('transporte', t.id, t.reservado)}
       ${t.ocultarMapa ? `<span style="font-size:10px; color:var(--ink-3); background:var(--paper-2); border-radius:8px; padding:1px 6px">🙈 Oculto del visor/mapa</span>` : ''}
     </div>
-    <div class="route-line">${escHtml(t.origen || '')} → ${escHtml(t.destino || '')}</div>
+    <div class="route-line" style="${t.realizado ? 'text-decoration:line-through' : ''}">${escHtml(t.origen || '')} → ${escHtml(t.destino || '')}</div>
     ${(opciones.length && !(opSel && opSel.salida)) ? `<div class="empty-mini" style="color:#b45309; background:#fef3c7; border-radius:6px; padding:3px 6px; margin-top:4px">⏰ Sin hora fija — por eso no aparece en el calendario. Arrástralo desde ⠿ para fijarle una hora.</div>` : ''}
     ${opciones.length ? `
     <div style="margin-top:4px">
@@ -4180,9 +4210,10 @@ function renderEventoCard(ev, esDelDia) {
         </div>`;
       }).join('')
     : `<div class="empty-mini">Sin actividades — editá el evento para agregar una (ej. la carrera, los fuegos artificiales), cada una con su propio lugar y hora.</div>`;
-  return `<div style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esDelDia ? 'border-color:var(--route)' : ''}">
+  return `<div style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esDelDia ? 'border-color:var(--route)' : ''}${ev.realizado ? ' opacity:.7' : ''}">
     <div style="display:flex; align-items:center; gap:5px; padding:5px 8px; background:${esDelDia ? 'var(--route-light)' : 'var(--paper-2)'}">
-      <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline dotted" onclick="abrirVisorEvento('${ev.id}')">🎪 ${escHtml(ev.nombre || '(sin nombre)')}</span>
+      <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:${ev.realizado ? 'line-through' : 'underline dotted'}" onclick="abrirVisorEvento('${ev.id}')">${ev.realizado ? '✅ ' : ''}🎪 ${escHtml(ev.nombre || '(sin nombre)')}</span>
+      <button class="icon-btn" title="${ev.realizado ? 'Quitar Realizado' : 'Marcar como realizado'}" onclick="toggleRealizadoEvento('${ev.id}', this)">${ev.realizado ? '✅' : '⬜'}</button>
       <button class="icon-btn" onclick="openEventoForm('${ev.id}')" title="Editar">✏️</button>
       <button class="icon-btn" onclick="eliminarEvento('${ev.id}')" title="Eliminar">🗑</button>
     </div>
@@ -4444,8 +4475,11 @@ function abrirVisorEvento(id) {
   const rangoReal = ev.fechaInicioReal ? `${ev.fechaInicioReal}${ev.fechaFinReal && ev.fechaFinReal !== ev.fechaInicioReal ? ' → ' + ev.fechaFinReal : ''}` : '';
   const asignado = ev.diaIdInicio ? diaLabel(ev.diaIdInicio) + (ev.diaIdFin && ev.diaIdFin !== ev.diaIdInicio ? ' a ' + diaLabel(ev.diaIdFin) : '') : '';
   modalOpen(`
-    <div class="modal-head"><span class="modal-title">🎪 ${escHtml(ev.nombre || 'Evento')}</span><div style="display:flex; align-items:center; gap:8px"><button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button><button class="modal-close" onclick="modalClose()">✕</button></div></div>
+    <div class="modal-head"><span class="modal-title">${ev.realizado ? '✅ ' : ''}🎪 ${escHtml(ev.nombre || 'Evento')}</span><div style="display:flex; align-items:center; gap:8px"><button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button><button class="modal-close" onclick="modalClose()">✕</button></div></div>
     <div class="modal-body">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px">
+        <button class="btn-mini" style="${ev.realizado ? 'background:var(--ok-light);border-color:var(--ok);color:#0d5c2a' : ''}" onclick="toggleRealizadoEvento('${ev.id}', this)">${ev.realizado ? '✅ Realizado' : '⬜ Marcar como realizado'}</button>
+      </div>
       <div class="visor-row" style="margin-bottom:8px">${reservadoToggleHtml('evento', ev.id, ev.reservado)}</div>
       ${rangoReal ? `<div class="visor-row">📅 ${escHtml(rangoReal)}</div>` : ''}
       <div class="visor-row">${asignado ? `✅ Día asignado: ${escHtml(asignado)}` : '⬜ Sin día asignado todavía — edítalo para asignarle uno de tu viaje'}</div>
