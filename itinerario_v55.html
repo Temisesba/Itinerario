@@ -152,15 +152,18 @@ body.drag-locked .cal-resize-handle { display: none; }
 .semana-wrap { padding: 12px 18px 40px; height: calc(100vh - 56px); overflow-y: auto; }
 .semana-controls { display:flex; gap:16px; flex-wrap:wrap; margin-bottom: 10px; }
 .semana-group { display:flex; align-items:center; gap:6px; }
-/* Sin border-radius acá: Safari rompe position:sticky en los hijos cuando el contenedor con
-   scroll también tiene border-radius (bug conocido de WebKit). */
-.week-scroll { position: relative; height: 64vh; overflow: auto; border: 1px solid var(--line); background: #fff; display: flex; }
+/* El encabezado de días (.week-header-row) vive FUERA de .week-scroll a propósito — ver
+   comentario en renderSemana(). Por eso .week-scroll ya no necesita sticky ni border-radius. */
+.week-header-row { display: flex; border: 1px solid var(--line); border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; background: #fff; overflow: hidden; }
+.week-header-gutter { width: 48px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--line); }
+.week-header-cols { display: flex; }
+.week-scroll { position: relative; height: 64vh; overflow: auto; border: 1px solid var(--line); border-radius: 0 0 var(--radius) var(--radius); background: #fff; display: flex; }
 .week-gutter { position: sticky; left: 0; z-index: 10; width: 48px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--line); will-change: transform; }
 .week-gutter-labels { background: #fff; }
 .week-cols { display: flex; }
 .week-col { flex-shrink: 0; border-right: 1px solid var(--line); background: #fff; }
-.week-col-header { position: sticky; top: 0; z-index: 8; background: #fff; border-bottom: 1px solid var(--line); padding: 6px 8px; font-size: 11.5px; font-weight: 500; display: flex; flex-direction: column; gap: 1px; }
-.week-gutter-header { border-bottom: 1px solid var(--line); background: #fff; position: sticky; top: 0; z-index: 9; }
+.week-col-header { background: #fff; border-right: 1px solid var(--line); padding: 6px 8px; font-size: 11.5px; font-weight: 500; display: flex; flex-direction: column; gap: 1px; }
+.week-col-header:last-child { border-right: none; }
 .reservado-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 .reservado-btns button { flex: 1; min-width: 100px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper-2); cursor: pointer; font-family: var(--font-sans); font-size: 12.5px; transition: all .15s; }
 .reservado-btns button.active { background: var(--route-light); border-color: var(--route); color: var(--route); font-weight: 600; }
@@ -581,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 48; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 49; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -5395,7 +5398,13 @@ function renderSemana() {
 
   const hourLabels = Array.from({ length: 24 }, (_, h) => `<div class="cal-hour-label" style="top:${h * 60 * px - 5}px">${pad2(h)}:00</div>`).join('');
 
-  const cols = visibleDias.map(d => {
+  // v57 fix: el encabezado de días vivía DENTRO de .week-scroll (el área con scroll vertical de
+  // horas) y dependía de position:sticky para quedarse fijo arriba — pero se seguía escondiendo
+  // en Chrome de escritorio al bajar. En vez de seguir peleando con sticky, el encabezado ahora
+  // vive en su propia fila FUERA del área que scrollea verticalmente — así no hay nada de qué
+  // "despegarse": nunca entra en el scroll para empezar.
+  let headerCells = '', bodyCols = '';
+  visibleDias.forEach(d => {
     const isToday = d.fecha === hoy;
     const blocks = calcularLayoutSolapado(getCalendarBlocks(d.id));
     const date = d.fecha ? new Date(d.fecha + 'T00:00:00') : null;
@@ -5404,20 +5413,20 @@ function renderSemana() {
     let nowLine = '';
     if (isToday) { const n = new Date(); nowLine = `<div class="cal-now-line" style="top:${(n.getHours() * 60 + n.getMinutes()) * px}px; left:0; right:0"></div>`; }
     const evHtml = blocks.map(b => weekBlockHtml(b, px)).join('');
-    return `<div class="week-col" data-dia="${d.id}" style="width:${colWidth}px">
-      <div class="week-col-header ${isToday ? 'today' : ''} ${d.id === currentDiaId ? 'active' : ''}" onclick="selectDay('${d.id}')" style="cursor:pointer">
-        <span>${capitalize(headerTxt)}</span>
-        ${d.zona ? `<span class="psub">${escHtml(d.zona)}</span>` : ''}
-        ${hospedajesParaHeaderDia(d.id).map(({ h, icono, sufijo }) => {
-          return `<span style="font-size:10px; color:var(--ink-3); font-weight:400; display:block; min-width:0; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${icono ? icono + ' ' : ''}${escHtml(h.nombre || '')}${sufijo ? escHtml(sufijo) : ''}</span>`;
-        }).join('')}
-      </div>
+    headerCells += `<div class="week-col-header ${isToday ? 'today' : ''} ${d.id === currentDiaId ? 'active' : ''}" onclick="selectDay('${d.id}')" style="cursor:pointer; width:${colWidth}px">
+      <span>${capitalize(headerTxt)}</span>
+      ${d.zona ? `<span class="psub">${escHtml(d.zona)}</span>` : ''}
+      ${hospedajesParaHeaderDia(d.id).map(({ h, icono, sufijo }) => {
+        return `<span style="font-size:10px; color:var(--ink-3); font-weight:400; display:block; min-width:0; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${icono ? icono + ' ' : ''}${escHtml(h.nombre || '')}${sufijo ? escHtml(sufijo) : ''}</span>`;
+      }).join('')}
+    </div>`;
+    bodyCols += `<div class="week-col" data-dia="${d.id}" style="width:${colWidth}px">
       <div class="week-col-body" style="height:${1440 * px}px">
         ${lines}${nowLine}
         <div class="week-col-events">${evHtml}</div>
       </div>
     </div>`;
-  }).join('');
+  });
 
   host.innerHTML = `
     <div class="semana-controls">
@@ -5426,9 +5435,13 @@ function renderSemana() {
       <div class="semana-group"><button class="btn-mini" onclick="adjustZoom(-1)">－</button><span class="cal-hint" style="margin:0">Zoom ${zoomPct()}</span><button class="btn-mini" onclick="adjustZoom(1)">＋</button></div>
       <button class="btn-mini" id="btnLockDrag" onclick="toggleDragLock()" style="font-weight:700">${dragBloqueado ? '🔒 Arrastre bloqueado' : '🔓 Arrastre libre'}</button>
     </div>
+      <div class="week-header-row">
+        <div class="week-header-gutter"></div>
+        <div class="week-header-cols">${headerCells}</div>
+      </div>
       <div class="week-scroll" id="weekScroll">
-        <div class="week-gutter"><div class="week-gutter-header" id="weekGutterHdr"></div><div class="week-gutter-labels" style="position:relative; height:${1440 * px}px">${hourLabels}</div></div>
-        <div class="week-cols">${cols}</div>
+        <div class="week-gutter"><div class="week-gutter-labels" style="position:relative; height:${1440 * px}px">${hourLabels}</div></div>
+        <div class="week-cols">${bodyCols}</div>
       </div>
       <span class="cal-hint" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:10.5px; margin-top:6px">
         <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#fff3c4; border:1px solid #e8c44a; display:inline-block"></span>⭐ Prioritario</span>
@@ -5437,28 +5450,6 @@ function renderSemana() {
         <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#f3e8ff; border:1px solid #c4b5fd; display:inline-block"></span>🎪 Evento</span>
         <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#dcf5e3; border:1px solid #7fc99a; display:inline-block"></span>🍳 Des. &nbsp;🍜 Com. &nbsp;🍷 Cena &nbsp;🍪 Col.</span>
       </span>`;
-
-  // Sincronizar la altura del spacer del gutter con la del header real de columna
-  // (usa la más alta de todas las columnas visibles — si una tiene hotel/relevo y otra no,
-  // no todas miden lo mismo, y medir solo la primera desalinea el resto).
-  const sincronizarGutter = () => {
-    const hdrs = [...host.querySelectorAll('.week-col-header')];
-    const gHdr = document.getElementById('weekGutterHdr');
-    if (hdrs.length && gHdr) {
-      // Igualar TODOS los encabezados de columna a la altura del más alto (no solo el
-      // espaciador del gutter) — si no, la columna con encabezado más corto arranca su
-      // grilla más arriba que las demás y las líneas de hora quedan desalineadas entre sí.
-      hdrs.forEach(h => { h.style.minHeight = ''; });
-      const maxH = Math.max(...hdrs.map(h => h.getBoundingClientRect().height));
-      gHdr.style.height = maxH + 'px';
-      hdrs.forEach(h => { h.style.minHeight = maxH + 'px'; });
-    }
-  };
-  requestAnimationFrame(() => { sincronizarGutter(); requestAnimationFrame(sincronizarGutter); });
-  if (!window._gutterResizeWired) {
-    window._gutterResizeWired = true;
-    window.addEventListener('resize', sincronizarGutter);
-  }
 
   visibleDias.forEach(d => {
     getCalendarBlocks(d.id).forEach(b => {
