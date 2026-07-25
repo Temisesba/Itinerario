@@ -157,8 +157,8 @@ body.drag-locked .cal-resize-handle { display: none; }
 .week-gutter-labels { background: #fff; }
 .week-cols { display: flex; }
 .week-col { flex-shrink: 0; border-right: 1px solid var(--line); background: #fff; }
-.week-col-header { position: sticky; top: 0; z-index: 8; background: #fff; border-bottom: 1px solid var(--line); padding: 6px 8px; font-size: 11.5px; font-weight: 500; display: flex; flex-direction: column; gap: 1px; will-change: transform; }
-.week-gutter-header { border-bottom: 1px solid var(--line); background: #fff; position: sticky; top: 0; z-index: 9; will-change: transform; }
+.week-col-header { position: sticky; top: 0; z-index: 8; background: #fff; border-bottom: 1px solid var(--line); padding: 6px 8px; font-size: 11.5px; font-weight: 500; display: flex; flex-direction: column; gap: 1px; }
+.week-gutter-header { border-bottom: 1px solid var(--line); background: #fff; position: sticky; top: 0; z-index: 9; }
 .reservado-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 .reservado-btns button { flex: 1; min-width: 100px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper-2); cursor: pointer; font-family: var(--font-sans); font-size: 12.5px; transition: all .15s; }
 .reservado-btns button.active { background: var(--route-light); border-color: var(--route); color: var(--route); font-weight: 600; }
@@ -242,6 +242,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 .card .handle { color: var(--ink-3); font-size:14px; flex-shrink:0; cursor: grab; touch-action: none; padding: 2px; }
 .pool-item-mini .pname { font-size:12.5px; font-weight:500; }
 .pool-item-mini .psub { font-size:10.5px; color:var(--ink-3); margin-top:1px; }
+.psub-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .fecha-badge { font-size: 10px; font-weight: 600; color: #7a5a10; background: var(--paper-2); border: 1px solid #e8c87a; border-radius: 10px; padding: 2px 7px; white-space: nowrap; }
 .empty-mini { font-size: 12.5px; color: var(--ink-3); padding: 6px 0; }
 
@@ -578,7 +579,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 46; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 47; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -3091,7 +3092,7 @@ function poolItemHtml(p) {
     : (!p.diaId && !esComida ? `<button class="btn-mini" style="font-size:10px;padding:3px 8px" onclick="abrirAsignarPendiente('${p.id}')">📅 Asignar día</button>` : '');
   // v57: para lugares (no-comida) ya no se muestra la dirección acá — notas y notas IA aportan
   // más de un vistazo en esta lista compacta (la dirección se sigue viendo en el visor completo).
-  const subtitulo = `${p.notasPrevias ? `<div class="psub">📌 ${escHtml(p.notasPrevias)}</div>` : ''}${p.sugerenciasIA ? `<div class="psub">✨ ${escHtml(p.sugerenciasIA)}</div>` : ''}`;
+  const subtitulo = `${p.notasPrevias ? `<div class="psub psub-clamp">📌 ${escHtml(p.notasPrevias)}</div>` : ''}${p.sugerenciasIA ? `<div class="psub psub-clamp">✨ ${escHtml(p.sugerenciasIA)}</div>` : ''}`;
   return `<div class="pool-item-mini" id="pool-${p.id}" style="${p.realizado ? 'opacity:.6; background:var(--paper-2)' : ''}">
     <span class="handle">⠿</span>
     <div style="flex:1; min-width:0">
