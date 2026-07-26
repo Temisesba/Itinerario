@@ -586,7 +586,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 66; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 67; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2230,7 +2230,8 @@ function getCalendarBlocks(diaId) {
     const comida = p.tipoComida ? (TIPO_COMIDA_ICON[p.tipoComida] || '') + ' ' : '';
     const estrella = p.prioritaria ? '⭐ ' : '';
     const check = p.realizado ? '✅ ' : '';
-    blocks.push({ id: p.id, kind: 'pendiente', esComida: !!(p.tipoComida || p.esRestaurante || p.antojo), esPrioritaria: !!p.prioritaria, esRealizado: !!p.realizado, duracionBloqueada: !!p.duracionBloqueada, notaPrevia: p.notasPrevias || '', sugerenciasIA: p.sugerenciasIA || '', title: `${check}${estrella}${comida}📅${icono} ` + (p.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+    const gasto = (gastosVinculados[p.id]||[]).some(g => !g.cotizacion) ? '💸 ' : '';
+    blocks.push({ id: p.id, kind: 'pendiente', esComida: !!(p.tipoComida || p.esRestaurante || p.antojo), esPrioritaria: !!p.prioritaria, esRealizado: !!p.realizado, duracionBloqueada: !!p.duracionBloqueada, notaPrevia: p.notasPrevias || '', sugerenciasIA: p.sugerenciasIA || '', title: `${check}${estrella}${gasto}${comida}📅${icono} ` + (p.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
   });
   itinerario.transporte.forEach(t => {
     if (t.diaId !== diaId) return;
@@ -2243,7 +2244,8 @@ function getCalendarBlocks(diaId) {
     const icono = RESERVADO_ICON[t.reservado || 'pendiente'];
     const emoji = tipoEmoji(t.tipo);
     const checkT = t.realizado ? '✅ ' : '';
-    blocks.push({ id: t.id, kind: 'transporte', esRealizado: !!t.realizado, title: `${checkT}${emoji} 📅${icono} ` + (TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''), ini, fin: Math.max(fin, ini + 15) });
+    const gastoT = (gastosVinculados[t.id]||[]).some(g => !g.cotizacion) ? '💸 ' : '';
+    blocks.push({ id: t.id, kind: 'transporte', esRealizado: !!t.realizado, title: `${checkT}${gastoT}${emoji} 📅${icono} ` + (TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''), ini, fin: Math.max(fin, ini + 15) });
   });
   itinerario.eventos.forEach(ev => {
     (ev.sedes || []).forEach(act => {
@@ -2254,7 +2256,8 @@ function getCalendarBlocks(diaId) {
       // abajo como nota — antes era al revés (la sede tapaba el nombre del festival si tenía
       // nombre propio, y el festival solo aparecía si la sede no tenía nombre).
       const miniEvento = (act.nombre && act.nombre !== ev.nombre) ? act.nombre : '';
-      blocks.push({ id: act.id, eventoId: ev.id, kind: 'eventoActividad', esRealizado: !!ev.realizado, notaPrevia: miniEvento, title: (ev.realizado ? '✅ ' : '') + '🎪 ' + (ev.nombre || act.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+      const gastoEv = (gastosVinculados[ev.id]||[]).some(g => !g.cotizacion) ? '💸 ' : '';
+      blocks.push({ id: act.id, eventoId: ev.id, kind: 'eventoActividad', esRealizado: !!ev.realizado, notaPrevia: miniEvento, title: (ev.realizado ? '✅ ' : '') + gastoEv + '🎪 ' + (ev.nombre || act.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
     });
   });
   return blocks;
