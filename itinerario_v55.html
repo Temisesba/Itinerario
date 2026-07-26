@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 53; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 54; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1312,26 +1312,23 @@ function gProcessFile(file) {
   }; r.readAsDataURL(file);
 }
 function gRemoveTicket() { gTb64=''; gTMime=''; document.getElementById('gTicketInput').value=''; document.getElementById('gStoredPhoto').value=''; document.getElementById('gPrevArea').style.display='none'; document.getElementById('gUzone').style.display='block'; }
-function gOpenCrop() {
+async function gOpenCrop() {
   if (!gTb64) {
-    // Foto ya guardada (viene de una URL de Drive, no tenemos los bytes todavía) — intentar
-    // reconstruirla dibujándola en un canvas, para poder recortar sin tener que resubirla.
+    // Foto ya guardada (viene de una URL de Drive, el navegador no puede leer esos bytes por
+    // CORS) — pedirle al backend que los lea directo con DriveApp, para poder recortar sin
+    // tener que resubirla.
     const srcUrl = document.getElementById('gPrevImg').src;
     if (!srcUrl) { showToast('No se puede recortar'); return; }
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-        canvas.getContext('2d').drawImage(img, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-        gTb64 = dataUrl.split(',')[1]; gTMime = 'image/jpeg';
-        gOpenCrop();
-      } catch (e) { showToast('⚠️ Esta foto no se puede recortar desde acá'); }
-    };
-    img.onerror = () => showToast('⚠️ No se pudo cargar la foto para recortar');
-    img.src = srcUrl;
+    showToast('Cargando foto…');
+    let r;
+    try {
+      const form = new FormData(); form.append('payload', JSON.stringify({ action: 'obtenerFotoTicketBase64', url: srcUrl }));
+      const resp = await fetch(GAS_URL_GASTOS, { method: 'POST', body: form });
+      r = await resp.json();
+    } catch (e) { showToast('⚠️ No se pudo cargar la foto para recortar'); return; }
+    if (!r || !r.ok) { showToast('⚠️ No se pudo cargar la foto para recortar'); return; }
+    gTb64 = r.base64; gTMime = r.mime || 'image/jpeg';
+    gOpenCrop();
     return;
   }
   document.getElementById('gCropOverlay').style.display='flex';
