@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 80; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 81; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2973,7 +2973,7 @@ function abrirResumenImprimible() {
         <table class="pr-tabla">
           <thead><tr>
             <th class="pr-col-hora">Hora</th><th class="pr-col-que">Qué se hizo</th><th class="pr-col-notas">Notas</th>
-            <th class="pr-col-desglose">Desglose de Monto</th>
+            <th class="pr-col-desglose">Desglose de costo</th>
             <th class="pr-col-direccion">Dirección</th><th class="pr-col-diario">Diario</th><th class="pr-col-ia">Comentario IA</th>
             <th class="pr-col-costo" style="text-align:right">Costo</th>
           </tr></thead>
@@ -3033,7 +3033,7 @@ function abrirResumenImprimible() {
           <label><input type="checkbox" onchange="prToggleCol('direccion',this.checked)"> Dirección</label>
           <label><input type="checkbox" onchange="prToggleCol('diario',this.checked)"> Diario</label>
           <label><input type="checkbox" onchange="prToggleCol('ia',this.checked)"> Comentario IA</label>
-          <label><input type="checkbox" onchange="prToggleCol('desglose',this.checked)"> Desglose de Monto</label>
+          <label><input type="checkbox" onchange="prToggleCol('desglose',this.checked)"> Desglose de costo</label>
           <label><input type="checkbox" checked onchange="prToggleCol('costo',this.checked)"> Costo</label>
         </div>
       </details>
