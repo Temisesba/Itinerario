@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 82; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 83; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2247,9 +2247,9 @@ const RESERVADO_LABEL = { si: 'Ya se reservó', pendiente: 'Falta reservar', no_
 function reservadoSelectHtml(id, value) {
   const v = value || 'pendiente';
   return `<div class="reservado-btns" id="${id}" data-val="${v}">
-    <button type="button" class="${v === 'pendiente' ? 'active' : ''}" onclick="selReservadoBtn('${id}','pendiente')">🔲 Falta reservar</button>
-    <button type="button" class="${v === 'si' ? 'active' : ''}" onclick="selReservadoBtn('${id}','si')">✅ Ya reservé</button>
-    <button type="button" class="${v === 'no_requiere' ? 'active' : ''}" onclick="selReservadoBtn('${id}','no_requiere')">➖ No requiere</button>
+    <button type="button" class="${v === 'pendiente' ? 'active' : ''}" onclick="selReservadoBtn('${id}','pendiente')">${RESERVADO_ICON.pendiente} ${RESERVADO_LABEL.pendiente}</button>
+    <button type="button" class="${v === 'si' ? 'active' : ''}" onclick="selReservadoBtn('${id}','si')">${RESERVADO_ICON.si} ${RESERVADO_LABEL.si}</button>
+    <button type="button" class="${v === 'no_requiere' ? 'active' : ''}" onclick="selReservadoBtn('${id}','no_requiere')">${RESERVADO_ICON.no_requiere} ${RESERVADO_LABEL.no_requiere}</button>
   </div>`;
 }
 function selReservadoBtn(wrapperId, val) {
@@ -7330,6 +7330,31 @@ function openPendienteForm(id, diaId) {
         <div class="field"><label>Hora fin (opcional)</label><input type="time" id="fPendHoraFin" value="${p && p.horaFin ? p.horaFin : ''}"></div>
       </div>
 
+      <div class="field"><label>Reservado / entrada comprada</label>
+        ${reservadoSelectHtml('fPendReservado', p ? p.reservado : 'pendiente')}
+      </div>
+
+      <div style="background:#dcf5e3; border:1px solid #7fc99a; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+        <div class="row-3" style="align-items:flex-end; margin-bottom:0">
+          <div class="field" style="margin-bottom:0"><label>¿Es un restaurante?</label>
+            <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; padding-top:8px">
+              <input type="checkbox" id="fPendEsRestaurante" ${p && p.esRestaurante ? 'checked' : ''}> Sí, es un restaurante
+            </label>
+          </div>
+          <div class="field" style="margin-bottom:0"><label>Corresponde a una Comida?</label>
+            <select id="fPendComida">
+              <option value="">— No aplica —</option>
+              ${Object.keys(TIPO_COMIDA_LABEL).map(k => `<option value="${k}" ${p && p.tipoComida === k ? 'selected' : ''}>${TIPO_COMIDA_ICON[k]} ${TIPO_COMIDA_LABEL[k]}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field autocomplete-wrap" style="margin-bottom:0">
+            <label>Platillo especial <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(agrupa restaurantes del mismo platillo)</span></label>
+            <input type="text" id="fPendAntojo" autocomplete="off" placeholder="Ej: Cochinita, Ramen... vacío si no aplica" value="${escHtml(p ? p.antojo : '')}">
+            <div class="autocomplete-list" id="fPendAntojoList"></div>
+          </div>
+        </div>
+      </div>
+
       <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin-bottom:14px;">
         <input type="checkbox" id="fPendPrioritaria" ${p && p.prioritaria ? 'checked' : ''}> ⭐ Marcar como prioritaria (si tengo poco tiempo, esto va primero)
       </label>
@@ -7342,28 +7367,6 @@ function openPendienteForm(id, diaId) {
         <input type="checkbox" id="fPendDurBloqueada" ${p && p.duracionBloqueada ? 'checked' : ''}> ⏱🔒 Duración fija (no cambia al arrastrar en el calendario)
       </label>
 
-      <div class="row-3" style="align-items:flex-end">
-        <div class="field"><label>¿Es un restaurante?</label>
-          <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; padding-top:8px">
-            <input type="checkbox" id="fPendEsRestaurante" ${p && p.esRestaurante ? 'checked' : ''}> Sí, es un restaurante
-          </label>
-        </div>
-        <div class="field"><label>Corresponde a una Comida?</label>
-          <select id="fPendComida">
-            <option value="">— No aplica —</option>
-            ${Object.keys(TIPO_COMIDA_LABEL).map(k => `<option value="${k}" ${p && p.tipoComida === k ? 'selected' : ''}>${TIPO_COMIDA_ICON[k]} ${TIPO_COMIDA_LABEL[k]}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field autocomplete-wrap">
-          <label>Platillo especial <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(agrupa restaurantes del mismo platillo)</span></label>
-          <input type="text" id="fPendAntojo" autocomplete="off" placeholder="Ej: Cochinita, Ramen... vacío si no aplica" value="${escHtml(p ? p.antojo : '')}">
-          <div class="autocomplete-list" id="fPendAntojoList"></div>
-        </div>
-      </div>
-
-      <div class="field"><label>Reservado / entrada comprada</label>
-        ${reservadoSelectHtml('fPendReservado', p ? p.reservado : 'pendiente')}
-      </div>
       <div class="field"><label>Nota previa (recordatorio antes de ir)</label><textarea id="fPendPrevias" placeholder="Ej: no olvides preguntar por...">${escHtml(p ? p.notasPrevias : '')}</textarea></div>
       <div class="field">
         <label>Evaluación</label>
