@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 59; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 60; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2936,15 +2936,13 @@ function abrirResumenImprimible() {
         <div class="pr-notagen">${escHtml(notaProyectoCargada)}</div>
       </div>` : ''}
       <div class="pr-dia">
-        <h2>💰 Balance compartido</h2>
+        <h2 style="display:flex; justify-content:space-between; align-items:baseline; gap:10px">
+          <span>💰 Balance compartido</span>
+          <span style="font-size:12.5px; font-family:var(--font-sans); white-space:nowrap">Total compartido ¥${Math.round(totalCompartido).toLocaleString()} · c/u ¥${Math.round(compartidoPorPersona).toLocaleString()}</span>
+        </h2>
         <table class="pr-tabla">
           <thead><tr><th>Cuánto puso cada quien</th><th>Total</th></tr></thead>
           <tbody>${puestoHtml}</tbody>
-          <tfoot>
-            <tr><td>Total compartido</td><td class="pr-costo">¥${Math.round(totalCompartido).toLocaleString()}</td></tr>
-            <tr><td>Le toca a cada uno</td><td class="pr-costo">¥${Math.round(compartidoPorPersona).toLocaleString()}</td></tr>
-            <tr><td>Total personal</td><td class="pr-costo">¥${Math.round(totalPersonalTodos).toLocaleString()}</td></tr>
-          </tfoot>
         </table>
         ${prestamos.length ? `
         <div style="margin-top:10px">
@@ -2957,7 +2955,10 @@ function abrirResumenImprimible() {
         </div>
       </div>
       <div class="pr-dia">
-        <h2>👤 Total personal (no compartido)</h2>
+        <h2 style="display:flex; justify-content:space-between; align-items:baseline; gap:10px">
+          <span>👤 Total personal (no compartido)</span>
+          <span style="font-size:12.5px; font-family:var(--font-sans); white-space:nowrap">Total ¥${Math.round(totalPersonalTodos).toLocaleString()}</span>
+        </h2>
         <table class="pr-tabla">
           <thead><tr><th>Persona</th><th>Total</th></tr></thead>
           <tbody>${personalHtml}</tbody>
