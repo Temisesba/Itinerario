@@ -137,7 +137,9 @@ body.drag-locked .cal-resize-handle { display: none; }
 .cbnota { font-size: 9.5px; opacity: 0.8; margin-top: 1px; line-height: 1.25; }
 .cal-block.dragging { opacity: 0.75; z-index: 20; box-shadow: 0 4px 14px rgba(0,0,0,0.18); cursor: grabbing; }
 .drag-arm-fill { position: absolute; left: 0; bottom: 0; height: 5px; width: 0; background: var(--ink); opacity: 0.75; transition: width 1.6s linear; border-radius: 0 0 6px 6px; pointer-events: none; z-index: 2; }
-.drop-confirm { position: fixed; transform: translateX(-50%); z-index: 300; display: flex; gap: 6px; background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 4px 6px; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+/* z-index más alto que el bloque arrastrado (que queda en 3000, sin resetear, mientras se
+   confirma el drop) — si no, el clic en ✓/✗ cae sobre el bloque de abajo en vez del botón. */
+.drop-confirm { position: fixed; transform: translateX(-50%); z-index: 4000; display: flex; gap: 6px; background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 4px 6px; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
 .drop-confirm button { border: none; background: var(--paper-2); font-size: 16px; line-height: 1; cursor: pointer; padding: 4px 10px; border-radius: 14px; }
 .drop-confirm button.ok { background: var(--ok-light); color: #0d5c2a; }
 .drop-confirm button.cancel { background: #fee2e2; color: #b91c1c; }
@@ -584,7 +586,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 63; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 64; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
