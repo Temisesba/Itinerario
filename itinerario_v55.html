@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 78; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 79; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2819,6 +2819,20 @@ function totalesPorApartado() {
   });
   return cats;
 }
+// Desglose de transporte por medio (avión/bus/carro/ferry/tren/etc.) — cuántos trayectos y
+// cuánto costó cada uno, acotado a los días del proyecto actual.
+const TIPO_RESUMEN_LABEL = { vuelo: '✈️ Aviones', tren: '🚆 Tren/monorriel', bus: '🚌 Camiones/autobuses', carro: '🚕 Taxis/carros', ferry: '⛴️ Ferry', caminando: '🚶 Caminando', bicicleta: '🚲 Bicicleta', otro: '🚏 Otro' };
+function transporteResumenPorTipo() {
+  const diaIds = new Set(diasFiltrados().map(d => d.id));
+  const porTipo = {};
+  itinerario.transporte.filter(t => diaIds.has(t.diaId)).forEach(t => {
+    const tipo = t.tipo || 'otro';
+    if (!porTipo[tipo]) porTipo[tipo] = { cantidad: 0, total: 0 };
+    porTipo[tipo].cantidad++;
+    porTipo[tipo].total += (gastosVinculados[t.id]||[]).filter(g => !g.cotizacion).reduce((s,g) => s + (Number(g.costo)||0), 0);
+  });
+  return porTipo;
+}
 
 // ── Balance compartido (motor adaptado de v31 de Compras_v46.html, acotado a este proyecto) ──
 // Todos los gastos reales (no cotización) del proyecto actual, una sola vez cada uno — a
@@ -2979,6 +2993,11 @@ function abrirResumenImprimible() {
   const catLabel = { hospedaje: '🏨 Hospedaje', transporte: '🚆 Transporte', comida: '🍴 Comida/Restaurantes', eventos: '🎪 Eventos', otros: '💴 Otros' };
   const totalesHtml = Object.keys(cats).filter(k => cats[k] > 0).map(k => `
     <tr><td>${catLabel[k]}</td><td class="pr-costo">¥${Math.round(cats[k]).toLocaleString()}</td></tr>`).join('');
+  const transPorTipo = transporteResumenPorTipo();
+  const ordenTipos = ['vuelo','tren','bus','ferry','carro','caminando','bicicleta','otro'];
+  const transTotalGeneral = Object.values(transPorTipo).reduce((s,v) => s + v.total, 0);
+  const transTipoHtml = ordenTipos.filter(t => transPorTipo[t]).map(t => `
+    <tr><td>${TIPO_RESUMEN_LABEL[t] || t}</td><td>${transPorTipo[t].cantidad} trayecto${transPorTipo[t].cantidad===1?'':'s'}</td><td class="pr-costo">¥${Math.round(transPorTipo[t].total).toLocaleString()}</td></tr>`).join('');
   // "Para después / si hay tiempo": lugares sin día asignado + lo que quedó con día pero sin
   // hora (movido acá desde la tabla del día de arriba).
   const paraDespues = [
@@ -3034,6 +3053,15 @@ function abrirResumenImprimible() {
           <tfoot><tr><td>Total del viaje</td><td class="pr-costo">¥${Math.round(granTotal).toLocaleString()}</td></tr></tfoot>
         </table>
       </div>
+      ${transTipoHtml ? `
+      <div class="pr-dia">
+        <h2>🚆 Transporte por medio</h2>
+        <table class="pr-tabla">
+          <thead><tr><th>Medio</th><th>Cantidad</th><th style="text-align:right">Total</th></tr></thead>
+          <tbody>${transTipoHtml}</tbody>
+          <tfoot><tr><td colspan="2">Total registrado</td><td class="pr-costo">¥${Math.round(transTotalGeneral).toLocaleString()}</td></tr></tfoot>
+        </table>
+      </div>` : ''}
       ${paraDespues.length ? `
       <div class="pr-dia">
         <h2>⏳ Para después / si hay tiempo</h2>
