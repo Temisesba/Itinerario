@@ -586,7 +586,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 67; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 68; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -4538,7 +4538,7 @@ function openEventoForm(id, diaId) {
       <div class="field">
         <label>Programa (PDF o foto) <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional — subilo primero y "Sugerencias IA" lo lee para llenar todo)</span></label>
         <div id="fEventoProgramaActual" style="margin-bottom:6px; display:flex; gap:6px; flex-wrap:wrap">${ev && ev.programaUrl ? `<a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a>` : ''}</div>
-        <input type="file" accept="application/pdf,image/*" capture="environment" onchange="subirProgramaEvento('${ev ? ev.id : ''}', this)">
+        <input type="file" accept="application/pdf,image/*" onchange="subirProgramaEvento('${ev ? ev.id : ''}', this)">
       </div>
       <div class="field"><label>Nombre del evento <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(o dejalo vacío si subiste el programa — la IA lo completa)</span></label><input type="text" id="fEventoNombre" value="${escHtml(ev ? ev.nombre : '')}" placeholder="Ej: 16° Festival del Globo"></div>
       <div style="display:flex; gap:6px; margin:6px 0 14px;">
@@ -8240,7 +8240,7 @@ init();
       <div class="g-field">
         <label>Foto del ticket</label>
         <div class="g-uzone" id="gUzone" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="gHandleDrop(event)">
-          <input type="file" accept="image/*" capture="environment" id="gTicketInput" onchange="gHandleFile(event)">
+          <input type="file" accept="image/*" id="gTicketInput" onchange="gHandleFile(event)">
           <div style="font-size:24px;margin-bottom:4px">📷</div>
           <div style="font-size:12px;color:var(--ink-2)"><strong>Toca para subir</strong> o arrastra aquí</div>
         </div>
