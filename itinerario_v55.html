@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 58; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 59; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2884,6 +2884,9 @@ function abrirResumenImprimible() {
   const personales = totalesPersonales();
   const prestamos = listaPrestamos();
   const pagosFinales = balanceSimplificar();
+  const totalCompartido = todosLosGastosReales().filter(g => g.compartido === 'Compartido').reduce((s, g) => s + (Number(g.costo) || 0), 0);
+  const compartidoPorPersona = totalCompartido / (GPEOPLE.length || 1);
+  const totalPersonalTodos = GPEOPLE.reduce((s, n) => s + (personales[n] || 0), 0);
   const puestoHtml = GPEOPLE.map(n => `<tr><td>${emojiPersona[n]||''} ${escHtml(n)}</td><td class="pr-costo">¥${Math.round(puesto[n]||0).toLocaleString()}</td></tr>`).join('');
   const personalHtml = GPEOPLE.map(n => `<tr><td>${emojiPersona[n]||''} ${escHtml(n)}</td><td class="pr-costo">¥${Math.round(personales[n]||0).toLocaleString()}</td></tr>`).join('');
   const overlay = document.createElement('div');
@@ -2937,6 +2940,11 @@ function abrirResumenImprimible() {
         <table class="pr-tabla">
           <thead><tr><th>Cuánto puso cada quien</th><th>Total</th></tr></thead>
           <tbody>${puestoHtml}</tbody>
+          <tfoot>
+            <tr><td>Total compartido</td><td class="pr-costo">¥${Math.round(totalCompartido).toLocaleString()}</td></tr>
+            <tr><td>Le toca a cada uno</td><td class="pr-costo">¥${Math.round(compartidoPorPersona).toLocaleString()}</td></tr>
+            <tr><td>Total personal</td><td class="pr-costo">¥${Math.round(totalPersonalTodos).toLocaleString()}</td></tr>
+          </tfoot>
         </table>
         ${prestamos.length ? `
         <div style="margin-top:10px">
