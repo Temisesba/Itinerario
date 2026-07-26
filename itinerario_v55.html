@@ -586,7 +586,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 68; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 69; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1645,17 +1645,21 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
   // v57: la nota ya se mostraba, pero pegada al concepto en la misma línea con ellipsis —
   // como el concepto es igual para todos los gastos de un mismo item, lo que de verdad
   // varía (la nota) quedaba tapado. Ahora va en su propia línea, siempre visible.
+  const comoLabel = { Compartido: 'Compartido', VariosPagan: 'Varios pagan', Prestamo: 'Préstamo', Devolucion: 'Devolución', Personal: 'Personal', Cotizacion: 'Cotización' };
   const buildRows = (rows) => rows.map(g => {
     const nProds = gAllProds.filter(p => p.compraId === g.id).length;
+    const como = comoLabel[g.compartido] || '';
+    const pagaTxt = g.quien_paga ? `Paga: ${g.quien_paga}` : '';
     return `<div style="${rs}">
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')} · ${escHtml(g.quien_paga||'')}${nProds?' <span class="g-chip" style="font-size:9px;padding:1px 6px">🧾 '+nProds+'</span>':''}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')}${nProds?' <span class="g-chip" style="font-size:9px;padding:1px 6px">🧾 '+nProds+'</span>':''}</span>
       <div style="display:flex;gap:3px;align-items:center;flex-shrink:0;margin-left:6px">
         <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
         <button class="icon-btn" style="font-size:12px" onclick="editarGastoVisor('${tipo}','${itemId}','${g.id}')">✏️</button>
         <button class="icon-btn" style="font-size:12px" onclick="eliminarGastoResumen('${itemId}','${g.id}')">🗑</button>
       </div>
     </div>
+    ${(pagaTxt||como) ? `<div style="font-size:10.5px;color:var(--ink-3)">💳 ${escHtml(pagaTxt)}${pagaTxt&&como?' · ':''}${escHtml(como)}</div>` : ''}
     ${g.notas ? `<div style="font-size:10.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📌 ${escHtml(g.notas)}</div>` : ''}
   </div>`;
   }).join('');
