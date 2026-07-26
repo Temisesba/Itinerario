@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 79; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 80; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -3045,6 +3045,19 @@ function abrirResumenImprimible() {
     <div class="pr-contenido oculta-direccion oculta-diario oculta-ia oculta-desglose">
       <h1>${currentProyecto ? escHtml(currentProyecto) : 'Resumen del viaje'}</h1>
       ${diasHtml}
+      ${paraDespues.length ? `
+      <div class="pr-dia">
+        <h2>⏳ Para después / si hay tiempo</h2>
+        <table class="pr-tabla">
+          <thead><tr><th>Lugar</th><th>Notas</th></tr></thead>
+          <tbody>${paraDespuesHtml}</tbody>
+        </table>
+      </div>` : ''}
+      ${notaProyectoCargada ? `
+      <div class="pr-dia">
+        <h2>📝 Notas generales del viaje</h2>
+        <div class="pr-notagen">${escHtml(notaProyectoCargada)}</div>
+      </div>` : ''}
       <div class="pr-dia">
         <h2>💴 Total final por apartado</h2>
         <table class="pr-tabla">
@@ -3061,19 +3074,6 @@ function abrirResumenImprimible() {
           <tbody>${transTipoHtml}</tbody>
           <tfoot><tr><td colspan="2">Total registrado</td><td class="pr-costo">¥${Math.round(transTotalGeneral).toLocaleString()}</td></tr></tfoot>
         </table>
-      </div>` : ''}
-      ${paraDespues.length ? `
-      <div class="pr-dia">
-        <h2>⏳ Para después / si hay tiempo</h2>
-        <table class="pr-tabla">
-          <thead><tr><th>Lugar</th><th>Notas</th></tr></thead>
-          <tbody>${paraDespuesHtml}</tbody>
-        </table>
-      </div>` : ''}
-      ${notaProyectoCargada ? `
-      <div class="pr-dia">
-        <h2>📝 Notas generales del viaje</h2>
-        <div class="pr-notagen">${escHtml(notaProyectoCargada)}</div>
       </div>` : ''}
       <div class="pr-dia">
         <h2 style="display:flex; justify-content:space-between; align-items:baseline; gap:10px">
