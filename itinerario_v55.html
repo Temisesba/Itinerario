@@ -586,7 +586,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 73; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 74; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1152,6 +1152,8 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   const prev = editGastoId
     ? ((itemId && gastosVinculados[itemId] && gastosVinculados[itemId].find(g=>g.id===editGastoId))
       || (gastosDelDia[diaIdInicial] && gastosDelDia[diaIdInicial].find(g=>g.id===editGastoId))
+      || Object.values(gastosVinculados).flat().find(g=>g.id===editGastoId)
+      || Object.values(gastosDelDia).flat().find(g=>g.id===editGastoId)
       || null)
     : null;
   const diaEfectivo = diaIdInicial || (prev && prev.diaItinerario) || currentDiaId || '';
@@ -1596,6 +1598,20 @@ async function gGuardar() {
       || Object.values(gastosVinculados).flat().find(g => g.id === editId)
       || Object.values(gastosDelDia).flat().find(g => g.id === editId);
     if (gExist && gExist.rowIndex) editRowIndex = gExist.rowIndex;
+    // v57 fix: si se está EDITANDO (hay editId) pero la caché local no tiene ese gasto por el
+    // motivo que sea (desactualizada, una carrera con un refresh, etc.), antes esto caía en
+    // "crear uno nuevo" reusando el mismo GastoId — dejaba dos filas con el mismo GastoId y
+    // texto distinto, en vez de una sola actualizada. Ahora, antes de rendirse, se le pregunta
+    // directo al servidor cuál es la fila real de ese GastoId.
+    if (!editRowIndex) {
+      try {
+        const formBuscar = new FormData(); formBuscar.append('payload', JSON.stringify({ action: 'getGastos' }));
+        const respBuscar = await fetch(GAS_URL_GASTOS, { method: 'POST', body: formBuscar });
+        const dBuscar = await respBuscar.json();
+        const filaReal = (dBuscar.gastos || []).find(g => g.gastoId === editId);
+        if (filaReal && filaReal.rowIndex) editRowIndex = filaReal.rowIndex;
+      } catch (e) { /* si esto falla también, sigue abajo con editRowIndex en null */ }
+    }
   }
   // Varios pagan (idéntico a saveExpense() de Compras): cada quien puso lo
   // suyo, sin deuda entre ustedes — se guarda como un solo gasto con el
