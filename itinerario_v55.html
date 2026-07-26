@@ -586,7 +586,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 71; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 72; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -623,7 +623,7 @@ async function cargarGastosVinculos() {
           concepto: g.concepto || '', tienda: g.producto || g.tienda || '',
           fecha: g.fecha || '', categoria: g.categoria || '',
           notas: g.notas || '', cotizacion: (g.compartido||'').toLowerCase().includes('cotiz'),
-          foto_ticket: g.foto_ticket_url || '',
+          foto_ticket: g.foto_ticket_url || '', sesion: g.sesion || '',
           pagadores: Array.isArray(g.pagadores) ? g.pagadores : []
         };
         if (g.itemId) {
@@ -930,6 +930,32 @@ let gAllProds = [];    // catálogo: filas TipoFila='producto' del sheet de Gast
 let gProdsCargados = false;
 const GUNIDADES = ['unidad', 'pieza', 'g', 'kg', 'mg', 'ml', 'l', 'cm', 'm', 'pastilla', 'sobre'];
 const gNormTxt = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+// Lista de sesiones de Gastos disponibles para el selector — se cachea en este dispositivo y
+// solo se refresca cuando el usuario toca "🔄 Sincronizar con Gastos" en Info técnica (nunca sola).
+let gSesionesDisponibles = (() => { try { return JSON.parse(localStorage.getItem('itin_gasSesionesCache') || '[]'); } catch (e) { return []; } })();
+function gPoblarSesionSel(seleccionada) {
+  const sel = document.getElementById('gSesionSel');
+  if (!sel) return;
+  const opciones = gSesionesDisponibles.length ? gSesionesDisponibles : [GAS_SESION_GASTOS];
+  if (seleccionada && !opciones.includes(seleccionada)) opciones.unshift(seleccionada);
+  sel.innerHTML = opciones.map(s => `<option value="${escHtml(s)}" ${s === seleccionada ? 'selected' : ''}>${escHtml(s)}</option>`).join('');
+}
+async function gSincronizarConGastos() {
+  if (!requiereGasUrlGastos()) return;
+  showToast('Sincronizando con Gastos…');
+  try {
+    const form = new FormData(); form.append('payload', JSON.stringify({ action: 'getSesiones' }));
+    const resp = await fetch(GAS_URL_GASTOS, { method: 'POST', body: form });
+    const d = await resp.json();
+    if (d && d.ok && Array.isArray(d.sesiones)) {
+      gSesionesDisponibles = d.sesiones;
+      try { localStorage.setItem('itin_gasSesionesCache', JSON.stringify(gSesionesDisponibles)); } catch (e) {}
+    }
+    gSesionCards = [];
+    await gCargarTarjetas();
+    showToast('✅ Sincronizado con Gastos');
+  } catch (e) { showToast('⚠️ No se pudo sincronizar con Gastos'); }
+}
 async function gCargarTarjetas() {
   if (gSesionCards.length) return; // ya se cargaron una vez en esta sesión de uso
   try {
@@ -1108,6 +1134,7 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   gPoblarDiaItinerario(diaEfectivo);
   gPoblarAsociarA(diaEfectivo, itemId);
   gActualizarEstadoDiaItinerario();
+  gPoblarSesionSel(prev && prev.sesion ? prev.sesion : GAS_SESION_GASTOS);
   document.getElementById('gTitle').textContent = prev ? '💴 Editar gasto' : '💴 Registrar gasto';
   // v57: Fecha de compra por defecto — si el día asociado ya pasó respecto a hoy, se asume que
   // se compró ESE día (solo se está registrando tarde); si el día asociado todavía no llega,
@@ -1563,7 +1590,7 @@ async function gGuardar() {
     notas:document.getElementById('gNotas').value||'',
     categoria:document.getElementById('gCat').value||'',
     foto_ticket:document.getElementById('gStoredPhoto').value||'',
-    sesion: GAS_SESION_GASTOS,
+    sesion: (document.getElementById('gSesionSel').value || GAS_SESION_GASTOS),
     // ★ ITINERARIO — vínculo con evento del itinerario
     gastoId:   editId || ('GV-' + Date.now().toString(36).toUpperCase()),
     itemId:    itemId,
@@ -1590,7 +1617,8 @@ async function gGuardar() {
         concepto: concepto_final, tienda, fecha: body.fecha,
         fecha_captura: body.fecha_captura,
         categoria: body.categoria, notas: body.notas,
-        cotizacion: document.getElementById('gChkCot').checked
+        cotizacion: document.getElementById('gChkCot').checked,
+        sesion: body.sesion
       };
       // Si se estaba editando, primero se saca de cualquier bucket viejo (por si cambió a qué
       // item o a qué día está asociado) y luego se vuelve a meter donde corresponda ahora.
@@ -1611,7 +1639,7 @@ async function gGuardar() {
           const catalogo = gCatalogoProductos();
           const formP = new FormData();
           formP.append('payload', JSON.stringify({
-            action: 'saveProductos', sesion: GAS_SESION_GASTOS, compraId: body.gastoId, replace: true,
+            action: 'saveProductos', sesion: body.sesion, compraId: body.gastoId, replace: true,
             tienda, fecha: body.fecha, quien: gCurrentPayer,
             productos: prodsLimpios.map(p => {
               const c = catalogo[gNormTxt(p.concepto)] || {};
@@ -8086,6 +8114,7 @@ function openDevInfo() {
           <input id="fGasSesion" style="flex:1; font-size:12px" placeholder="Ej: Lot &amp; Temis" value="${escHtml(GAS_SESION_GASTOS)}">
           <button class="btn-mini" onclick="guardarGasSesion()">💾 Guardar</button>
         </div>
+        <button class="btn-mini" style="margin-top:6px" onclick="gSincronizarConGastos()">🔄 Sincronizar con Gastos <span style="text-transform:none; font-weight:400; font-size:11px; color:var(--ink-3)">(trae sesiones y tarjetas nuevas — solo cuando lo toques)</span></button>
       </div>
       <div class="field"><label>Proyecto / viaje activo</label><input readonly value="${escHtml(currentProyecto || '(sin proyecto)')}"></div>
       <div class="field"><label>Conteo de datos cargados</label><textarea readonly style="font-size:11.5px; min-height:84px">Días: ${itinerario.dias.length}\nTransporte: ${itinerario.transporte.length}\nHospedaje: ${itinerario.hospedaje.length}\nPendientes: ${itinerario.pendientes.length}</textarea></div>
@@ -8264,6 +8293,10 @@ init();
       <datalist id="gListProdNombres"></datalist>
       <datalist id="gListProdCats"></datalist>
       <datalist id="gListProdLugares"></datalist>
+      <div class="g-field">
+        <label>Sesión</label>
+        <select id="gSesionSel" class="g-select"></select>
+      </div>
       <div class="g-field">
         <label>Foto del ticket</label>
         <div class="g-uzone" id="gUzone" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="gHandleDrop(event)">
