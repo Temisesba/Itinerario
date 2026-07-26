@@ -586,12 +586,16 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 70; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 71; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
 // sola vez por dispositivo desde "⚙ Info técnica" y queda en localStorage.
 let GAS_URL_GASTOS = localStorage.getItem('itin_gasUrlGastos') || '';
+// A qué sesión de la app de Gastos se etiquetan los gastos creados desde Itinerario — solo
+// organiza cómo se ven ahí (y qué nombres trae para "¿Quién paga?"); no afecta en nada la
+// visibilidad dentro de Itinerario, que siempre filtra por Proyecto, no por Sesión.
+let GAS_SESION_GASTOS = localStorage.getItem('itin_gasSesion') || 'Lot & Temis';
 const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
 const GASTOS_CAT_DEFAULT = '✈️ Viajes';
 let gastosVinculados = {}; // { [itemId]: [{ id, costo, moneda, ... }] } — persiste en GASTOS_VINCULOS sheet
@@ -1559,6 +1563,7 @@ async function gGuardar() {
     notas:document.getElementById('gNotas').value||'',
     categoria:document.getElementById('gCat').value||'',
     foto_ticket:document.getElementById('gStoredPhoto').value||'',
+    sesion: GAS_SESION_GASTOS,
     // ★ ITINERARIO — vínculo con evento del itinerario
     gastoId:   editId || ('GV-' + Date.now().toString(36).toUpperCase()),
     itemId:    itemId,
@@ -1606,7 +1611,7 @@ async function gGuardar() {
           const catalogo = gCatalogoProductos();
           const formP = new FormData();
           formP.append('payload', JSON.stringify({
-            action: 'saveProductos', sesion: 'Principal', compraId: body.gastoId, replace: true,
+            action: 'saveProductos', sesion: GAS_SESION_GASTOS, compraId: body.gastoId, replace: true,
             tienda, fecha: body.fecha, quien: gCurrentPayer,
             productos: prodsLimpios.map(p => {
               const c = catalogo[gNormTxt(p.concepto)] || {};
@@ -8044,6 +8049,12 @@ function guardarGasUrlGastos() {
   showToast(url ? 'URL de Gastos guardada ✦' : 'URL de Gastos borrada');
   cargarGastosVinculos();
 }
+function guardarGasSesion() {
+  const s = (document.getElementById('fGasSesion').value || '').trim();
+  GAS_SESION_GASTOS = s || 'Lot & Temis';
+  try { localStorage.setItem('itin_gasSesion', GAS_SESION_GASTOS); } catch (e) {}
+  showToast('Sesión de Gastos guardada ✦');
+}
 function requiereGasUrlGastos() {
   if (GAS_URL_GASTOS) return true;
   showToast('🔌 Configurá la URL de Gastos en ⚙ Info técnica primero');
@@ -8067,6 +8078,13 @@ function openDevInfo() {
         <div style="display:flex; gap:8px; align-items:center">
           <input id="fGasUrlGastos" style="flex:1; font-size:10.5px" placeholder="https://script.google.com/macros/s/.../exec" value="${escHtml(GAS_URL_GASTOS)}">
           <button class="btn-mini" onclick="guardarGasUrlGastos()">💾 Guardar</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Sesión de Gastos <span style="text-transform:none; font-weight:400; font-size:11px; color:var(--ink-3)">(a cuál sesión de la app de Gastos se etiquetan estos gastos — solo organiza cómo se ven ahí, no afecta la visibilidad acá en Itinerario)</span></label>
+        <div style="display:flex; gap:8px; align-items:center">
+          <input id="fGasSesion" style="flex:1; font-size:12px" placeholder="Ej: Lot &amp; Temis" value="${escHtml(GAS_SESION_GASTOS)}">
+          <button class="btn-mini" onclick="guardarGasSesion()">💾 Guardar</button>
         </div>
       </div>
       <div class="field"><label>Proyecto / viaje activo</label><input readonly value="${escHtml(currentProyecto || '(sin proyecto)')}"></div>
