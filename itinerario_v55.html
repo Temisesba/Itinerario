@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 57; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 58; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1569,7 +1569,7 @@ async function gGuardar() {
     const form=new FormData(); form.append('payload',JSON.stringify(body));
     const resp=await fetch(GAS_URL_GASTOS,{method:'POST',body:form});
     const d=await resp.json();
-    if(d.ok!==false) {
+    if(d && d.ok === true) {
       // Objeto local para mostrar en memoria (moneda = moneda de pago)
       const nuevo = {
         id: body.gastoId,
@@ -7868,25 +7868,31 @@ function tablaGastosSeccion() {
   // Mismo filtro "Vista" (día / varios días / todos) que el resto de la tabla.
   const diasFiltroG = tablaVistaModo === 'todos' ? diasFiltrados() : diasFiltrados().filter(d => tablaDiasSel.has(d.id));
   const diaIdsFiltroG = new Set(diasFiltroG.map(d => d.id));
+  // v57 fix: antes solo se recorría gastosVinculados — los gastos SIN item asociado (solo con
+  // "Día en itinerario" directo, ej. un Lawson o un puesto de comida suelto) nunca aparecían acá,
+  // aunque sí se vieran bien en "Gastos del día" del panel lateral. Ahora se juntan ambas fuentes,
+  // igual que ya hace gastosDeEsteDia()/todosLosGastosReales(), sin repetir el mismo gasto dos veces.
   const filas = [];
-  Object.entries(gastosVinculados).forEach(([itemId, gastos]) => {
-    gastos.forEach(g => {
-      const pend = itinerario.pendientes.find(p => p.id === itemId);
-      const trans = itinerario.transporte.find(t => t.id === itemId);
-      const hosp = itinerario.hospedaje.find(h => h.id === itemId);
-      if (tablaVistaModo !== 'todos') {
-        const perteneceDia = diaIdsFiltroG.has(g.diaItinerario)
-          || (pend && diaIdsFiltroG.has(pend.diaId))
-          || (trans && diaIdsFiltroG.has(trans.diaId))
-          || (hosp && (diaIdsFiltroG.has(hosp.diaIdInicio) || diaIdsFiltroG.has(hosp.diaIdFin)));
-        if (!perteneceDia) return;
-      }
-      const nombre = pend ? pend.nombre : trans ? `${trans.origen} → ${trans.destino}` : hosp ? hosp.nombre : itemId;
-      const categoria = pend ? (pend.esRestaurante ? '🍴 Restaurante' : '📌 Lugar') : trans ? '🚆 Transporte' : hosp ? '🏨 Hospedaje' : '?';
-      const visorFn = pend ? 'Pendiente' : trans ? 'Transporte' : 'Hospedaje';
-      filas.push({ ...g, nombre, visorFn, itemId });
-    });
-  });
+  const vistosTablaGastos = new Set();
+  const procesarGastoTabla = (itemId, g) => {
+    if (vistosTablaGastos.has(g.id)) return; vistosTablaGastos.add(g.id);
+    const pend = itemId ? itinerario.pendientes.find(p => p.id === itemId) : null;
+    const trans = itemId ? itinerario.transporte.find(t => t.id === itemId) : null;
+    const hosp = itemId ? itinerario.hospedaje.find(h => h.id === itemId) : null;
+    if (tablaVistaModo !== 'todos') {
+      const perteneceDia = diaIdsFiltroG.has(g.diaItinerario)
+        || (pend && diaIdsFiltroG.has(pend.diaId))
+        || (trans && diaIdsFiltroG.has(trans.diaId))
+        || (hosp && (diaIdsFiltroG.has(hosp.diaIdInicio) || diaIdsFiltroG.has(hosp.diaIdFin)));
+      if (!perteneceDia) return;
+    }
+    const nombre = pend ? pend.nombre : trans ? `${trans.origen} → ${trans.destino}` : hosp ? hosp.nombre : (g.concepto || '(sin item)');
+    const categoria = pend ? (pend.esRestaurante ? '🍴 Restaurante' : '📌 Lugar') : trans ? '🚆 Transporte' : hosp ? '🏨 Hospedaje' : '💴 General';
+    const visorFn = pend ? 'Pendiente' : trans ? 'Transporte' : hosp ? 'Hospedaje' : '';
+    filas.push({ ...g, nombre, visorFn, itemId: itemId || '' });
+  };
+  Object.entries(gastosVinculados).forEach(([itemId, gastos]) => gastos.forEach(g => procesarGastoTabla(itemId, g)));
+  Object.values(gastosDelDia).forEach(gastos => gastos.forEach(g => procesarGastoTabla(g.itemId || '', g)));
   if (filas.length === 0) return '';
   if (!window._gastoCols) window._gastoCols = { categoria:1, concepto:1, fecha:1, costo:1, quien_paga:1, notas:1, compartido:0 };
   const _gastoCols = window._gastoCols;
