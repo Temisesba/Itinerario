@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 81; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 82; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2743,7 +2743,9 @@ function construirTimelineDia(dia) {
     if (!p.horaInicio) { extras.push({ nombre: p.nombre || '(sin nombre)', notas: p.notasPrevias || '' }); return; }
     filas.push({
       hora: p.horaInicio, nombre: (p.esRestaurante ? '🍴 ' : '📌 ') + (p.nombre || '(sin nombre)'),
-      notas: p.notasPrevias || '', direccion: p.direccion || '', diario: p.notasDiario || '', iaComentario: p.sugerenciasIA || '',
+      notas: p.notasPrevias || '', direccion: p.direccion || '',
+      diario: `${p.evaluacion ? '⭐'.repeat(p.evaluacion) + ' ' : ''}${p.notasDiario || ''}`.trim(),
+      iaComentario: p.sugerenciasIA || '',
       itemId: p.id
     });
   });
@@ -3891,6 +3893,32 @@ async function cicloTipoComidaVisor(id, btnEl) {
   await postGAS({ action: 'updatePendiente', id, tipoComida: nuevo });
   renderSemana(); renderPoolPanel();
 }
+// ── Evaluación de lugares (5 estrellas) — llenado rápido desde el visor, detalle en Diario ──
+function renderEstrellas(valor, onclickFn) {
+  return [1,2,3,4,5].map(n => `<span onclick="${onclickFn(n)}" style="cursor:pointer;font-size:19px;line-height:1">${n<=valor?'⭐':'☆'}</span>`).join('');
+}
+async function setEvaluacionPendienteRapido(id, n) {
+  const p = itinerario.pendientes.find(x => x.id === id); if (!p) return;
+  p.evaluacion = (p.evaluacion === n) ? 0 : n; // tocar la misma estrella otra vez la quita
+  const box = document.getElementById('visorEstrellas-' + id);
+  if (box) box.innerHTML = renderEstrellas(p.evaluacion, m => `setEvaluacionPendienteRapido('${id}',${m})`);
+  await postGAS({ action: 'updatePendiente', id, evaluacion: p.evaluacion });
+  renderSemana(); renderPoolPanel();
+}
+function fPendSetEstrella(n) {
+  const actual = Number(document.getElementById('fPendEvaluacion').value) || 0;
+  const nuevo = actual === n ? 0 : n; // tocar la misma estrella otra vez la quita
+  document.getElementById('fPendEvaluacion').value = nuevo;
+  document.getElementById('fPendEstrellas').innerHTML = renderEstrellas(nuevo, m => `fPendSetEstrella(${m})`);
+}
+function abrirDiarioPendiente(id, diaId) {
+  modalClose();
+  openPendienteForm(id, diaId);
+  setTimeout(() => {
+    const el = document.getElementById('fPendDiario');
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+  }, 150);
+}
 async function togglePrioridadPendiente(id, btnEl) {
   const nuevo = btnEl.dataset.pri !== '1';
   btnEl.dataset.pri = nuevo ? '1' : '0';
@@ -4011,6 +4039,11 @@ function abrirVisorPendiente(id) {
       ${(p.horarioApertura || p.horarioCierre) ? `<div class="visor-row">🕐 Abre: ${escHtml(p.horarioApertura || '?')} · Cierra: ${escHtml(p.horarioCierre || '?')}</div>` : ''}
       ${coordsMini(p.lat, p.lng)}
       ${p.notasPrevias ? `<div class="visor-block"><b>📌 Notas</b><br>${escHtml(p.notasPrevias)}</div>` : ''}
+      <div class="visor-row" style="display:flex; align-items:center; gap:8px">
+        <span style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em">Evaluación</span>
+        <span id="visorEstrellas-${p.id}">${renderEstrellas(p.evaluacion || 0, n => `setEvaluacionPendienteRapido('${p.id}',${n})`)}</span>
+        <button class="icon-btn" title="Escribir en el diario" onclick="abrirDiarioPendiente('${p.id}', ${p.diaId ? `'${p.diaId}'` : 'null'})">＋</button>
+      </div>
       ${p.notasDiario ? `<div class="visor-block"><b>📓 Diario</b><br>${escHtml(p.notasDiario)}</div>` : ''}
       ${(p.fotos && p.fotos.length) ? `<div class="fotos-row" style="margin-bottom:10px">${p.fotos.map((f, i) => `<img class="foto-thumb" src="${f}" onclick="abrirLightboxPendiente('${p.id}', ${i})">`).join('')}</div>` : ''}
       ${p.sugerenciasIA ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(p.sugerenciasIA)}</div>` : ''}
@@ -7332,6 +7365,11 @@ function openPendienteForm(id, diaId) {
         ${reservadoSelectHtml('fPendReservado', p ? p.reservado : 'pendiente')}
       </div>
       <div class="field"><label>Nota previa (recordatorio antes de ir)</label><textarea id="fPendPrevias" placeholder="Ej: no olvides preguntar por...">${escHtml(p ? p.notasPrevias : '')}</textarea></div>
+      <div class="field">
+        <label>Evaluación</label>
+        <div id="fPendEstrellas" style="padding:4px 0">${renderEstrellas(p ? (p.evaluacion||0) : 0, n => `fPendSetEstrella(${n})`)}</div>
+        <input type="hidden" id="fPendEvaluacion" value="${p ? (p.evaluacion||0) : 0}">
+      </div>
       <div class="field"><label>Diario (¿qué tal estuvo?)</label><textarea id="fPendDiario">${escHtml(p ? p.notasDiario : '')}</textarea></div>
       <div class="field">
         <label>Fotos</label>
@@ -7408,6 +7446,7 @@ async function guardarPendiente() {
     antojo: document.getElementById('fPendAntojo').value.trim(),
     prioritaria: document.getElementById('fPendPrioritaria').checked,
     realizado: document.getElementById('fPendRealizado').checked,
+    evaluacion: Number(document.getElementById('fPendEvaluacion').value) || 0,
     duracionBloqueada: document.getElementById('fPendDurBloqueada').checked,
     esRestaurante: document.getElementById('fPendEsRestaurante').checked
   };
