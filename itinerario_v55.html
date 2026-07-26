@@ -586,7 +586,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 76; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 77; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2241,7 +2241,7 @@ function formatDuracion(min) {
 }
 
 // ── Reservado: tri-estado compartido por Transporte, Hospedaje y Pendientes ──
-const RESERVADO_ICON = { si: '🔒', pendiente: '🔓', no_requiere: '🍃' };
+const RESERVADO_ICON = { si: '🔒', pendiente: '⏳', no_requiere: '🍃' };
 const RESERVADO_LABEL = { si: 'Ya se reservó', pendiente: 'Falta reservar', no_requiere: 'No requiere' };
 function reservadoSelectHtml(id, value) {
   const v = value || 'pendiente';
@@ -5804,7 +5804,7 @@ function renderSemana() {
         <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#f3e8ff; border:1px solid #c4b5fd; display:inline-block"></span>🎪 Evento</span>
         <span style="display:flex; align-items:center; gap:3px"><span style="width:10px; height:10px; border-radius:2px; background:#dcf5e3; border:1px solid #7fc99a; display:inline-block"></span>🍳 Des. &nbsp;🍜 Com. &nbsp;🍷 Cena &nbsp;🍪 Col.</span>
         <span style="display:flex; align-items:center; gap:3px">🔒 Reservado</span>
-        <span style="display:flex; align-items:center; gap:3px">🔓 Pendiente</span>
+        <span style="display:flex; align-items:center; gap:3px">⏳ Pendiente</span>
         <span style="display:flex; align-items:center; gap:3px">🍃 No requiere</span>
         <span style="display:flex; align-items:center; gap:3px">💸 Con pago asociado</span>
         <span style="display:flex; align-items:center; gap:3px">✅ Realizado</span>
