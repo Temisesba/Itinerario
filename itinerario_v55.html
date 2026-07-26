@@ -484,14 +484,6 @@ body.drag-locked .cal-resize-handle { display: none; }
   </div>
 
   <div class="tabla-wrap" id="viewTabla" style="display:none">
-    <div style="position:relative; margin-bottom:8px">
-      <button class="btn-mini" onclick="toggleMapaMenu('tablaVistaMenu', event)">🗓️ Vista ▾</button>
-      <div class="mapa-cats" id="tablaVistaMenu">
-        <label><input type="radio" name="tablaVista" value="dia" onchange="setTablaVista('dia')"> Por día</label>
-        <label><input type="radio" name="tablaVista" value="multi" onchange="setTablaVista('multi')"> Más de un día</label>
-        <label><input type="radio" name="tablaVista" value="todos" checked onchange="setTablaVista('todos')"> Todos</label>
-      </div>
-    </div>
     <div id="tablaHost"></div>
   </div>
 
@@ -592,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 56; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 57; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -7737,7 +7729,6 @@ function tablaSeccion(tabla, titulo, rows, mapFn) {
 }
 
 function renderTabla() {
-  syncTablaVistaRadios();
   const host = document.getElementById('tablaHost');
   const dias = diasFiltrados();
   const diaIds = new Set(dias.map(d => d.id));
@@ -7777,6 +7768,14 @@ function renderTabla() {
         <span style="font-size:12px; color:var(--ink-3)">→</span>
         <input id="tablaFechaHasta" type="date" value="${escHtml(tablaFechaHasta)}" oninput="renderTabla()" style="padding:6px 8px; border:1px solid var(--line); border-radius:20px; font-size:12px; font-family:var(--font-sans); outline:none; background:${tablaFechaHasta?'var(--gold-light)':''}; min-width:0">
         ${(tablaFechaDesde||tablaFechaHasta) ? `<button class="btn-mini" onclick="document.getElementById('tablaFechaDesde').value=''; document.getElementById('tablaFechaHasta').value=''; renderTabla()" style="white-space:nowrap">✕ Fechas</button>` : ''}
+      </div>
+      <div style="position:relative">
+        <button class="btn-mini" onclick="toggleMapaMenu('tablaVistaMenu', event)">🗓️ Vista ▾</button>
+        <div class="mapa-cats" id="tablaVistaMenu">
+          <label><input type="radio" name="tablaVista" value="dia" onchange="setTablaVista('dia')"> Por día</label>
+          <label><input type="radio" name="tablaVista" value="multi" onchange="setTablaVista('multi')"> Más de un día</label>
+          <label><input type="radio" name="tablaVista" value="todos" checked onchange="setTablaVista('todos')"> Todos</label>
+        </div>
       </div>
       ${(busqueda||tablaFechaDesde||tablaFechaHasta) ? `<button class="btn-mini" onclick="['tablaBusqueda','tablaFechaDesde','tablaFechaHasta'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''}); renderTabla()">✕ Todo</button>` : ''}
     </div>` +
@@ -7826,6 +7825,7 @@ function renderTabla() {
       };
     }) +
     tablaGastosSeccion();
+  syncTablaVistaRadios();
 }
 
 function toggleGastoSuma(id) {
