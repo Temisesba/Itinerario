@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 86; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 87; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -7390,7 +7390,7 @@ function openPendienteForm(id, diaId) {
         <div class="field"><label>🕐 Hora de cierre del lugar</label><input type="time" id="fPendHorarioCierre" value="${p && p.horarioCierre ? p.horarioCierre : ''}"></div>
       </div>
 
-      <div style="background:#f0f2ed; border:1px solid #d3d9cb; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+      <div style="background:#f4f8dc; border:1px solid #dcea9e; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
         <div class="row-3" style="align-items:flex-end; margin-bottom:0">
           <div class="field" style="margin-bottom:0"><label>¿Es un restaurante?</label>
             <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; padding-top:8px">
@@ -7411,7 +7411,7 @@ function openPendienteForm(id, diaId) {
         </div>
       </div>
 
-      <div style="background:#eef0f2; border:1px solid #cfd6dc; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+      <div style="background:#fdf2d0; border:1px solid #f2dd93; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
         <div class="row-3">
           <div class="field" style="margin-bottom:0"><label>Día</label>
             <select id="fPendDia"><option value="">Sin programar (para después)</option>
