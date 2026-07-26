@@ -421,6 +421,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 .pr-contenido.oculta-direccion .pr-col-direccion,
 .pr-contenido.oculta-diario .pr-col-diario,
 .pr-contenido.oculta-ia .pr-col-ia,
+.pr-contenido.oculta-desglose .pr-col-desglose,
 .pr-contenido.oculta-costo .pr-col-costo { display: none; }
 .pr-contenido { max-width: 760px; margin: 0 auto; padding: 20px 24px 60px; font-family: var(--font-sans); color: var(--ink); }
 .pr-contenido h1 { font-family: var(--font-serif); font-size: 24px; margin: 0 0 18px; }
@@ -586,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 77; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 78; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2314,12 +2315,13 @@ function getCalendarBlocks(diaId) {
     if (p.diaId !== diaId) return;
     const ini = hhmmToMin(p.horaInicio), fin = hhmmToMin(p.horaFin);
     if (ini === null || fin === null) return;
-    const icono = RESERVADO_ICON[p.reservado || 'pendiente'];
+    const icono = RESERVADO_ICON[p.reservado || 'pendiente'] + ' ';
     const comida = p.tipoComida ? (TIPO_COMIDA_ICON[p.tipoComida] || '') + ' ' : '';
     const estrella = p.prioritaria ? '⭐ ' : '';
     const check = p.realizado ? '✅ ' : '';
     const gasto = (gastosVinculados[p.id]||[]).some(g => !g.cotizacion) ? '💸 ' : '';
-    blocks.push({ id: p.id, kind: 'pendiente', esComida: !!(p.tipoComida || p.esRestaurante || p.antojo), esPrioritaria: !!p.prioritaria, esRealizado: !!p.realizado, duracionBloqueada: !!p.duracionBloqueada, notaPrevia: p.notasPrevias || '', sugerenciasIA: p.sugerenciasIA || '', title: `${check}${estrella}${gasto}${comida}${icono} ` + (p.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+    // Orden: realizado, reservación, pago asociado, y el resto (prioritaria, comida).
+    blocks.push({ id: p.id, kind: 'pendiente', esComida: !!(p.tipoComida || p.esRestaurante || p.antojo), esPrioritaria: !!p.prioritaria, esRealizado: !!p.realizado, duracionBloqueada: !!p.duracionBloqueada, notaPrevia: p.notasPrevias || '', sugerenciasIA: p.sugerenciasIA || '', title: `${check}${icono}${gasto}${estrella}${comida}` + (p.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
   });
   itinerario.transporte.forEach(t => {
     if (t.diaId !== diaId) return;
@@ -2329,11 +2331,12 @@ function getCalendarBlocks(diaId) {
     if (!op) return;
     const ini = hhmmToMin(op.salida), fin = hhmmToMin(op.llegada);
     if (ini === null || fin === null) return;
-    const icono = RESERVADO_ICON[t.reservado || 'pendiente'];
-    const emoji = tipoEmoji(t.tipo);
+    const icono = RESERVADO_ICON[t.reservado || 'pendiente'] + ' ';
+    const emoji = tipoEmoji(t.tipo) + ' ';
     const checkT = t.realizado ? '✅ ' : '';
     const gastoT = (gastosVinculados[t.id]||[]).some(g => !g.cotizacion) ? '💸 ' : '';
-    blocks.push({ id: t.id, kind: 'transporte', esRealizado: !!t.realizado, title: `${checkT}${gastoT}${emoji} ${icono} ` + (TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''), ini, fin: Math.max(fin, ini + 15) });
+    // Orden: realizado, reservación, pago asociado, y el resto (ícono del tipo de transporte).
+    blocks.push({ id: t.id, kind: 'transporte', esRealizado: !!t.realizado, title: `${checkT}${icono}${gastoT}${emoji}` + (TIPO_LABEL[t.tipo]?.split(' ').slice(1).join(' ') || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''), ini, fin: Math.max(fin, ini + 15) });
   });
   itinerario.eventos.forEach(ev => {
     (ev.sedes || []).forEach(act => {
@@ -2780,16 +2783,22 @@ function construirTimelineDia(dia) {
 }
 // Junta la línea de tiempo con el costo real de gastosDeEsteDia (que ya sabe repartir el hotel
 // por noche) — un gasto sin nada que calzarle en la línea de tiempo se agrega suelto al final.
+const PR_COMO_LABEL = { Compartido: 'Compartido', VariosPagan: 'Varios pagan', Prestamo: 'Préstamo', Devolucion: 'Devolución', Personal: 'Personal', Cotizacion: 'Cotización' };
+function prDesgloseDe(g) {
+  const como = PR_COMO_LABEL[g.compartido] || '';
+  const paga = g.quien_paga ? `Paga: ${g.quien_paga}` : '';
+  return [paga, como].filter(Boolean).join(' · ');
+}
 function filasImprimirDia(dia) {
   const { filas: timeline, extras } = construirTimelineDia(dia);
   const gastos = gastosDeEsteDia(dia.id).filter(g => !g.cotizacion);
   const usados = new Set();
   timeline.forEach(f => {
     const g = gastos.find(x => x.itemId && x.itemId === f.itemId && !usados.has(x.id));
-    if (g) { f.costo = Number(g.costo || 0); usados.add(g.id); }
+    if (g) { f.costo = Number(g.costo || 0); f.desglose = prDesgloseDe(g); usados.add(g.id); }
   });
   const sueltos = gastos.filter(g => !usados.has(g.id)).map(g => ({
-    hora: '', nombre: '💴 ' + (g.concepto || '(sin concepto)'), notas: g.notas || '', costo: Number(g.costo || 0)
+    hora: '', nombre: '💴 ' + (g.concepto || '(sin concepto)'), notas: g.notas || '', costo: Number(g.costo || 0), desglose: prDesgloseDe(g)
   }));
   const total = gastos.reduce((s, g) => s + Number(g.costo || 0), 0);
   return { filas: [...timeline, ...sueltos], total, extras };
@@ -2938,23 +2947,26 @@ function abrirResumenImprimible() {
         <td class="pr-hora pr-col-hora">${escHtml(f.hora || '—')}</td>
         <td class="pr-col-que">${escHtml(f.nombre || '')}</td>
         <td class="pr-notas pr-col-notas">${escHtml(f.notas || '')}</td>
+        <td class="pr-notas pr-col-desglose">${escHtml(f.desglose || '')}</td>
         <td class="pr-notas pr-col-direccion">${escHtml(f.direccion || '')}</td>
         <td class="pr-notas pr-col-diario">${escHtml(f.diario || '')}</td>
         <td class="pr-notas pr-col-ia">${escHtml(f.iaComentario || '')}</td>
         <td class="pr-costo pr-col-costo">${f.costo ? '¥' + Math.round(f.costo).toLocaleString() : ''}</td>
-      </tr>`).join('') : `<tr><td colspan="7" class="pr-vacio">Sin actividades registradas.</td></tr>`;
+      </tr>`).join('') : `<tr><td colspan="8" class="pr-vacio">Sin actividades registradas.</td></tr>`;
     return `
       <div class="pr-dia">
         <h2>${escHtml(dia.fecha || '')}${dia.zona ? ' · ' + escHtml(dia.zona) : ''}</h2>
         <table class="pr-tabla">
           <thead><tr>
             <th class="pr-col-hora">Hora</th><th class="pr-col-que">Qué se hizo</th><th class="pr-col-notas">Notas</th>
+            <th class="pr-col-desglose">Desglose de Monto</th>
             <th class="pr-col-direccion">Dirección</th><th class="pr-col-diario">Diario</th><th class="pr-col-ia">Comentario IA</th>
             <th class="pr-col-costo" style="text-align:right">Costo</th>
           </tr></thead>
           <tbody>${filasHtml}</tbody>
           <tfoot><tr>
             <td class="pr-col-hora"></td><td class="pr-col-que">Total del día</td><td class="pr-col-notas"></td>
+            <td class="pr-col-desglose"></td>
             <td class="pr-col-direccion"></td><td class="pr-col-diario"></td><td class="pr-col-ia"></td>
             <td class="pr-costo pr-col-costo">¥${Math.round(total).toLocaleString()}</td>
           </tr></tfoot>
@@ -3002,6 +3014,7 @@ function abrirResumenImprimible() {
           <label><input type="checkbox" onchange="prToggleCol('direccion',this.checked)"> Dirección</label>
           <label><input type="checkbox" onchange="prToggleCol('diario',this.checked)"> Diario</label>
           <label><input type="checkbox" onchange="prToggleCol('ia',this.checked)"> Comentario IA</label>
+          <label><input type="checkbox" onchange="prToggleCol('desglose',this.checked)"> Desglose de Monto</label>
           <label><input type="checkbox" checked onchange="prToggleCol('costo',this.checked)"> Costo</label>
         </div>
       </details>
@@ -3010,7 +3023,7 @@ function abrirResumenImprimible() {
         <button class="btn-mini" onclick="document.getElementById('printResumenOverlay').remove()">✕ Cerrar</button>
       </div>
     </div>
-    <div class="pr-contenido oculta-direccion oculta-diario oculta-ia">
+    <div class="pr-contenido oculta-direccion oculta-diario oculta-ia oculta-desglose">
       <h1>${currentProyecto ? escHtml(currentProyecto) : 'Resumen del viaje'}</h1>
       ${diasHtml}
       <div class="pr-dia">
