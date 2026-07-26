@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 60; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 61; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2458,7 +2458,14 @@ function startResize(e, b, el, edge) {
   document.addEventListener('pointerup', onUp);
 }
 
+// v57 fix: justo después de soltar un bloque (sobre todo transporte), a veces el navegador
+// dispara un "click" fantasma sobre el bloque recién movido — como el click de transporte abre
+// el visor sin importar si el arrastre estaba bloqueado, eso hacía que se abriera la vista justo
+// cuando solo se quería mover. Mientras el id esté acá, el listener de click lo ignora.
+let _bloqueRecienMovidoId = null;
 async function persistBlockTime(b, iniMin, finMin, diaId) {
+  _bloqueRecienMovidoId = b.id;
+  setTimeout(() => { if (_bloqueRecienMovidoId === b.id) _bloqueRecienMovidoId = null; }, 500);
   const horaInicio = minToHHMM(iniMin), horaFin = minToHHMM(finMin);
   let r;
   try {
@@ -2845,7 +2852,10 @@ function abrirResumenImprimible() {
       </tr>`).join('') : `<tr><td colspan="7" class="pr-vacio">Sin actividades registradas.</td></tr>`;
     return `
       <div class="pr-dia">
-        <h2>${escHtml(dia.fecha || '')}${dia.zona ? ' · ' + escHtml(dia.zona) : ''}</h2>
+        <h2 style="display:flex; justify-content:space-between; align-items:baseline; gap:10px">
+          <span>${escHtml(dia.fecha || '')}${dia.zona ? ' · ' + escHtml(dia.zona) : ''}</span>
+          <span style="font-size:12.5px; font-family:var(--font-sans); white-space:nowrap">Total ¥${Math.round(total).toLocaleString()}</span>
+        </h2>
         <table class="pr-tabla">
           <thead><tr>
             <th class="pr-col-hora">Hora</th><th class="pr-col-que">Qué se hizo</th><th class="pr-col-notas">Notas</th>
@@ -5635,6 +5645,12 @@ function renderMiniMapa(diaIdActivo) {
 
 // ── Vista semanal (1 a 7 días lado a lado) ─────────────────────
 function renderSemana() {
+  // v57 fix: cada vez que se movía/editaba un bloque (ej. arrastrar un transporte o evento),
+  // el re-render subsecuente saltaba el scroll a "ahora" de nuevo, como si fuera la primera vez
+  // que se abre el calendario — perdías tu lugar aunque el movimiento se haya guardado bien. Si
+  // ya había un scroll previo (no es la primera vez que se pinta), se conserva tal cual.
+  const _scrollElPrevio = document.getElementById('weekScroll');
+  const _scrollTopPrevio = _scrollElPrevio ? _scrollElPrevio.scrollTop : null;
   const host = document.getElementById('semanaHost');
   const todosDelProyecto = diasFiltrados();
   if (!todosDelProyecto.length) { host.innerHTML = `<div class="empty-mini">Agrega días primero.</div>`; return; }
@@ -5728,13 +5744,7 @@ function renderSemana() {
       const minuto = Math.round(relY / px / 15) * 15;
       const hhmm = minToHHMM(Math.min(minuto, 1420));
       const fmtSig = minToHHMM(Math.min(minuto + 60, 1440));
-      openPendienteForm(null, diaId);
-      setTimeout(() => {
-        const ini = document.getElementById('fPendHoraIni');
-        const fin = document.getElementById('fPendHoraFin');
-        if (ini) ini.value = hhmm;
-        if (fin) fin.value = fmtSig;
-      }, 80);
+      abrirElegirTipoNuevo(diaId, hhmm, fmtSig);
     });
   });
 
@@ -5746,8 +5756,12 @@ function renderSemana() {
     if (r.left < sr.left + 50) scrollEl.scrollLeft -= (sr.left + 50 - r.left);
     else if (r.right > sr.right) scrollEl.scrollLeft += (r.right - sr.right) + 8;
   }
-  const isAnyToday = visibleDias.some(d => d.fecha === hoy);
-  scrollEl.scrollTop = (isAnyToday ? Math.max(0, now_minutes() - 120) : 6 * 60) * px;
+  if (_scrollTopPrevio !== null) {
+    scrollEl.scrollTop = _scrollTopPrevio;
+  } else {
+    const isAnyToday = visibleDias.some(d => d.fecha === hoy);
+    scrollEl.scrollTop = (isAnyToday ? Math.max(0, now_minutes() - 120) : 6 * 60) * px;
+  }
 }
 
 function weekBlockHtml(b, px) {
@@ -5788,6 +5802,7 @@ function attachWeekBlockDrag(el, b, diaId) {
     startWeekMove(e, b, el, diaId);
   });
   el.addEventListener('click', (e) => {
+    if (_bloqueRecienMovidoId === b.id) return; // click fantasma justo después de soltar el arrastre
     if (b.kind === 'transporte') {
       // Transporte: click simple abre directo la misma vista que la tarjeta de la barra lateral
       abrirVisor(b.kind, b.id);
@@ -7084,6 +7099,28 @@ async function guardarHospedaje() {
 }
 
 // ── Form: pendiente / diario ───────────────────────────────────
+// Click en espacio vacío del calendario: antes abría directo "Nuevo pendiente" — ahora pregunta
+// si es un lugar o un transporte, ya que ambos se agendan igual (arrastrando/tocando el hueco).
+function abrirElegirTipoNuevo(diaId, hhmm, fmtSig) {
+  modalEsFormulario = false;
+  modalOpen(`
+    <div class="modal-head"><span class="modal-title">¿Qué querés agregar?</span><button class="modal-close" onclick="modalClose()">✕</button></div>
+    <div class="modal-body">
+      <div style="display:flex; gap:10px">
+        <button class="btn-mini" style="flex:1; padding:16px 10px; font-size:14px" onclick="modalClose(); abrirNuevoPendienteConHora('${diaId}','${hhmm}','${fmtSig}')">📌 Lugar</button>
+        <button class="btn-mini" style="flex:1; padding:16px 10px; font-size:14px" onclick="modalClose(); openTransporteForm(null,'${diaId}')">🚆 Transporte</button>
+      </div>
+    </div>`);
+}
+function abrirNuevoPendienteConHora(diaId, hhmm, fmtSig) {
+  openPendienteForm(null, diaId);
+  setTimeout(() => {
+    const ini = document.getElementById('fPendHoraIni');
+    const fin = document.getElementById('fPendHoraFin');
+    if (ini) ini.value = hhmm;
+    if (fin) fin.value = fmtSig;
+  }, 80);
+}
 function openPendienteForm(id, diaId) {
   modalEsFormulario = true;
   const p = id ? itinerario.pendientes.find(x => x.id === id) : null;
