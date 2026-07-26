@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 83; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 84; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2763,7 +2763,9 @@ function construirTimelineDia(dia) {
       if (!act.horaInicio) { extras.push({ nombre: '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), notas: '' }); return; }
       filas.push({
         hora: act.horaInicio, nombre: '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), notas: '',
-        direccion: act.direccion || '', diario: '', iaComentario: ev.sugerenciasIA || '', itemId: ev.id
+        direccion: act.direccion || '',
+        diario: `${ev.evaluacion ? '⭐'.repeat(ev.evaluacion) + ' ' : ''}${ev.notas || ''}`.trim(),
+        iaComentario: ev.sugerenciasIA || '', itemId: ev.id
       });
     });
   });
@@ -2777,7 +2779,8 @@ function construirTimelineDia(dia) {
     const esCheckin = h.diaIdInicio === dia.id;
     filas.push({
       hora: esCheckin ? (h.horaCheckIn || '') : '', nombre: '🏨 ' + (h.nombre || '') + (esCheckin ? ' (check-in)' : ' (noche)'),
-      notas: h.notas || '', direccion: h.direccion || '', diario: '', iaComentario: h.sugerenciasIA || '', itemId: h.id
+      notas: `${h.evaluacion ? '⭐'.repeat(h.evaluacion) + ' ' : ''}${h.notas || ''}`.trim(),
+      direccion: h.direccion || '', diario: '', iaComentario: h.sugerenciasIA || '', itemId: h.id
     });
   });
   filas.sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'));
@@ -3919,6 +3922,51 @@ function abrirDiarioPendiente(id, diaId) {
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
   }, 150);
 }
+// Mismo mecanismo de evaluación, para hospedaje y eventos (su "diario" es el campo Notas).
+function fHospSetEstrella(n) {
+  const actual = Number(document.getElementById('fHospEvaluacion').value) || 0;
+  const nuevo = actual === n ? 0 : n;
+  document.getElementById('fHospEvaluacion').value = nuevo;
+  document.getElementById('fHospEstrellas').innerHTML = renderEstrellas(nuevo, m => `fHospSetEstrella(${m})`);
+}
+async function setEvaluacionHospedajeRapido(id, n) {
+  const h = itinerario.hospedaje.find(x => x.id === id); if (!h) return;
+  h.evaluacion = (h.evaluacion === n) ? 0 : n;
+  const box = document.getElementById('visorEstrellasHosp-' + id);
+  if (box) box.innerHTML = renderEstrellas(h.evaluacion, m => `setEvaluacionHospedajeRapido('${id}',${m})`);
+  await postGAS({ action: 'updateHospedaje', id, evaluacion: h.evaluacion });
+  renderPoolPanel();
+}
+function abrirNotasHospedaje(id, diaId) {
+  modalClose();
+  openHospedajeForm(id, diaId);
+  setTimeout(() => {
+    const el = document.getElementById('fHospNotas');
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+  }, 150);
+}
+function fEventoSetEstrella(n) {
+  const actual = Number(document.getElementById('fEventoEvaluacion').value) || 0;
+  const nuevo = actual === n ? 0 : n;
+  document.getElementById('fEventoEvaluacion').value = nuevo;
+  document.getElementById('fEventoEstrellas').innerHTML = renderEstrellas(nuevo, m => `fEventoSetEstrella(${m})`);
+}
+async function setEvaluacionEventoRapido(id, n) {
+  const ev = itinerario.eventos.find(x => x.id === id); if (!ev) return;
+  ev.evaluacion = (ev.evaluacion === n) ? 0 : n;
+  const box = document.getElementById('visorEstrellasEvento-' + id);
+  if (box) box.innerHTML = renderEstrellas(ev.evaluacion, m => `setEvaluacionEventoRapido('${id}',${m})`);
+  await postGAS({ action: 'updateEvento', id, evaluacion: ev.evaluacion });
+  renderPoolPanel();
+}
+function abrirNotasEvento(id) {
+  modalClose();
+  openEventoForm(id);
+  setTimeout(() => {
+    const el = document.getElementById('fEventoNotas');
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+  }, 150);
+}
 async function togglePrioridadPendiente(id, btnEl) {
   const nuevo = btnEl.dataset.pri !== '1';
   btnEl.dataset.pri = nuevo ? '1' : '0';
@@ -4142,6 +4190,11 @@ function abrirVisorHospedaje(id) {
       <div class="visor-row">📅 ${escHtml(rango)}</div>
       ${h.direccion ? `<div class="visor-row">📍 ${escHtml(h.direccion)}</div>` : ''}
       ${coordsMini(h.lat, h.lng)}
+      <div class="visor-row" style="display:flex; align-items:center; gap:8px">
+        <span style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em">Evaluación</span>
+        <span id="visorEstrellasHosp-${h.id}">${renderEstrellas(h.evaluacion || 0, n => `setEvaluacionHospedajeRapido('${h.id}',${n})`)}</span>
+        <button class="icon-btn" title="Escribir en Notas" onclick="abrirNotasHospedaje('${h.id}', ${h.diaIdInicio ? `'${h.diaIdInicio}'` : 'null'})">＋</button>
+      </div>
       ${h.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(h.notas)}</div>` : ''}
       ${h.sugerenciasIA ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(h.sugerenciasIA)}</div>` : ''}
       ${gastoVinculadoHtml('hospedaje', h.id, JSON.stringify({nombre:h.nombre,diaIdInicio:h.diaIdInicio,diaIdFin:h.diaIdFin}))}
@@ -4732,6 +4785,11 @@ function openEventoForm(id, diaId) {
         <div id="sedesEventoHost"></div>
         <button type="button" class="btn-mini" onclick="agregarSedeEvento()">＋ Agregar actividad</button>
       </div>
+      <div class="field">
+        <label>Evaluación</label>
+        <div id="fEventoEstrellas" style="padding:4px 0">${renderEstrellas(ev ? (ev.evaluacion||0) : 0, n => `fEventoSetEstrella(${n})`)}</div>
+        <input type="hidden" id="fEventoEvaluacion" value="${ev ? (ev.evaluacion||0) : 0}">
+      </div>
       <div class="field"><label>Notas</label><textarea id="fEventoNotas">${escHtml(ev ? ev.notas : '')}</textarea></div>
       <div class="modal-actions" style="justify-content:space-between">
         ${ev ? `<button class="btn-cancel" onclick="eliminarEvento('${ev.id}')" style="color:#b91c1c">🗑 Eliminar</button>` : '<span></span>'}
@@ -4769,6 +4827,7 @@ async function guardarEvento() {
     paginaWeb: document.getElementById('fEventoWeb').value,
     notas: document.getElementById('fEventoNotas').value,
     sugerenciasIA: document.getElementById('fEventoSugIA').value,
+    evaluacion: Number(document.getElementById('fEventoEvaluacion').value) || 0,
     sedes,
     proyecto: currentProyecto
   };
@@ -4902,6 +4961,11 @@ function abrirVisorEvento(id) {
       ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
       ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>🎪 Actividades</b><br>${ev.sedes.map(s => `${s.nombre ? `<b>${escHtml(s.nombre)}</b> — ` : ''}${escHtml(diaLabel(s.diaId) || 'Sin día')}${s.horaInicio ? ` · 🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''}` : ''}${s.direccion ? ` — ${escHtml(s.direccion)}` : ''}`).join('<br>')}</div>` : ''}
       ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a></div>` : ''}
+      <div class="visor-row" style="display:flex; align-items:center; gap:8px">
+        <span style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em">Evaluación</span>
+        <span id="visorEstrellasEvento-${ev.id}">${renderEstrellas(ev.evaluacion || 0, n => `setEvaluacionEventoRapido('${ev.id}',${n})`)}</span>
+        <button class="icon-btn" title="Escribir en Notas" onclick="abrirNotasEvento('${ev.id}')">＋</button>
+      </div>
       ${ev.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(ev.notas)}</div>` : ''}
       ${ev.sugerenciasIA ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(ev.sugerenciasIA)}</div>` : ''}
       ${gastoVinculadoHtml('evento', ev.id, JSON.stringify({nombre:ev.nombre}))}
@@ -7211,6 +7275,11 @@ function openHospedajeForm(id, diaId) {
       <div class="field"><label>Reservado</label>
         ${reservadoSelectHtml('fHospReservado', h ? h.reservado : 'pendiente')}
       </div>
+      <div class="field">
+        <label>Evaluación</label>
+        <div id="fHospEstrellas" style="padding:4px 0">${renderEstrellas(h ? (h.evaluacion||0) : 0, n => `fHospSetEstrella(${n})`)}</div>
+        <input type="hidden" id="fHospEvaluacion" value="${h ? (h.evaluacion||0) : 0}">
+      </div>
       <div class="field"><label>Notas</label><textarea id="fHospNotas">${escHtml(h ? h.notas : '')}</textarea></div>
       <div class="modal-actions" style="justify-content:space-between">
         ${h ? `<button class="btn-cancel" onclick="eliminarHospedaje('${h.id}')" style="color:#b91c1c">🗑 Eliminar</button>` : '<span></span>'}
@@ -7259,7 +7328,8 @@ async function guardarHospedaje() {
     notas: document.getElementById('fHospNotas').value,
     sugerenciasIA: document.getElementById('fHospSugIA').value,
     horaCheckIn: document.getElementById('fHospCheckIn').value,
-    horaCheckOut: document.getElementById('fHospCheckOut').value
+    horaCheckOut: document.getElementById('fHospCheckOut').value,
+    evaluacion: Number(document.getElementById('fHospEvaluacion').value) || 0
   };
 
 
@@ -7330,6 +7400,11 @@ function openPendienteForm(id, diaId) {
         <div class="field"><label>Hora fin (opcional)</label><input type="time" id="fPendHoraFin" value="${p && p.horaFin ? p.horaFin : ''}"></div>
       </div>
 
+      <div class="field"><label>Duración aprox. en minutos (si no pones hora) — ej. 60 = 1h, 15 = algo corto</label><input type="number" id="fPendDuracion" min="5" step="5" placeholder="60" value="${p && p.duracionMin ? p.duracionMin : ''}"></div>
+      <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin-bottom:14px;">
+        <input type="checkbox" id="fPendDurBloqueada" ${p && p.duracionBloqueada ? 'checked' : ''}> ⏱🔒 Duración fija (no cambia al arrastrar en el calendario)
+      </label>
+
       <div class="field"><label>Reservado / entrada comprada</label>
         ${reservadoSelectHtml('fPendReservado', p ? p.reservado : 'pendiente')}
       </div>
@@ -7360,11 +7435,6 @@ function openPendienteForm(id, diaId) {
       </label>
       <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin-bottom:14px;">
         <input type="checkbox" id="fPendRealizado" ${p && p.realizado ? 'checked' : ''}> ✅ Ya lo realicé
-      </label>
-
-      <div class="field"><label>Duración aprox. en minutos (si no pones hora) — ej. 60 = 1h, 15 = algo corto</label><input type="number" id="fPendDuracion" min="5" step="5" placeholder="60" value="${p && p.duracionMin ? p.duracionMin : ''}"></div>
-      <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin-bottom:14px;">
-        <input type="checkbox" id="fPendDurBloqueada" ${p && p.duracionBloqueada ? 'checked' : ''}> ⏱🔒 Duración fija (no cambia al arrastrar en el calendario)
       </label>
 
       <div class="field"><label>Nota previa (recordatorio antes de ir)</label><textarea id="fPendPrevias" placeholder="Ej: no olvides preguntar por...">${escHtml(p ? p.notasPrevias : '')}</textarea></div>
@@ -7845,7 +7915,9 @@ const TABLA_COLS = {
   hospedaje: [
     { key: 'nombre', label: 'Nombre' }, { key: 'direccion', label: 'Dirección' },
     { key: 'desde', label: 'Desde' }, { key: 'hasta', label: 'Hasta' },
-    { key: 'reservado', label: 'Reservado' }, { key: 'notas', label: 'Notas' },
+    { key: 'checkIn', label: 'Check-in' }, { key: 'checkOut', label: 'Check-out' },
+    { key: 'reservado', label: 'Reservado' }, { key: 'elegido', label: 'Elegido' },
+    { key: 'evaluacion', label: 'Evaluación' }, { key: 'notas', label: 'Notas' },
     { key: 'lat', label: 'Lat' }, { key: 'lng', label: 'Lng' },
     { key: 'sugerenciaIA', label: 'Sugerencia IA' }
   ],
@@ -7853,13 +7925,15 @@ const TABLA_COLS = {
     { key: 'nombre', label: 'Nombre' }, { key: 'direccion', label: 'Dirección' },
     { key: 'dia', label: 'Día' }, { key: 'hora', label: 'Hora' },
     { key: 'duracion', label: 'Duración' }, { key: 'reservado', label: 'Reservado' },
-    { key: 'esRestaurante', label: 'Restaurante' }, { key: 'notaprevia', label: 'Nota previa' }, { key: 'tipoComida', label: 'Comida' }, { key: 'prioritaria', label: 'Prioritaria' },
+    { key: 'esRestaurante', label: 'Restaurante' }, { key: 'antojo', label: 'Platillo especial' }, { key: 'notaprevia', label: 'Nota previa' }, { key: 'tipoComida', label: 'Comida' }, { key: 'prioritaria', label: 'Prioritaria' },
+    { key: 'realizado', label: 'Realizado' }, { key: 'duracionBloqueada', label: 'Duración fija' }, { key: 'evaluacion', label: 'Evaluación' },
     { key: 'notadiario', label: 'Diario' }, { key: 'lat', label: 'Lat' }, { key: 'lng', label: 'Lng' },
     { key: 'sugerenciaIA', label: 'Sugerencia IA' }
   ],
   transporte: [
     { key: 'tipo', label: 'Tipo' }, { key: 'origen', label: 'Origen' }, { key: 'destino', label: 'Destino' },
     { key: 'dia', label: 'Día' }, { key: 'horario', label: 'Horario elegido' }, { key: 'reservado', label: 'Reservado' },
+    { key: 'realizado', label: 'Realizado' },
     { key: 'direccionOrigen', label: 'Dirección origen' }, { key: 'direccionDestino', label: 'Dirección destino' },
     { key: 'notas', label: 'Notas' },
     { key: 'origenLat', label: 'Origen Lat' }, { key: 'origenLng', label: 'Origen Lng' },
@@ -8013,7 +8087,9 @@ function renderTabla() {
       nombre: escHtml(h.nombre || ''), direccion: escHtml(h.direccion || ''),
       desde: diaNombre(h.diaIdInicio), hasta: diaNombre(h.diaIdFin),
       checkIn: escHtml(h.horaCheckIn || '—'), checkOut: escHtml(h.horaCheckOut || '—'),
-      reservado: escHtml(RESERVADO_LABEL[h.reservado || 'pendiente']), notas: escHtml(h.notas || ''),
+      reservado: escHtml(RESERVADO_LABEL[h.reservado || 'pendiente']), elegido: h.elegido ? '⭐ Sí' : '—',
+      evaluacion: h.evaluacion ? '⭐'.repeat(h.evaluacion) : '—',
+      notas: escHtml(h.notas || ''),
       lat: escHtml(h.lat || ''), lng: escHtml(h.lng || ''),
       sugerenciaIA: escHtml(h.sugerenciasIA || '')
     })) +
@@ -8031,6 +8107,9 @@ function renderTabla() {
       antojo: escHtml(p.antojo || ''),
       prioritaria: p.prioritaria ? '⭐ Sí' : '—',
       esRestaurante: p.esRestaurante ? 'Sí' : '',
+      realizado: p.realizado ? '✅ Sí' : '—',
+      duracionBloqueada: p.duracionBloqueada ? '🔒 Sí' : '—',
+      evaluacion: p.evaluacion ? '⭐'.repeat(p.evaluacion) : '—',
       notadiario: escHtml(p.notasDiario || ''), lat: escHtml(p.lat || ''), lng: escHtml(p.lng || ''),
       sugerenciaIA: escHtml(p.sugerenciasIA || '')
     })) +
@@ -8044,6 +8123,7 @@ function renderTabla() {
         tipo: TIPO_LABEL[t.tipo] || t.tipo, origen: escHtml(t.origen || ''), destino: escHtml(t.destino || ''),
         dia: diaNombre(t.diaId), horario: op && op.salida ? op.salida + '–' + op.llegada : '—',
         reservado: escHtml(RESERVADO_LABEL[t.reservado || 'pendiente']),
+        realizado: t.realizado ? '✅ Sí' : '—',
         direccionOrigen: escHtml(t.direccionOrigen || ''), direccionDestino: escHtml(t.direccionDestino || ''),
         notas: escHtml(t.notas || ''),
         origenLat: escHtml(t.origenLat || ''), origenLng: escHtml(t.origenLng || ''),
