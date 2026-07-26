@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 51; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 52; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1101,7 +1101,13 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   gPoblarAsociarA(diaEfectivo, itemId);
   gActualizarEstadoDiaItinerario();
   document.getElementById('gTitle').textContent = prev ? '💴 Editar gasto' : '💴 Registrar gasto';
-  document.getElementById('gFecha').value = hoy;  // siempre hoy, el usuario cambia
+  // v57: Fecha de compra por defecto — si el día asociado ya pasó respecto a hoy, se asume que
+  // se compró ESE día (solo se está registrando tarde); si el día asociado todavía no llega,
+  // se asume que se compra hoy por adelantado para ese día futuro. Fecha captura siempre es hoy
+  // (el día en que de verdad estás registrando esto), sin importar cuál sea el día asociado.
+  const diaAsociadoObj = diaEfectivo ? itinerario.dias.find(d => d.id === diaEfectivo) : null;
+  const fechaCompraDefault = (diaAsociadoObj && diaAsociadoObj.fecha && diaAsociadoObj.fecha < hoy) ? diaAsociadoObj.fecha : hoy;
+  document.getElementById('gFecha').value = fechaCompraDefault;
   document.getElementById('gHoraCompra').value = '';
   document.getElementById('gCaptura').value = hoy;
   document.getElementById('gCosto').value = prev ? (prev.costo||'') : '';
@@ -1307,7 +1313,27 @@ function gProcessFile(file) {
 }
 function gRemoveTicket() { gTb64=''; gTMime=''; document.getElementById('gTicketInput').value=''; document.getElementById('gStoredPhoto').value=''; document.getElementById('gPrevArea').style.display='none'; document.getElementById('gUzone').style.display='block'; }
 function gOpenCrop() {
-  if(!gTb64) { showToast('No se puede recortar'); return; }
+  if (!gTb64) {
+    // Foto ya guardada (viene de una URL de Drive, no tenemos los bytes todavía) — intentar
+    // reconstruirla dibujándola en un canvas, para poder recortar sin tener que resubirla.
+    const srcUrl = document.getElementById('gPrevImg').src;
+    if (!srcUrl) { showToast('No se puede recortar'); return; }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        gTb64 = dataUrl.split(',')[1]; gTMime = 'image/jpeg';
+        gOpenCrop();
+      } catch (e) { showToast('⚠️ Esta foto no se puede recortar desde acá'); }
+    };
+    img.onerror = () => showToast('⚠️ No se pudo cargar la foto para recortar');
+    img.src = srcUrl;
+    return;
+  }
   document.getElementById('gCropOverlay').style.display='flex';
   const imgEl=document.getElementById('gCropImg');
   imgEl.src='data:'+(gTMime||'image/jpeg')+';base64,'+gTb64;
@@ -1614,16 +1640,22 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
   const reales = lista.filter(g => !g.cotizacion);
   const cots   = lista.filter(g =>  g.cotizacion);
   const totalJPY = reales.reduce((s,g) => s + (g.moneda==='JPY' ? Number(g.costo||0) : 0), 0);
-  const rs = 'display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;border-top:1px solid #dcfce7;';
+  const rs = 'padding:3px 0;border-top:1px solid #dcfce7;';
+  // v57: la nota ya se mostraba, pero pegada al concepto en la misma línea con ellipsis —
+  // como el concepto es igual para todos los gastos de un mismo item, lo que de verdad
+  // varía (la nota) quedaba tapado. Ahora va en su propia línea, siempre visible.
   const buildRows = (rows) => rows.map(g => {
     const nProds = gAllProds.filter(p => p.compraId === g.id).length;
     return `<div style="${rs}">
-    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')} · ${escHtml(g.quien_paga||'')}${g.notas?' <span style="color:var(--ink-3);font-size:10px">· '+escHtml(g.notas)+'</span>':''}${nProds?' <span class="g-chip" style="font-size:9px;padding:1px 6px">🧾 '+nProds+'</span>':''}</span>
-    <div style="display:flex;gap:3px;align-items:center;flex-shrink:0;margin-left:6px">
-      <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
-      <button class="icon-btn" style="font-size:12px" onclick="editarGastoVisor('${tipo}','${itemId}','${g.id}')">✏️</button>
-      <button class="icon-btn" style="font-size:12px" onclick="eliminarGastoResumen('${itemId}','${g.id}')">🗑</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')} · ${escHtml(g.quien_paga||'')}${nProds?' <span class="g-chip" style="font-size:9px;padding:1px 6px">🧾 '+nProds+'</span>':''}</span>
+      <div style="display:flex;gap:3px;align-items:center;flex-shrink:0;margin-left:6px">
+        <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
+        <button class="icon-btn" style="font-size:12px" onclick="editarGastoVisor('${tipo}','${itemId}','${g.id}')">✏️</button>
+        <button class="icon-btn" style="font-size:12px" onclick="eliminarGastoResumen('${itemId}','${g.id}')">🗑</button>
+      </div>
     </div>
+    ${g.notas ? `<div style="font-size:10.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📌 ${escHtml(g.notas)}</div>` : ''}
   </div>`;
   }).join('');
   return `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius);padding:10px 12px;margin-top:8px">
@@ -2200,7 +2232,11 @@ function getCalendarBlocks(diaId) {
       if (act.diaId !== diaId) return;
       const ini = hhmmToMin(act.horaInicio), fin = hhmmToMin(act.horaFin);
       if (ini === null || fin === null) return;
-      blocks.push({ id: act.id, eventoId: ev.id, kind: 'eventoActividad', esRealizado: !!ev.realizado, title: (ev.realizado ? '✅ ' : '') + '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+      // v57: el nombre del festival va grande (título) y la actividad/sede específica va
+      // abajo como nota — antes era al revés (la sede tapaba el nombre del festival si tenía
+      // nombre propio, y el festival solo aparecía si la sede no tenía nombre).
+      const miniEvento = (act.nombre && act.nombre !== ev.nombre) ? act.nombre : '';
+      blocks.push({ id: act.id, eventoId: ev.id, kind: 'eventoActividad', esRealizado: !!ev.realizado, notaPrevia: miniEvento, title: (ev.realizado ? '✅ ' : '') + '🎪 ' + (ev.nombre || act.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
     });
   });
   return blocks;
@@ -7936,7 +7972,7 @@ init();
         </div>
         <div id="gPrevArea" style="text-align:center;display:none">
           <div class="g-tprev">
-            <img id="gPrevImg" src="" alt="">
+            <img id="gPrevImg" src="" alt="" style="cursor:zoom-in" onclick="abrirLightbox([this.src], 0)">
             <span class="g-rimg" onclick="gRemoveTicket()">✕</span>
           </div>
           <div style="display:flex;gap:8px;margin-top:8px;justify-content:center">
@@ -8003,7 +8039,7 @@ init();
         </div>
         <label id="gChkVariosPaganWrap" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:8px 0 0;font-size:12px">
           <input type="checkbox" id="gChkVariosPagan" onchange="gOnToggleVariosPagan()" style="accent-color:#15803d;width:15px;height:15px;cursor:pointer">
-          <span>🙌 Varios pagan — cada quien pone lo suyo (sin deuda entre ustedes)</span>
+          <span>🙌 Varios pagan</span>
         </label>
       </div>
       <div class="g-field" id="gPagadoresField" style="display:none">
