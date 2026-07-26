@@ -586,7 +586,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 72; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 73; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -919,8 +919,17 @@ function zoomPct() { return Math.round((zoom / 0.4) * 100) + '%'; }
 // ── Gastos vinculados a eventos (diseño gastos_v8) ─────────────
 let gCropper = null, gTb64 = '', gTMime = '';
 let gCurrentPayer = '', gCurrentType = '';
-let gSesionCards = []; // tarjetas de Lot/Temis (misma fuente que usa la app Gastos)
-const GPEOPLE = ['Lot', 'Temis'];
+let gSesionCards = []; // tarjetas de los miembros de la sesión (misma fuente que usa la app Gastos)
+// v57: GPEOPLE ya no queda fijo en ['Lot','Temis'] — se trae de la sesión de Gastos configurada
+// (requiere su contraseña, guardada en este dispositivo) vía "🔄 Sincronizar con Gastos". Si
+// nunca se sincronizó (o falla), se cae en este default para no dejar el formulario vacío.
+const GPEOPLE = (() => {
+  try { const c = JSON.parse(localStorage.getItem('itin_gasMiembrosCache') || 'null'); return (Array.isArray(c) && c.length) ? c : ['Lot', 'Temis']; }
+  catch (e) { return ['Lot', 'Temis']; }
+})();
+const GEMOJI_DEFAULT = { Lot: '💙', Temis: '🧡' };
+function gEmojiPersona(nombre) { return GEMOJI_DEFAULT[nombre] || '👤'; }
+let GAS_SESION_PASS = localStorage.getItem('itin_gasSesionPass') || '';
 // ── Varios pagan (idéntico a v32* de Compras) ──
 let gCurrentVariosPagan = false;
 let gCurrentPagadores = {}; // {persona: monto}
@@ -940,6 +949,11 @@ function gPoblarSesionSel(seleccionada) {
   if (seleccionada && !opciones.includes(seleccionada)) opciones.unshift(seleccionada);
   sel.innerHTML = opciones.map(s => `<option value="${escHtml(s)}" ${s === seleccionada ? 'selected' : ''}>${escHtml(s)}</option>`).join('');
 }
+function guardarGasSesionPass() {
+  GAS_SESION_PASS = (document.getElementById('fGasSesionPass').value || '');
+  try { localStorage.setItem('itin_gasSesionPass', GAS_SESION_PASS); } catch (e) {}
+  showToast('Contraseña guardada ✦');
+}
 async function gSincronizarConGastos() {
   if (!requiereGasUrlGastos()) return;
   showToast('Sincronizando con Gastos…');
@@ -951,6 +965,20 @@ async function gSincronizarConGastos() {
       gSesionesDisponibles = d.sesiones;
       try { localStorage.setItem('itin_gasSesionesCache', JSON.stringify(gSesionesDisponibles)); } catch (e) {}
     }
+    // Traer los miembros reales de la sesión configurada (requiere su contraseña) para que
+    // "¿Quién paga?" ya no quede fijo en Lot/Temis.
+    if (GAS_SESION_GASTOS && GAS_SESION_PASS) {
+      const formM = new FormData(); formM.append('payload', JSON.stringify({ action: 'checkSesion', sesion: GAS_SESION_GASTOS, pass: GAS_SESION_PASS }));
+      const respM = await fetch(GAS_URL_GASTOS, { method: 'POST', body: formM });
+      const dM = await respM.json();
+      if (dM && dM.ok && Array.isArray(dM.miembros) && dM.miembros.length) {
+        GPEOPLE.splice(0, GPEOPLE.length, ...dM.miembros);
+        try { localStorage.setItem('itin_gasMiembrosCache', JSON.stringify(GPEOPLE)); } catch (e) {}
+        gRenderPayerGroup();
+      } else if (dM && dM.error === 'PASSWORD') {
+        showToast('⚠️ Contraseña de sesión incorrecta — no se actualizaron los miembros');
+      }
+    }
     gSesionCards = [];
     await gCargarTarjetas();
     showToast('✅ Sincronizado con Gastos');
@@ -959,7 +987,7 @@ async function gSincronizarConGastos() {
 async function gCargarTarjetas() {
   if (gSesionCards.length) return; // ya se cargaron una vez en esta sesión de uso
   try {
-    const form = new FormData(); form.append('payload', JSON.stringify({ action: 'tarjetasDeMiembros', miembros: ['Lot', 'Temis'] }));
+    const form = new FormData(); form.append('payload', JSON.stringify({ action: 'tarjetasDeMiembros', miembros: GPEOPLE }));
     const resp = await fetch(GAS_URL_GASTOS, { method: 'POST', body: form });
     const d = await resp.json();
     gSesionCards = (d && d.ok && Array.isArray(d.tarjetas)) ? d.tarjetas : [];
@@ -1135,6 +1163,7 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   gPoblarAsociarA(diaEfectivo, itemId);
   gActualizarEstadoDiaItinerario();
   gPoblarSesionSel(prev && prev.sesion ? prev.sesion : GAS_SESION_GASTOS);
+  gRenderPayerGroup();
   document.getElementById('gTitle').textContent = prev ? '💴 Editar gasto' : '💴 Registrar gasto';
   // v57: Fecha de compra por defecto — si el día asociado ya pasó respecto a hoy, se asume que
   // se compró ESE día (solo se está registrando tarde); si el día asociado todavía no llega,
@@ -1232,11 +1261,18 @@ function gCloseModal(force) {
   document.getElementById('gOverlay').style.display = 'none';
 }
 
+// Botones de "¿Quién paga?" — ya no son fijos Lot/Temis, se arman desde GPEOPLE (+ N/A) para que
+// reflejen a quien de verdad esté en la sesión de Gastos configurada.
+function gRenderPayerGroup() {
+  const box = document.getElementById('gPayerGroup'); if (!box) return;
+  box.innerHTML = GPEOPLE.map(n => `<button class="g-tbtn" data-persona="${escHtml(n)}" onclick="gSetPayer('${n.replace(/'/g,"\\'")}')">${gEmojiPersona(n)} ${escHtml(n)}</button>`).join('')
+    + `<button class="g-tbtn" data-persona="NA" onclick="gSetPayer('NA')">— N/A</button>`;
+}
 function gSetPayer(p, silent) {
   gCurrentPayer = p;
-  ['gBLot','gBTemis','gBNA'].forEach(id => { const el=document.getElementById(id); if(el) el.className='g-tbtn'; });
-  const map = { Lot:'gBLot', Temis:'gBTemis', NA:'gBNA', Cotizacion:'gBNA' };
-  if(map[p]) { const el=document.getElementById(map[p]); if(el) el.className='g-tbtn sel'; }
+  document.querySelectorAll('#gPayerGroup .g-tbtn').forEach(b => {
+    b.className = (b.dataset.persona === p || (p === 'Cotizacion' && b.dataset.persona === 'NA')) ? 'g-tbtn sel' : 'g-tbtn';
+  });
   if(!silent && p==='Cotizacion') gSetType('Cotizacion');
 }
 
@@ -1255,11 +1291,10 @@ function gOnToggleVariosPagan() {
 }
 function gRenderPagadores() {
   const box = document.getElementById('gPagadoresBox'); if (!box) return;
-  const emoji = { Lot: '💙', Temis: '🧡' };
   box.innerHTML = GPEOPLE.map(n => {
     const val = gCurrentPagadores[n] !== undefined ? gCurrentPagadores[n] : '';
     return '<div style="display:flex;align-items:center;gap:8px">'
-      + '<span class="g-chip" style="min-width:76px;justify-content:center">' + emoji[n] + ' ' + n + '</span>'
+      + '<span class="g-chip" style="min-width:76px;justify-content:center">' + gEmojiPersona(n) + ' ' + n + '</span>'
       + '<input type="number" placeholder="0" value="' + escHtml(String(val)) + '" class="g-input" style="flex:1" oninput="gSetPagadorMonto(\'' + n + '\',this.value)">'
       + '</div>';
   }).join('');
@@ -1322,7 +1357,7 @@ function gToggleCot() {
     if(pBadge) pBadge.style.display='none';
     payBtns.forEach(b=>{b.style.opacity='1';b.style.pointerEvents='';});
     // Solo restaurar defaults si veníamos de cotización activa (no al abrir form nuevo)
-    if(window._gWasCot) { gSetType('Compartido', true); gSetPayer('Lot', true); }
+    if(window._gWasCot) { gSetType('Compartido', true); gSetPayer(GPEOPLE[0] || 'Lot', true); }
     window._gWasCot = false;
     if (pagoField) pagoField.style.display = '';
   }
@@ -2928,7 +2963,6 @@ function abrirResumenImprimible() {
   // Balance compartido: cuánto puso cada quien, préstamos entre ambos, y el balance final ya
   // simplificado (quién le debe a quién). Personal aparte: lo que cada quien gastó que no fue
   // compartido ni préstamo.
-  const emojiPersona = { Lot: '💙', Temis: '🧡' };
   const puesto = totalPuestoPorPersona();
   const personales = totalesPersonales();
   const prestamos = listaPrestamos();
@@ -2936,8 +2970,8 @@ function abrirResumenImprimible() {
   const totalCompartido = todosLosGastosReales().filter(g => g.compartido === 'Compartido').reduce((s, g) => s + (Number(g.costo) || 0), 0);
   const compartidoPorPersona = totalCompartido / (GPEOPLE.length || 1);
   const totalPersonalTodos = GPEOPLE.reduce((s, n) => s + (personales[n] || 0), 0);
-  const puestoHtml = GPEOPLE.map(n => `<tr><td>${emojiPersona[n]||''} ${escHtml(n)}</td><td class="pr-costo">¥${Math.round(puesto[n]||0).toLocaleString()}</td></tr>`).join('');
-  const personalHtml = GPEOPLE.map(n => `<tr><td>${emojiPersona[n]||''} ${escHtml(n)}</td><td class="pr-costo">¥${Math.round(personales[n]||0).toLocaleString()}</td></tr>`).join('');
+  const puestoHtml = GPEOPLE.map(n => `<tr><td>${gEmojiPersona(n)} ${escHtml(n)}</td><td class="pr-costo">¥${Math.round(puesto[n]||0).toLocaleString()}</td></tr>`).join('');
+  const personalHtml = GPEOPLE.map(n => `<tr><td>${gEmojiPersona(n)} ${escHtml(n)}</td><td class="pr-costo">¥${Math.round(personales[n]||0).toLocaleString()}</td></tr>`).join('');
   const overlay = document.createElement('div');
   overlay.id = 'printResumenOverlay';
   overlay.innerHTML = `
@@ -7345,7 +7379,7 @@ function _showGasSaving(on) {
 // Quién usa este dispositivo — solo para poder decir "tu versión" vs "la de Lot/Temis"
 // cuando hay que elegir entre cambios hechos sin conexión desde los dos lados.
 function quienSoy() { try { return localStorage.getItem('itin_quienSoy') || ''; } catch (e) { return ''; } }
-function elOtro() { const yo = quienSoy(); return yo === 'Lot' ? 'Temis' : (yo === 'Temis' ? 'Lot' : ''); }
+function elOtro() { const yo = quienSoy(); return (GPEOPLE.length === 2 && GPEOPLE.includes(yo)) ? GPEOPLE.find(n => n !== yo) : ''; }
 function preguntarQuienSoy(forzar) {
   if (quienSoy() && !forzar) return;
   modalEsFormulario = true;
@@ -8114,7 +8148,11 @@ function openDevInfo() {
           <input id="fGasSesion" style="flex:1; font-size:12px" placeholder="Ej: Lot &amp; Temis" value="${escHtml(GAS_SESION_GASTOS)}">
           <button class="btn-mini" onclick="guardarGasSesion()">💾 Guardar</button>
         </div>
-        <button class="btn-mini" style="margin-top:6px" onclick="gSincronizarConGastos()">🔄 Sincronizar con Gastos <span style="text-transform:none; font-weight:400; font-size:11px; color:var(--ink-3)">(trae sesiones y tarjetas nuevas — solo cuando lo toques)</span></button>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:6px">
+          <input id="fGasSesionPass" type="password" style="flex:1; font-size:12px" placeholder="Contraseña de esa sesión (para traer sus miembros)" value="${escHtml(GAS_SESION_PASS)}">
+          <button class="btn-mini" onclick="guardarGasSesionPass()">💾 Guardar</button>
+        </div>
+        <button class="btn-mini" style="margin-top:6px" onclick="gSincronizarConGastos()">🔄 Sincronizar con Gastos <span style="text-transform:none; font-weight:400; font-size:11px; color:var(--ink-3)">(trae sesiones, sus miembros reales y tarjetas — solo cuando lo toques)</span></button>
       </div>
       <div class="field"><label>Proyecto / viaje activo</label><input readonly value="${escHtml(currentProyecto || '(sin proyecto)')}"></div>
       <div class="field"><label>Conteo de datos cargados</label><textarea readonly style="font-size:11.5px; min-height:84px">Días: ${itinerario.dias.length}\nTransporte: ${itinerario.transporte.length}\nHospedaje: ${itinerario.hospedaje.length}\nPendientes: ${itinerario.pendientes.length}</textarea></div>
@@ -8366,11 +8404,7 @@ init();
       </div>
       <div class="g-field">
         <label>¿Quién paga? <span id="gPayerBadge" class="g-chip" style="display:none">💬 N/A</span></label>
-        <div class="g-tgroup" id="gPayerGroup">
-          <button class="g-tbtn" id="gBLot" onclick="gSetPayer('Lot')">💙 Lot</button>
-          <button class="g-tbtn" id="gBTemis" onclick="gSetPayer('Temis')">🧡 Temis</button>
-          <button class="g-tbtn" id="gBNA" onclick="gSetPayer('NA')">— N/A</button>
-        </div>
+        <div class="g-tgroup" id="gPayerGroup"></div>
         <label id="gChkVariosPaganWrap" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:8px 0 0;font-size:12px">
           <input type="checkbox" id="gChkVariosPagan" onchange="gOnToggleVariosPagan()" style="accent-color:#15803d;width:15px;height:15px;cursor:pointer">
           <span>🙌 Varios pagan</span>
