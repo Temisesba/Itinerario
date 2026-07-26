@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 52; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 53; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2683,6 +2683,122 @@ function totalesPorApartado() {
   });
   return cats;
 }
+
+// ── Balance compartido (motor adaptado de v31 de Compras_v46.html, acotado a este proyecto) ──
+// Todos los gastos reales (no cotización) del proyecto actual, una sola vez cada uno — a
+// diferencia de gastosDeEsteDia() (que reparte el hotel por noche y puede listar lo mismo en
+// varios días), acá se necesita cada gasto UNA vez con su quien_paga/pagadores reales para que
+// el balance no se infle.
+function todosLosGastosReales() {
+  const vistos = new Set(); const lista = [];
+  const agregar = (g) => { if (vistos.has(g.id)) return; vistos.add(g.id); lista.push(g); };
+  Object.values(gastosVinculados).forEach(arr => arr.forEach(agregar));
+  Object.values(gastosDelDia).forEach(arr => arr.forEach(agregar));
+  return lista.filter(g => !g.cotizacion);
+}
+function balanceParticipantesEf(g) {
+  if (g.compartido === 'VariosPagan') {
+    return Array.isArray(g.pagadores) ? g.pagadores.map(p => p.persona).filter(n => GPEOPLE.includes(n)) : [];
+  }
+  if (g.compartido === 'Compartido') return GPEOPLE.slice();
+  return GPEOPLE.filter(n => n !== g.quien_paga); // Préstamo/Devolución: el otro de los 2
+}
+function balanceDeudas() {
+  const debt = {}; GPEOPLE.forEach(a => { debt[a] = {}; });
+  const add = (deudor, acreedor, m) => {
+    if (!deudor || !acreedor || deudor === acreedor || !(m > 0)) return;
+    if (!debt[deudor]) debt[deudor] = {};
+    debt[deudor][acreedor] = (debt[deudor][acreedor] || 0) + m;
+  };
+  todosLosGastosReales().forEach(g => {
+    const a = Number(g.costo) || 0; if (a <= 0) return;
+    // Compartido con pagadores propios (montos distintos, ej. 50/20/20/10) — el ajuste sale de
+    // comparar lo que cada quien puso contra su parte pareja (costo / participantes).
+    if (g.compartido === 'Compartido' && Array.isArray(g.pagadores) && g.pagadores.length) {
+      const parts = balanceParticipantesEf(g); const n = parts.length || 1; const share = a / n;
+      const net = {};
+      parts.forEach(p => { net[p] = (net[p] || 0) - share; });
+      g.pagadores.forEach(pg => { if (GPEOPLE.includes(pg.persona)) net[pg.persona] = (net[pg.persona] || 0) + (Number(pg.monto) || 0); });
+      const deudores = [], acreedores = [];
+      Object.entries(net).forEach(([nm, v]) => { if (v < -0.5) deudores.push({ nm, v }); else if (v > 0.5) acreedores.push({ nm, v }); });
+      deudores.sort((x, y) => x.v - y.v); acreedores.sort((x, y) => y.v - x.v);
+      let i = 0, j = 0;
+      while (i < deudores.length && j < acreedores.length) {
+        const pay = Math.min(-deudores[i].v, acreedores[j].v);
+        if (pay > 0.5) add(deudores[i].nm, acreedores[j].nm, pay);
+        deudores[i].v += pay; acreedores[j].v -= pay;
+        if (Math.abs(deudores[i].v) < 0.5) i++;
+        if (Math.abs(acreedores[j].v) < 0.5) j++;
+      }
+      return;
+    }
+    const q = g.quien_paga; if (!GPEOPLE.includes(q)) return;
+    if (g.compartido === 'Compartido') {
+      const parts = balanceParticipantesEf(g); const n = parts.length || 1; const share = a / n;
+      parts.forEach(p => { if (p !== q) add(p, q, share); });
+    } else if (g.compartido === 'Prestamo' || g.compartido === 'Devolucion') {
+      const parts = balanceParticipantesEf(g); const n = parts.length || 1; const share = a / n;
+      parts.forEach(p => add(p, q, share));
+    }
+  });
+  return debt;
+}
+function balanceNetos() {
+  const debt = balanceDeudas(); const net = {}; GPEOPLE.forEach(n => net[n] = 0);
+  GPEOPLE.forEach(d => { Object.keys(debt[d] || {}).forEach(c => { const m = debt[d][c]; net[d] -= m; if (net[c] === undefined) net[c] = 0; net[c] += m; }); });
+  return net;
+}
+// Simplificación greedy → lista mínima de pagos {de, a, monto} para saldar todo.
+function balanceSimplificar() {
+  const net = balanceNetos();
+  const deudores = [], acreedores = [];
+  Object.keys(net).forEach(n => { const v = Math.round(net[n]); if (v < -0.5) deudores.push({ n, v }); else if (v > 0.5) acreedores.push({ n, v }); });
+  deudores.sort((a, b) => a.v - b.v); acreedores.sort((a, b) => b.v - a.v);
+  const pagos = []; let i = 0, j = 0;
+  while (i < deudores.length && j < acreedores.length) {
+    const pay = Math.min(-deudores[i].v, acreedores[j].v);
+    if (pay > 0.5) pagos.push({ de: deudores[i].n, a: acreedores[j].n, monto: Math.round(pay) });
+    deudores[i].v += pay; acreedores[j].v -= pay;
+    if (Math.abs(deudores[i].v) < 0.5) i++;
+    if (Math.abs(acreedores[j].v) < 0.5) j++;
+  }
+  return pagos;
+}
+// Cuánto puso cada quien de su bolsillo en total (bruto — no es lo mismo que el balance neto).
+function totalPuestoPorPersona() {
+  const tot = {}; GPEOPLE.forEach(n => tot[n] = 0);
+  todosLosGastosReales().forEach(g => {
+    const a = Number(g.costo) || 0; if (a <= 0) return;
+    if (g.compartido === 'VariosPagan' && Array.isArray(g.pagadores)) {
+      g.pagadores.forEach(pg => { if (GPEOPLE.includes(pg.persona)) tot[pg.persona] += Number(pg.monto) || 0; });
+    } else if (GPEOPLE.includes(g.quien_paga)) {
+      tot[g.quien_paga] += a;
+    }
+  });
+  return tot;
+}
+// Total "personal" — lo que cada quien pagó que NO fue compartido (ni préstamo ni devolución):
+// gastos marcados Personal (o sin marcar, viejo default) + su propia parte en Varios pagan.
+function totalesPersonales() {
+  const tot = {}; GPEOPLE.forEach(n => tot[n] = 0);
+  todosLosGastosReales().forEach(g => {
+    const a = Number(g.costo) || 0; if (a <= 0) return;
+    if (g.compartido === 'VariosPagan' && Array.isArray(g.pagadores)) {
+      g.pagadores.forEach(pg => { if (GPEOPLE.includes(pg.persona)) tot[pg.persona] += Number(pg.monto) || 0; });
+    } else if ((g.compartido === 'Personal' || !g.compartido) && GPEOPLE.includes(g.quien_paga)) {
+      tot[g.quien_paga] += a;
+    }
+  });
+  return tot;
+}
+// Préstamos/devoluciones individuales (para listarlos aparte, quién a quién) — no confundir con
+// el balance ya simplificado: acá se ve cada movimiento tal cual se registró.
+function listaPrestamos() {
+  return todosLosGastosReales().filter(g => (g.compartido === 'Prestamo' || g.compartido === 'Devolucion') && GPEOPLE.includes(g.quien_paga) && Number(g.costo) > 0).map(g => {
+    const otro = GPEOPLE.find(n => n !== g.quien_paga);
+    return { de: otro, a: g.quien_paga, monto: Number(g.costo) || 0, concepto: g.concepto || '', tipo: g.compartido };
+  });
+}
 function abrirResumenImprimible() {
   const dias = diasFiltrados();
   if (!dias.length) { showToast('Agregá días primero'); return; }
@@ -2733,6 +2849,16 @@ function abrirResumenImprimible() {
   ];
   const paraDespuesHtml = paraDespues.map(p => `
     <tr><td>${escHtml(p.nombre)}</td><td class="pr-notas">${escHtml(p.notas || '')}</td></tr>`).join('');
+  // Balance compartido: cuánto puso cada quien, préstamos entre ambos, y el balance final ya
+  // simplificado (quién le debe a quién). Personal aparte: lo que cada quien gastó que no fue
+  // compartido ni préstamo.
+  const emojiPersona = { Lot: '💙', Temis: '🧡' };
+  const puesto = totalPuestoPorPersona();
+  const personales = totalesPersonales();
+  const prestamos = listaPrestamos();
+  const pagosFinales = balanceSimplificar();
+  const puestoHtml = GPEOPLE.map(n => `<tr><td>${emojiPersona[n]||''} ${escHtml(n)}</td><td class="pr-costo">¥${Math.round(puesto[n]||0).toLocaleString()}</td></tr>`).join('');
+  const personalHtml = GPEOPLE.map(n => `<tr><td>${emojiPersona[n]||''} ${escHtml(n)}</td><td class="pr-costo">¥${Math.round(personales[n]||0).toLocaleString()}</td></tr>`).join('');
   const overlay = document.createElement('div');
   overlay.id = 'printResumenOverlay';
   overlay.innerHTML = `
@@ -2779,6 +2905,29 @@ function abrirResumenImprimible() {
         <h2>📝 Notas generales del viaje</h2>
         <div class="pr-notagen">${escHtml(notaProyectoCargada)}</div>
       </div>` : ''}
+      <div class="pr-dia">
+        <h2>💰 Balance compartido</h2>
+        <table class="pr-tabla">
+          <thead><tr><th>Cuánto puso cada quien</th><th>Total</th></tr></thead>
+          <tbody>${puestoHtml}</tbody>
+        </table>
+        ${prestamos.length ? `
+        <div style="margin-top:10px">
+          <b style="font-size:12.5px">🤝 Préstamos</b>
+          ${prestamos.map(p => `<div class="visor-row" style="font-size:12px">${escHtml(p.de)} → ${escHtml(p.a)}: ¥${p.monto.toLocaleString()}${p.concepto ? ' · ' + escHtml(p.concepto) : ''}</div>`).join('')}
+        </div>` : ''}
+        <div class="pr-notagen" style="margin-top:10px">
+          <b>⚖️ Balance final:</b>
+          ${pagosFinales.length ? pagosFinales.map(p => `${escHtml(p.de)} le debe a ${escHtml(p.a)} ¥${p.monto.toLocaleString()}`).join(' · ') : 'Al día — sin deudas ✅'}
+        </div>
+      </div>
+      <div class="pr-dia">
+        <h2>👤 Total personal (no compartido)</h2>
+        <table class="pr-tabla">
+          <thead><tr><th>Persona</th><th>Total</th></tr></thead>
+          <tbody>${personalHtml}</tbody>
+        </table>
+      </div>
     </div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', (e) => {
