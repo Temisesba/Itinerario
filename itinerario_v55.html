@@ -484,6 +484,14 @@ body.drag-locked .cal-resize-handle { display: none; }
   </div>
 
   <div class="tabla-wrap" id="viewTabla" style="display:none">
+    <div style="position:relative; margin-bottom:8px">
+      <button class="btn-mini" onclick="toggleMapaMenu('tablaVistaMenu', event)">🗓️ Vista ▾</button>
+      <div class="mapa-cats" id="tablaVistaMenu">
+        <label><input type="radio" name="tablaVista" value="dia" onchange="setTablaVista('dia')"> Por día</label>
+        <label><input type="radio" name="tablaVista" value="multi" onchange="setTablaVista('multi')"> Más de un día</label>
+        <label><input type="radio" name="tablaVista" value="todos" checked onchange="setTablaVista('todos')"> Todos</label>
+      </div>
+    </div>
     <div id="tablaHost"></div>
   </div>
 
@@ -584,7 +592,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 55; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 56; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -717,6 +725,8 @@ let mapaModoPendientes = false;
 let mapaHotelesMode = false; // cuando true, todos los hoteles se ven en el mapa
 let mapaDiasSel = new Set(); // días elegidos a mano en el mapa (cuando la Vista no es "Todos")
 let mapaVistaModo = 'todos'; // 'dia' | 'multi' | 'todos' — reemplaza al viejo checkbox + botón "Varios días"
+let tablaDiasSel = new Set(); // mismo mecanismo que mapaDiasSel/mapaVistaModo, pero para la vista Tabla
+let tablaVistaModo = 'todos';
 let mapaRestoMode = true;    // restaurantes visibles por defecto
 let _mapaPreservarVista = false;
 let _gastosSumaSel = new Set(); // IDs de gastos seleccionados para sumar (cache de sesión) // si true, renderMapaGeneral no hace fitBounds (mantiene zoom/centro actual)
@@ -1810,9 +1820,11 @@ function renderSpine() {
   const hoy = fechaLocalISO(new Date());
   const dias = diasFiltrados();
   const enMapa = document.getElementById('viewMapa') && document.getElementById('viewMapa').style.display !== 'none';
-  const verTodosMapa = enMapa && mapaVistaModo === 'todos';
+  const enTabla = document.getElementById('viewTabla') && document.getElementById('viewTabla').style.display !== 'none';
+  const verTodosMapa = (enMapa && mapaVistaModo === 'todos') || (enTabla && tablaVistaModo === 'todos');
   // En modo "Más de un día" cada chip elegido toma el mismo color que "Todos".
-  const multiSelMapa = enMapa && mapaVistaModo === 'multi';
+  const multiSelMapa = (enMapa && mapaVistaModo === 'multi') || (enTabla && tablaVistaModo === 'multi');
+  const diasSelActual = enTabla ? tablaDiasSel : mapaDiasSel;
   track.innerHTML = dias.map((d, idx) => {
     const date = d.fecha ? new Date(d.fecha + 'T00:00:00') : null;
     const dnum = date ? date.getDate() : '–';
@@ -1825,10 +1837,10 @@ function renderSpine() {
     const estado = diaEstado(d);
     const isToday = d.fecha === hoy;
     const colorMapa = verTodosMapa ? DIA_COLORES[idx % DIA_COLORES.length]
-      : (multiSelMapa && mapaDiasSel.has(d.id)) ? DIA_COLORES[idx % DIA_COLORES.length]
+      : (multiSelMapa && diasSelActual.has(d.id)) ? DIA_COLORES[idx % DIA_COLORES.length]
       : null;
     const estiloColor = colorMapa ? `style="border-color:${colorMapa}; background:${colorMapa}22;"` : '';
-    const activeClass = verTodosMapa ? '' : (enMapa ? (mapaDiasSel.has(d.id) ? 'active' : '') : (d.id === currentDiaId ? 'active' : ''));
+    const activeClass = verTodosMapa ? '' : ((enMapa || enTabla) ? (diasSelActual.has(d.id) ? 'active' : '') : (d.id === currentDiaId ? 'active' : ''));
     return `<div class="day-chip ${activeClass} ${isToday ? 'today' : ''}" data-dia="${d.id}" onclick="selectDay('${d.id}')" ${estiloColor}>
        <span style="font-size:10px; font-weight:bold; color:${colorMapa || 'var(--route)'}; margin-bottom:-2px;">${dday}</span>
        <span class="dnum">${dnum}</span>
@@ -1908,6 +1920,7 @@ async function guardarRangoDiasProyecto() {
 
 function selectDay(id) {
   const enMapa = document.getElementById('viewMapa').style.display !== 'none';
+  const enTabla = document.getElementById('viewTabla').style.display !== 'none';
   if (enMapa) {
     mapaFoco = null;
     currentDiaId = id;
@@ -1922,6 +1935,20 @@ function selectDay(id) {
     }
     syncVistaRadios();
     renderMapaGeneral();
+    renderSpine();
+    return;
+  }
+  if (enTabla) {
+    currentDiaId = id;
+    if (tablaVistaModo === 'multi') {
+      if (tablaDiasSel.has(id)) tablaDiasSel.delete(id); else tablaDiasSel.add(id);
+      if (!tablaDiasSel.size) tablaVistaModo = 'todos';
+    } else {
+      tablaVistaModo = 'dia';
+      tablaDiasSel = new Set([id]);
+    }
+    syncTablaVistaRadios();
+    renderTabla();
     renderSpine();
     return;
   }
@@ -5196,6 +5223,24 @@ function setMapaVista(modo) {
 function syncVistaRadios() {
   document.querySelectorAll('input[name="mapaVista"]').forEach(r => { r.checked = (r.value === mapaVistaModo); });
 }
+function setTablaVista(modo) {
+  tablaVistaModo = modo;
+  if (modo === 'multi') {
+    if (!tablaDiasSel.size) {
+      const id = currentDiaId || pickTodayOrFirst();
+      if (id) tablaDiasSel.add(id);
+    }
+  } else if (modo === 'dia') {
+    const id = currentDiaId || [...tablaDiasSel][0] || pickTodayOrFirst();
+    tablaDiasSel = id ? new Set([id]) : new Set();
+    currentDiaId = id;
+  }
+  renderTabla();
+  renderSpine();
+}
+function syncTablaVistaRadios() {
+  document.querySelectorAll('input[name="tablaVista"]').forEach(r => { r.checked = (r.value === tablaVistaModo); });
+}
 function categoriasMapaActivas() {
   return [...document.querySelectorAll('#mapaCats input[type=checkbox]:checked')].map(c => c.value);
 }
@@ -7692,12 +7737,16 @@ function tablaSeccion(tabla, titulo, rows, mapFn) {
 }
 
 function renderTabla() {
+  syncTablaVistaRadios();
   const host = document.getElementById('tablaHost');
   const dias = diasFiltrados();
   const diaIds = new Set(dias.map(d => d.id));
-  const trans = itinerario.transporte.filter(t => diaIds.has(t.diaId));
-  const hosp = itinerario.hospedaje.filter(h => diaIds.has(h.diaIdInicio) || diaIds.has(h.diaIdFin));
-  const pend = itinerario.pendientes.filter(p => (p.proyecto || '') === currentProyecto);
+  // Filtro "Vista" (día / varios días / todos) — mismo mecanismo que ya usa Mapa.
+  const diasFiltro = tablaVistaModo === 'todos' ? dias : dias.filter(d => tablaDiasSel.has(d.id));
+  const diaIdsFiltro = new Set(diasFiltro.map(d => d.id));
+  const trans = itinerario.transporte.filter(t => diaIdsFiltro.has(t.diaId));
+  const hosp = itinerario.hospedaje.filter(h => diaIdsFiltro.has(h.diaIdInicio) || diaIdsFiltro.has(h.diaIdFin));
+  const pend = itinerario.pendientes.filter(p => (p.proyecto || '') === currentProyecto && (tablaVistaModo === 'todos' || (p.diaId && diaIdsFiltro.has(p.diaId))));
   const diaNombre = (id) => { const d = itinerario.dias.find(x => x.id === id); return d ? `${d.fecha}${d.zona ? ' · ' + d.zona : ''}` : '—'; };
   const busqueda = (document.getElementById('tablaBusqueda') || {}).value || '';
   const tablaFechaDesde = (document.getElementById('tablaFechaDesde') || {}).value || '';
@@ -7816,12 +7865,22 @@ function toggleGastoColSel(isCot) {
 }
 function tablaGastosSeccion() {
   const busqueda = (document.getElementById('tablaBusqueda') || {}).value || '';
+  // Mismo filtro "Vista" (día / varios días / todos) que el resto de la tabla.
+  const diasFiltroG = tablaVistaModo === 'todos' ? diasFiltrados() : diasFiltrados().filter(d => tablaDiasSel.has(d.id));
+  const diaIdsFiltroG = new Set(diasFiltroG.map(d => d.id));
   const filas = [];
   Object.entries(gastosVinculados).forEach(([itemId, gastos]) => {
     gastos.forEach(g => {
       const pend = itinerario.pendientes.find(p => p.id === itemId);
       const trans = itinerario.transporte.find(t => t.id === itemId);
       const hosp = itinerario.hospedaje.find(h => h.id === itemId);
+      if (tablaVistaModo !== 'todos') {
+        const perteneceDia = diaIdsFiltroG.has(g.diaItinerario)
+          || (pend && diaIdsFiltroG.has(pend.diaId))
+          || (trans && diaIdsFiltroG.has(trans.diaId))
+          || (hosp && (diaIdsFiltroG.has(hosp.diaIdInicio) || diaIdsFiltroG.has(hosp.diaIdFin)));
+        if (!perteneceDia) return;
+      }
       const nombre = pend ? pend.nombre : trans ? `${trans.origen} → ${trans.destino}` : hosp ? hosp.nombre : itemId;
       const categoria = pend ? (pend.esRestaurante ? '🍴 Restaurante' : '📌 Lugar') : trans ? '🚆 Transporte' : hosp ? '🏨 Hospedaje' : '?';
       const visorFn = pend ? 'Pendiente' : trans ? 'Transporte' : 'Hospedaje';
