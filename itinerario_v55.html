@@ -584,7 +584,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 54; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 55; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2565,7 +2565,18 @@ function gastosDeEsteDia(diaId) {
   (gastosDelDia[diaId] || []).forEach(agregar);
   itinerario.pendientes.filter(p => p.diaId === diaId).forEach(p => (gastosVinculados[p.id]||[]).forEach(agregar));
   itinerario.transporte.filter(t => t.diaId === diaId).forEach(t => (gastosVinculados[t.id]||[]).forEach(agregar));
-  eventosDelDiaFn(diaId).forEach(e => (gastosVinculados[e.id]||[]).forEach(agregar));
+  // v57 fix: un evento/festival de varios días arrastraba el MISMO gasto (completo) a cada uno
+  // de sus días — a diferencia del hotel, un gasto de evento (ej. comida de un día del festival)
+  // no tiene sentido repartirlo entre todos los días; solo debe aparecer en el día real en que
+  // se hizo (su fecha de compra), no en todo el rango del evento.
+  const diaActualObj = itinerario.dias.find(d => d.id === diaId);
+  eventosDelDiaFn(diaId).forEach(e => {
+    const esMultiDia = e.diaIdInicio && e.diaIdFin && e.diaIdInicio !== e.diaIdFin;
+    (gastosVinculados[e.id] || []).forEach(g => {
+      if (esMultiDia && diaActualObj && g.fecha && g.fecha !== diaActualObj.fecha) return;
+      agregar(g);
+    });
+  });
   // v57 fix: el día de checkout NO es una noche pagada ahí (esa noche ya se contó en el
   // checkin) — antes se usaba hospDelDia (incluye el día de checkout, para mostrarlo en el
   // calendario) y eso hacía que se sumara una noche de más en cada estadía.
