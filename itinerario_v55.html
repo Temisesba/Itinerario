@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 95; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 96; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -597,8 +597,8 @@ let GAS_URL_GASTOS = localStorage.getItem('itin_gasUrlGastos') || '';
 // organiza cómo se ven ahí (y qué nombres trae para "¿Quién paga?"); no afecta en nada la
 // visibilidad dentro de Itinerario, que siempre filtra por Proyecto, no por Sesión.
 let GAS_SESION_GASTOS = localStorage.getItem('itin_gasSesion') || 'Lot & Temis';
-const GASTOS_CATEGORIAS = ['🍽️ Restaurante','🍜 Alimentos','🏨 Hospedaje','🛒 Supermercado','🍺 Salidas/Bares','🎌 Entretenimiento','👗 Ropa/Compras','🚆 Transporte','🏠 Hogar','💊 Salud','📱 Servicios/Tech','✈️ Viajes','🎁 Regalos','📚 Educación','🌸 Belleza/Cuidado','💸 Transferencias/Finanzas','❓ Otro'];
-const GASTOS_CAT_DEFAULT = '✈️ Viajes';
+const GASTOS_CATEGORIAS = ['🥦 Despensa / comida para casa','🍟 Antojos / ultraprocesados','🍽️ Restaurantes, cafés y delivery','🍺 Alcohol y bares','🎟️ Entradas y entretenimiento','🚆 Transporte','🏨 Hospedaje','🏠 Hogar y limpieza','💡 Servicios y suscripciones','👗 Ropa, accesorios, belleza y cuidado personal','💊 Salud','🎁 Regalos y recuerdos','💸 Finanzas y transferencias','❓ Otro / por revisar'];
+const GASTOS_CAT_DEFAULT = '❓ Otro / por revisar';
 let gastosVinculados = {}; // { [itemId]: [{ id, costo, moneda, ... }] } — persiste en GASTOS_VINCULOS sheet
 let gastosDelDia = {}; // { [diaItinerario]: [...] } — gastos asociados directo a un día (sin item específico), v57
 
@@ -1186,11 +1186,11 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   document.getElementById('gNotas').value = prev ? (prev.notas||'') : '';
   // Categoria por defecto según tipo de item
     const _esResto = tipo === 'pendiente' && (() => { const p = itinerario.pendientes.find(x=>x.id===itemId); return p && (p.esRestaurante || p.antojo); })();
-  const catPorTipo = tipo === 'hospedaje' ? '🏨 Hospedaje' : tipo === 'transporte' ? '🚆 Transporte' : tipo === 'evento' ? '🎪 Evento' : _esResto ? '🍽️ Restaurante' : '🎌 Entretenimiento';
+  const catPorTipo = tipo === 'hospedaje' ? '🏨 Hospedaje' : tipo === 'transporte' ? '🚆 Transporte' : tipo === 'evento' ? '🎟️ Entradas y entretenimiento' : _esResto ? '🍽️ Restaurantes, cafés y delivery' : '🎟️ Entradas y entretenimiento';
   // Detectar si el place es un restaurante
   const datosObj = (() => { try { return typeof datosStr==='object' ? datosStr : JSON.parse(datosStr||'{}'); } catch(_){return {};} })();
   const esResto = datosObj.esRestaurante || datosObj.antojo;
-  const catAuto = esResto ? '🍽️ Restaurante' : catPorTipo;
+  const catAuto = esResto ? '🍽️ Restaurantes, cafés y delivery' : catPorTipo;
   document.getElementById('gCat').value = prev ? (prev.categoria||catAuto) : catAuto;
   document.getElementById('gChkCot').checked = prev ? !!prev.cotizacion : true;
   gTb64 = ''; gTMime = '';
@@ -8604,11 +8604,20 @@ init();
         <label>Categoría</label>
         <select id="gCat" class="g-select">
           <option value="">— Sin categoría —</option>
-          <option>🍽️ Restaurante</option><option>🍜 Alimentos</option><option>🏨 Hospedaje</option><option>🍺 Salidas / Bares</option><option>🛒 Supermercado</option>
-          <option>🎌 Entretenimiento</option><option>🎪 Evento</option><option>👗 Ropa / Compras</option><option>🚆 Transporte</option>
-          <option>🏠 Hogar</option><option>💊 Salud</option><option>📱 Servicios / Tech</option>
-          <option selected>✈️ Viajes</option><option>🎁 Regalos</option><option>📚 Educación</option>
-          <option>🌸 Belleza / Cuidado</option><option>💸 Transferencias / Finanzas</option><option>❓ Otro</option>
+          <option>🥦 Despensa / comida para casa</option>
+          <option>🍟 Antojos / ultraprocesados</option>
+          <option>🍽️ Restaurantes, cafés y delivery</option>
+          <option>🍺 Alcohol y bares</option>
+          <option>🎟️ Entradas y entretenimiento</option>
+          <option>🚆 Transporte</option>
+          <option>🏨 Hospedaje</option>
+          <option>🏠 Hogar y limpieza</option>
+          <option>💡 Servicios y suscripciones</option>
+          <option>👗 Ropa, accesorios, belleza y cuidado personal</option>
+          <option>💊 Salud</option>
+          <option>🎁 Regalos y recuerdos</option>
+          <option>💸 Finanzas y transferencias</option>
+          <option>❓ Otro / por revisar</option>
         </select>
       </div>
       <div class="g-cot-block">
