@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 97; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 98; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1075,9 +1075,12 @@ function gPoblarDiaItinerario(diaSeleccionado) {
 function gPoblarAsociarA(diaId, itemIdSeleccionado) {
   const sel = document.getElementById('gAsociarA');
   if (!sel) return;
-  const items = itemsAsignadosDelDia(diaId);
+  const { pend, trans, hosp, evt } = itemsAsociablesProyecto();
+  const optGroup = (label, items) => !items.length ? '' : `<optgroup label="${label}">${
+    items.map(it => `<option value="${it.tipo}:${it.id}" ${itemIdSeleccionado===it.id?'selected':''}>${it.icono} ${escHtml(it.nombre)}</option>`).join('')
+  }</optgroup>`;
   sel.innerHTML = '<option value="">— Pendiente (sin asociar) —</option>' +
-    items.map(it => `<option value="${it.tipo}:${it.id}" ${itemIdSeleccionado===it.id?'selected':''}>${it.icono} ${escHtml(it.nombre)}</option>`).join('');
+    optGroup('📌 Lugares', pend) + optGroup('🚆 Transporte', trans) + optGroup('🏨 Hospedaje', hosp) + optGroup('🎪 Eventos', evt);
 }
 // "Día en itinerario" solo tiene efecto en gastos "Pendiente" (sin item asociado) — un gasto
 // asociado a algo ya se ubica solo por el día de ese item (o, si es hotel, por noche). Se
@@ -2676,6 +2679,21 @@ function itemsAsignadosDelDia(diaId) {
     .map(e => ({ tipo: 'evento', id: e.id, nombre: e.nombre || '(sin nombre)', icono: '🎪' }));
   return [...pend, ...trans, ...hosp, ...evt];
 }
+// v58: lista completa de items del proyecto (sin importar el día) — para poder asociar un gasto
+// a un lugar/transporte/hospedaje/evento aunque no esté programado ese día (ej. "para después"
+// o programado en otro día). itemsAsignadosDelDia sigue usándose para el candidato de la IA
+// (ahí sí conviene acotar al día, para no confundirla con toda la lista del viaje).
+function itemsAsociablesProyecto() {
+  const pend = itinerario.pendientes.filter(p => (p.proyecto||'') === currentProyecto)
+    .map(p => ({ tipo: 'pendiente', id: p.id, nombre: p.nombre || '(sin nombre)', icono: '📌' }));
+  const trans = itinerario.transporte
+    .map(t => ({ tipo: 'transporte', id: t.id, nombre: `${TIPO_LABEL[t.tipo]||t.tipo}: ${t.origen||''} → ${t.destino||''}`, icono: '🚆' }));
+  const hosp = itinerario.hospedaje
+    .map(h => ({ tipo: 'hospedaje', id: h.id, nombre: h.nombre || '(sin nombre)', icono: '🏨' }));
+  const evt = itinerario.eventos
+    .map(e => ({ tipo: 'evento', id: e.id, nombre: e.nombre || '(sin nombre)', icono: '🎪' }));
+  return { pend, trans, hosp, evt };
+}
 // v57: gastos que le tocan a este día en el panel lateral: los asociados explícitamente a él
 // (gastosDelDia, campo "Día en itinerario") + los de cualquier item que ya se muestra ese día
 // (pendiente/transporte/evento completos). El hospedaje es un caso aparte: en vez de repetir el
@@ -2724,6 +2742,7 @@ function gastosDeEsteDia(diaId) {
       id: 'hotelnoche-' + h.id + '-' + diaId, itemId: h.id, esHotelPorNoche: true,
       concepto: (h.nombre || 'Hotel') + ' (por noche)', costo: porNoche,
       notas: gastosH.map(g => g.notas).filter(Boolean).join(' · '),
+      categoria: '🏨 Hospedaje',
       moneda: gastosH[0].moneda, cotizacion: false
     });
   });
@@ -2979,10 +2998,10 @@ function abrirResumenImprimible() {
       <tr>
         <td class="pr-hora pr-col-hora">${escHtml(f.hora || '—')}</td>
         <td class="pr-col-que">${f.itemId && f.tipo ? `<span style="cursor:pointer; text-decoration:underline; text-decoration-style:dotted;" onclick="prAbrirVisor('${f.tipo}','${f.itemId}')">${escHtml(f.nombre || '')}</span>` : escHtml(f.nombre || '')}</td>
-        <td class="pr-notas pr-col-notas">${escHtml(f.notas || '')}</td>
+        <td class="pr-notas pr-col-notas">${escHtml(f.notas || '')}${f.notaGasto ? `<span class="pr-solo-costo">${f.notas ? ' - ' : ''}${escHtml(f.notaGasto)}</span>` : ''}</td>
         <td class="pr-notas pr-col-desglose">${escHtml(f.desglose || '')}</td>
         <td class="pr-notas pr-col-direccion">${escHtml(f.direccion || '')}</td>
-        <td class="pr-notas pr-col-diario">${escHtml(f.diario || '')}${f.notaGasto ? `<span class="pr-solo-costo">${f.diario ? ' - ' : ''}${escHtml(f.notaGasto)}</span>` : ''}</td>
+        <td class="pr-notas pr-col-diario">${escHtml(f.diario || '')}</td>
         <td class="pr-notas pr-col-ia">${escHtml(f.iaComentario || '')}</td>
         <td class="pr-costo pr-col-costo">${f.costo ? '¥' + Math.round(f.costo).toLocaleString() : ''}</td>
       </tr>`).join('') : `<tr><td colspan="8" class="pr-vacio">Sin actividades registradas.</td></tr>`;
@@ -8232,16 +8251,18 @@ function tablaGastosSeccion() {
     const pend = itemId ? itinerario.pendientes.find(p => p.id === itemId) : null;
     const trans = itemId ? itinerario.transporte.find(t => t.id === itemId) : null;
     const hosp = itemId ? itinerario.hospedaje.find(h => h.id === itemId) : null;
+    const evt = itemId ? itinerario.eventos.find(e => e.id === itemId) : null;
     if (tablaVistaModo !== 'todos') {
       const perteneceDia = diaIdsFiltroG.has(g.diaItinerario)
         || (pend && diaIdsFiltroG.has(pend.diaId))
         || (trans && diaIdsFiltroG.has(trans.diaId))
-        || (hosp && (diaIdsFiltroG.has(hosp.diaIdInicio) || diaIdsFiltroG.has(hosp.diaIdFin)));
+        || (hosp && (diaIdsFiltroG.has(hosp.diaIdInicio) || diaIdsFiltroG.has(hosp.diaIdFin)))
+        || (evt && (diaIdsFiltroG.has(evt.diaIdInicio) || diaIdsFiltroG.has(evt.diaIdFin)));
       if (!perteneceDia) return;
     }
-    const nombre = pend ? pend.nombre : trans ? `${trans.origen} → ${trans.destino}` : hosp ? hosp.nombre : (g.concepto || '(sin item)');
-    const categoria = pend ? (pend.esRestaurante ? '🍴 Restaurante' : '📌 Lugar') : trans ? '🚆 Transporte' : hosp ? '🏨 Hospedaje' : '💴 General';
-    const visorFn = pend ? 'Pendiente' : trans ? 'Transporte' : hosp ? 'Hospedaje' : '';
+    const nombre = pend ? pend.nombre : trans ? `${trans.origen} → ${trans.destino}` : hosp ? hosp.nombre : evt ? evt.nombre : (g.concepto || '(sin item)');
+    const categoria = pend ? (pend.esRestaurante ? '🍴 Restaurante' : '📌 Lugar') : trans ? '🚆 Transporte' : hosp ? '🏨 Hospedaje' : evt ? '🎪 Evento' : '💴 General';
+    const visorFn = pend ? 'Pendiente' : trans ? 'Transporte' : hosp ? 'Hospedaje' : evt ? 'Evento' : '';
     filas.push({ ...g, nombre, visorFn, itemId: itemId || '' });
   };
   Object.entries(gastosVinculados).forEach(([itemId, gastos]) => gastos.forEach(g => procesarGastoTabla(itemId, g)));
@@ -8288,7 +8309,7 @@ function tablaGastosSeccion() {
       const arrow = st && st.key===k ? (st.dir==='asc'?' ▲':' ▼') : '';
       return `<th style="cursor:pointer; user-select:none; text-align:${k==='costo'?'right':'left'}" onclick="window._gastoSort={key:'${k}',dir:window._gastoSort&&window._gastoSort.key==='${k}'&&window._gastoSort.dir==='asc'?'desc':'asc'}; renderTabla()">${COL_LABELS[k]}${arrow}</th>`;
     }).join('') + `<th style="text-align:center; white-space:nowrap">Σ Sumar</th>`;
-    const tbodyHtml = rows.map(f => `<tr style="cursor:pointer" onclick="abrirVisor${f.visorFn}('${f.itemId}')">
+    const tbodyHtml = rows.map(f => `<tr style="cursor:pointer" onclick="${f.visorFn ? `abrirVisor${f.visorFn}('${f.itemId}')` : `editarGastoVisor('', '', '${f.id}')`}">
       ${activeCols.map(k => {
         if(k==='costo') return `<td style="text-align:right; font-weight:600">¥${Number(f.costo||0).toLocaleString()}</td>`;
         if(k==='concepto') return `<td>${escHtml(f.concepto||'')}${f.tienda?` <span style="color:var(--ink-3);font-size:10px">· ${escHtml(f.tienda)}</span>`:''}</td>`;
