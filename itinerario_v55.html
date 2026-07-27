@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 89; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 90; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -7390,9 +7390,9 @@ function openPendienteForm(id, diaId) {
         <div class="field"><label>🕐 Hora de cierre del lugar</label><input type="time" id="fPendHorarioCierre" value="${p && p.horarioCierre ? p.horarioCierre : ''}"></div>
       </div>
 
-      <div style="background:#EFF4EC; border:1px solid #A8B99C; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+      <div style="background:#FFFFFF; border:1px solid #808000; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
         <div class="row-3" style="align-items:flex-end; margin-bottom:0">
-          <div class="field" style="margin-bottom:0"><label>Corresponde a una Comida?</label>
+          <div class="field" style="margin-bottom:0"><label>¿Corresponde a una Comida?</label>
             <select id="fPendComida">
               <option value="">— No aplica —</option>
               ${Object.keys(TIPO_COMIDA_LABEL).map(k => `<option value="${k}" ${p && p.tipoComida === k ? 'selected' : ''}>${TIPO_COMIDA_ICON[k]} ${TIPO_COMIDA_LABEL[k]}</option>`).join('')}
@@ -7411,7 +7411,7 @@ function openPendienteForm(id, diaId) {
         </div>
       </div>
 
-      <div style="background:#F6F0FA; border:1px solid #C9B2D9; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+      <div style="background:#FFFFFF; border:1px solid #808000; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
         <div class="row-3">
           <div class="field" style="margin-bottom:0"><label>Día</label>
             <select id="fPendDia"><option value="">Sin programar (para después)</option>
