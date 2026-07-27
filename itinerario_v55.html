@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 93; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 94; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -7386,8 +7386,8 @@ function openPendienteForm(id, diaId) {
       <div class="field"><label>Sugerencias IA</label><textarea id="fPendSugIA" readonly style="background:var(--paper-2); font-size:12px; color:var(--ink-2); min-height:60px;">${escHtml(p ? p.sugerenciasIA : '')}</textarea></div>
 
       <div class="row-2">
-        <div class="field"><label>🕐 Hora de apertura del lugar</label><input type="time" id="fPendHorarioApertura" value="${p && p.horarioApertura ? p.horarioApertura : ''}"></div>
-        <div class="field"><label>🕐 Hora de cierre del lugar</label><input type="time" id="fPendHorarioCierre" value="${p && p.horarioCierre ? p.horarioCierre : ''}"></div>
+        <div class="field"><label>🕐 Hora de apertura del lugar</label><input type="time" id="fPendHorarioApertura" value="${p && p.horarioApertura ? p.horarioApertura : ''}" onchange="pendCheckHorarioAlerta()"></div>
+        <div class="field"><label>🕐 Hora de cierre del lugar</label><input type="time" id="fPendHorarioCierre" value="${p && p.horarioCierre ? p.horarioCierre : ''}" onchange="pendCheckHorarioAlerta()"></div>
       </div>
 
       <div style="background:var(--paper-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:14px;">
@@ -7418,9 +7418,10 @@ function openPendienteForm(id, diaId) {
               ${diasFiltrados().map(d => `<option value="${d.id}" ${(diaId === d.id) || (p && p.diaId === d.id) ? 'selected' : ''}>${d.fecha} ${d.zona ? '· ' + escHtml(d.zona) : ''}</option>`).join('')}
             </select>
           </div>
-          <div class="field" style="margin-bottom:0"><label>Hora inicio</label><input type="time" id="fPendHoraIni" value="${p && p.horaInicio ? p.horaInicio : ''}"></div>
-          <div class="field" style="margin-bottom:0"><label>Hora fin</label><input type="time" id="fPendHoraFin" value="${p && p.horaFin ? p.horaFin : ''}"></div>
+          <div class="field" style="margin-bottom:0"><label>Hora inicio</label><input type="time" id="fPendHoraIni" value="${p && p.horaInicio ? p.horaInicio : ''}" onchange="pendCheckHorarioAlerta()"></div>
+          <div class="field" style="margin-bottom:0"><label>Hora fin</label><input type="time" id="fPendHoraFin" value="${p && p.horaFin ? p.horaFin : ''}" onchange="pendCheckHorarioAlerta()"></div>
         </div>
+        <div id="fPendHorarioAviso" style="display:none; margin-top:8px; padding:7px 10px; background:#fdecea; border:1px solid #e8a49c; border-radius:8px; font-size:12.5px; color:#8a2e22;"></div>
         <div class="field" style="margin:10px 0 0"><label>Duración aprox. en minutos (si no pones hora) — ej. 60 = 1h, 15 = algo corto</label><input type="number" id="fPendDuracion" min="5" step="5" placeholder="60" value="${p && p.duracionMin ? p.duracionMin : ''}"></div>
         <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin:8px 0 0;">
           <input type="checkbox" id="fPendDurBloqueada" ${p && p.duracionBloqueada ? 'checked' : ''}> ⏱🔒 Duración fija (no cambia al arrastrar en el calendario)
@@ -7493,6 +7494,28 @@ function openPendienteForm(id, diaId) {
       elFin.value = minToHHMM(ini + dur);
     }
   });
+  pendCheckHorarioAlerta();
+}
+
+function pendCheckHorarioAlerta() {
+  const aviso = document.getElementById('fPendHorarioAviso');
+  if (!aviso) return;
+  const apertura = document.getElementById('fPendHorarioApertura').value;
+  const cierre = document.getElementById('fPendHorarioCierre').value;
+  const horaIni = document.getElementById('fPendHoraIni').value;
+  const horaFin = document.getElementById('fPendHoraFin').value;
+  if (!apertura || !cierre || !horaIni) { aviso.style.display = 'none'; return; }
+  const aM = hhmmToMin(apertura), cM = hhmmToMin(cierre);
+  const iniM = hhmmToMin(horaIni), finM = horaFin ? hhmmToMin(horaFin) : null;
+  const dentro = (m) => (cM >= aM) ? (m >= aM && m <= cM) : (m >= aM || m <= cM); // cM < aM = cierra después de medianoche
+  const fueraIni = !dentro(iniM);
+  const fueraFin = finM !== null && !dentro(finM);
+  if (fueraIni || fueraFin) {
+    aviso.style.display = 'block';
+    aviso.textContent = `⚠️ A esta hora el lugar podría estar cerrado — abre ${apertura} y cierra ${cierre}`;
+  } else {
+    aviso.style.display = 'none';
+  }
 }
 
 async function guardarPendiente() {
