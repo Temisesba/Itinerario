@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 94; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 95; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -5144,13 +5144,23 @@ function mtfCollapse() { const el = document.getElementById('mobileTabFloat'); i
 
 async function subirFotoPendiente(id, input) {
   const file = input.files[0]; if (!file) return;
+  if (!navigator.onLine) { showToast('🔌 Necesitás conexión para subir fotos'); input.value = ''; return; }
   showToast('Subiendo foto…');
   try {
     const dataUrl = await resizeImage(file, 1280, 0.72);
     const r = await postGAS({ action: 'subirFoto', base64: dataUrl, nombre: file.name });
     if (r.ok) {
       const p = itinerario.pendientes.find(x => x.id === id);
-      if (p) { p.fotos = p.fotos || []; p.fotos.push(r.url); await postGAS({ action: 'updatePendiente', id, fotos: p.fotos }); }
+      if (p) {
+        p.fotos = p.fotos || []; p.fotos.push(r.url);
+        const r2 = await postGAS({ action: 'updatePendiente', id, fotos: p.fotos });
+        if (!r2 || r2.ok !== true) {
+          p.fotos.pop();
+          showToast('⚠️ La foto se subió pero no se pudo guardar — intenta de nuevo');
+          input.value = '';
+          return;
+        }
+      }
       const row = document.getElementById('fPendFotosRow');
       if (row) {
         const img = document.createElement('img'); img.className = 'foto-thumb'; img.src = r.url;
@@ -8538,10 +8548,15 @@ init();
       </div>
       <div class="g-field">
         <label>Foto del ticket</label>
-        <div class="g-uzone" id="gUzone" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="gHandleDrop(event)">
-          <input type="file" accept="image/*" id="gTicketInput" onchange="gHandleFile(event)">
+        <div class="g-uzone" id="gUzone" style="cursor:default" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="gHandleDrop(event)">
+          <input type="file" accept="image/*" id="gTicketInput" style="display:none" onchange="gHandleFile(event)">
+          <input type="file" accept="image/*" capture="environment" id="gTicketInputCam" style="display:none" onchange="gHandleFile(event)">
           <div style="font-size:24px;margin-bottom:4px">📷</div>
-          <div style="font-size:12px;color:var(--ink-2)"><strong>Toca para subir</strong> o arrastra aquí</div>
+          <div style="font-size:12px;color:var(--ink-2)"><strong>Elige una opción</strong> o arrastra la foto</div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
+            <button type="button" class="g-tbtn" style="flex:none;padding:7px 14px" onclick="document.getElementById('gTicketInputCam').click()">📷 Cámara</button>
+            <button type="button" class="g-tbtn" style="flex:none;padding:7px 14px" onclick="document.getElementById('gTicketInput').click()">🖼️ Galería</button>
+          </div>
         </div>
         <div id="gPrevArea" style="text-align:center;display:none">
           <div class="g-tprev">
