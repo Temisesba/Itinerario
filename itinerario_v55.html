@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 99; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 100; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1229,7 +1229,7 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   gProdDraft = (prev && prev.id) ? gAllProds.filter(p => p.compraId === prev.id).map(p => ({
     concepto: p.concepto || '', marca: p.marca || '', categoria: p.categoria || '', ubicacion: p.ubicacion || '',
     notas: p.notas || '', piezas: p.piezas || '1', cantidad: p.cantidad || '', unidad: p.unidad || 'unidad',
-    precioInd: p.precioInd || '', caducidad: p.caducidad || '', inventario: (p.inventario || 'SI') !== 'NA'
+    precioInd: p.precioInd || '', quienCompra: p.quienCompra || '', inventario: (p.inventario || 'SI') !== 'NA'
   })) : [];
   gRenderProdDraft();
   // Pagado con: reconstruir desde lo guardado, o dejarlo vacío para uno nuevo.
@@ -1475,7 +1475,7 @@ async function gAnalyzeIA() {
         // v57: el prompt de IA es compartido con Compras (donde "inventario" = despensa de casa
         // tiene sentido); acá en un viaje no aplica — siempre arranca desmarcado, sin importar
         // lo que haya sugerido la IA.
-        caducidad: '', inventario: false
+        quienCompra: gQuienCompraDefault(), inventario: false
       })).filter(p => p.concepto);
       gRenderProdDraft();
     }
@@ -1564,13 +1564,43 @@ function gRenderProdDraft() {
       <input type="text" value="${escHtml(p.cantidad)}" placeholder="500" onchange="gProdDraft[${i}].cantidad=this.value">
       <select onchange="gProdDraft[${i}].unidad=this.value">${GUNIDADES.map(u => '<option' + (u === p.unidad ? ' selected' : '') + '>' + u + '</option>').join('')}</select>
       <input type="text" value="${escHtml(p.precioInd)}" placeholder="¥" onchange="gProdDraft[${i}].precioInd=this.value">
-      <input type="date" value="${escHtml(p.caducidad)}" onchange="gProdDraft[${i}].caducidad=this.value" title="Caducidad">
+      <select onchange="gProdDraft[${i}].quienCompra=this.value;gRenderQuienResumen()" title="¿Quién es este producto? (Compartido si es de los dos)">${gQuienCompraOpciones(p.quienCompra)}</select>
       <input type="checkbox" ${p.inventario ? 'checked' : ''} onchange="gProdDraft[${i}].inventario=this.checked" title="¿Va a inventario?">
       <button class="g-shop-del" onclick="gProdDraft.splice(${i},1);gRenderProdDraft()" title="Quitar línea">🗑</button>
     </div>`).join('');
+  gRenderQuienResumen();
+}
+// v58: "¿quién es este producto?" por línea — igual que v29 de Compras_v46.html, adaptado a
+// GPEOPLE (la lista dinámica de la sesión). En sesión individual no ofrece "Compartido".
+function gQuienCompraDefault() { return GPEOPLE.length > 1 ? 'Compartido' : (GPEOPLE[0] || ''); }
+function gQuienCompraOpciones(sel) {
+  const opts = GPEOPLE.length > 1 ? ['Compartido', ...GPEOPLE] : (GPEOPLE.length ? GPEOPLE.slice() : ['']);
+  const actual = sel || gQuienCompraDefault();
+  return opts.map(o => '<option' + (o === actual ? ' selected' : '') + '>' + escHtml(o) + '</option>').join('');
+}
+function gCalcTotalesPorPersona(productos) {
+  const totales = {}; GPEOPLE.forEach(n => totales[n] = 0);
+  let compartido = 0;
+  (productos || []).forEach(p => {
+    const monto = (parseFloat(p.precioInd) || 0) * (parseFloat(p.piezas) || 1);
+    const quien = p.quienCompra || gQuienCompraDefault();
+    if (quien === 'Compartido' || !GPEOPLE.includes(quien)) compartido += monto;
+    else totales[quien] = (totales[quien] || 0) + monto;
+  });
+  return { totales, compartido };
+}
+function gTextoResumenPorPersona(productos) {
+  if (!productos || !productos.length || GPEOPLE.length < 2) return '';
+  const { totales, compartido } = gCalcTotalesPorPersona(productos);
+  const porCabeza = compartido / GPEOPLE.length;
+  return '🙋 Le toca: ' + GPEOPLE.map(n => n + ' ¥' + Math.round(totales[n] + porCabeza).toLocaleString()).join(' · ') + (compartido ? ' (incluye su parte de lo Compartido)' : '');
+}
+function gRenderQuienResumen() {
+  const el = document.getElementById('gProdQuienResumen'); if (!el) return;
+  el.textContent = gTextoResumenPorPersona(gProdDraft);
 }
 function gProdAdd() {
-  gProdDraft.push({ concepto:'', marca:'', categoria:'', ubicacion:'', notas:'', piezas:'1', cantidad:'', unidad:'unidad', precioInd:'', caducidad:'', inventario:false });
+  gProdDraft.push({ concepto:'', marca:'', categoria:'', ubicacion:'', notas:'', piezas:'1', cantidad:'', unidad:'unidad', precioInd:'', quienCompra: gQuienCompraDefault(), inventario:false });
   gRenderProdDraft();
 }
 
@@ -1703,7 +1733,7 @@ async function gGuardar() {
                 concepto: p.concepto.trim(), marca: p.marca || c.marca || '', notas: p.notas || '',
                 categoria: p.categoria || c.categoria || '', ubicacion: p.ubicacion || c.ubicacion || '',
                 piezas: p.piezas, cantidad: p.cantidad, unidad: p.unidad, precioInd: p.precioInd,
-                caducidad: p.caducidad, inventario: p.inventario ? 'SI' : 'NA'
+                quienCompra: p.quienCompra || '', inventario: p.inventario ? 'SI' : 'NA'
               };
             })
           }));
@@ -1741,7 +1771,7 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
     const pagaTxt = g.quien_paga ? `Paga: ${g.quien_paga}` : '';
     return `<div style="${rs}">
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')}${nProds?' <span class="g-chip" style="font-size:9px;padding:1px 6px">🧾 '+nProds+'</span>':''}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')}${nProds?` <span class="g-chip" style="font-size:9px;padding:1px 6px;cursor:pointer" onclick="gToggleProdSub('${g.id}')" title="Ver productos">🧾 ${nProds}</span>`:''}</span>
       <div style="display:flex;gap:3px;align-items:center;flex-shrink:0;margin-left:6px">
         <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
         <button class="icon-btn" style="font-size:12px" onclick="editarGastoVisor('${tipo}','${itemId}','${g.id}')">✏️</button>
@@ -1750,6 +1780,7 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
     </div>
     ${(pagaTxt||como) ? `<div style="font-size:10.5px;color:var(--ink-3)">💳 ${escHtml(pagaTxt)}${pagaTxt&&como?' · ':''}${escHtml(como)}</div>` : ''}
     ${g.notas ? `<div style="font-size:10.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📌 ${escHtml(g.notas)}</div>` : ''}
+    ${nProds ? `<div id="gProdSub-${g.id}" style="display:none;margin-top:4px"></div>` : ''}
   </div>`;
   }).join('');
   return `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius);padding:10px 12px;margin-top:8px">
@@ -1760,6 +1791,31 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
     ${buildRows(reales)}
     ${cots.length ? `<div style="color:#b85c8a;font-size:11px;font-weight:600;margin:6px 0 2px;padding-top:4px;border-top:1px solid #bbf7d0">💬 Cotizaciones (${cots.length})</div>${buildRows(cots)}` : ''}
   </div>`;
+}
+// v58: expandir/colapsar los productos de una compra ya guardada (mismo dato que se ve al
+// editar, pero de solo lectura) — igual que v30SubTable de Compras_v46.html.
+function gToggleProdSub(gastoId) {
+  const el = document.getElementById('gProdSub-' + gastoId);
+  if (!el) return;
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+  const prods = gAllProds.filter(p => p.compraId === gastoId);
+  el.innerHTML = gSubTablaProductos(prods);
+  el.style.display = 'block';
+}
+function gSubTablaProductos(prods) {
+  const fila = p => `<tr>
+    <td>${escHtml(p.concepto||'')}</td>
+    <td>${escHtml(String(p.piezas||''))}</td>
+    <td>${p.cantidad ? escHtml(String(p.cantidad)) + ' ' + escHtml(p.unidad||'') : '—'}</td>
+    <td>${p.precioInd ? '¥' + escHtml(String(p.precioInd)) : '—'}</td>
+    <td style="font-size:10px;color:#b85c8a;font-weight:600">${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--ink-3)">—</span>'}</td>
+    <td style="font-size:10px;font-weight:600">${p.quienCompra ? escHtml(p.quienCompra) : '<span style="color:var(--ink-3)">—</span>'}</td>
+  </tr>`;
+  const resumen = gTextoResumenPorPersona(prods);
+  return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+    <tr style="border-bottom:1px solid var(--line)"><th style="text-align:left;padding:2px 4px">Producto</th><th style="text-align:left;padding:2px 4px">Pzas</th><th style="text-align:left;padding:2px 4px">Cant.</th><th style="text-align:left;padding:2px 4px">Precio</th><th style="text-align:left;padding:2px 4px">Categoría</th><th style="text-align:left;padding:2px 4px">¿Quién?</th></tr>
+    ${prods.map(fila).join('')}
+  </table>${resumen ? `<div style="font-size:10.5px;color:var(--ink-3);padding:4px 2px">${escHtml(resumen)}</div>` : ''}</div>`;
 }
 async function editarGastoVisor(tipo, itemId, gastoId) {
   // Construir datosStr desde la lista local del visor abierto
@@ -8705,9 +8761,10 @@ init();
       <div class="g-field">
         <label>🧾 Productos del ticket <span style="font-weight:400;color:var(--ink-3);text-transform:none">(la IA los llena; puedes editar)</span></label>
         <div class="g-prod-scroll">
-          <div id="gProdHdr" class="g-prod-hdr" style="display:none"><span>Producto</span><span>Pzas</span><span>Cant.</span><span>Unidad</span><span>Precio</span><span>Caducidad</span><span title="¿Va a inventario?">📦</span><span></span></div>
+          <div id="gProdHdr" class="g-prod-hdr" style="display:none"><span>Producto</span><span>Pzas</span><span>Cant.</span><span>Unidad</span><span>Precio</span><span>¿Quién?</span><span title="¿Va a inventario?">📦</span><span></span></div>
           <div id="gProdList"></div>
         </div>
+        <div id="gProdQuienResumen" style="font-size:11px;color:var(--ink-3);margin-top:4px"></div>
         <div style="display:flex;gap:6px;margin-top:4px">
           <button class="g-bcnl" style="padding:6px 12px;font-size:12px" onclick="gProdAdd()">＋ Agregar producto</button>
         </div>
