@@ -587,7 +587,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 90; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 91; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -7390,28 +7390,26 @@ function openPendienteForm(id, diaId) {
         <div class="field"><label>🕐 Hora de cierre del lugar</label><input type="time" id="fPendHorarioCierre" value="${p && p.horarioCierre ? p.horarioCierre : ''}"></div>
       </div>
 
-      <div style="background:#FFFFFF; border:1px solid #808000; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
-        <div class="row-3" style="align-items:flex-end; margin-bottom:0">
+      <div style="background:#EEF4F8; border:1px solid #B8C7D1; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+        <div class="row-2" style="margin-bottom:0">
           <div class="field" style="margin-bottom:0"><label>¿Corresponde a una Comida?</label>
             <select id="fPendComida">
               <option value="">— No aplica —</option>
               ${Object.keys(TIPO_COMIDA_LABEL).map(k => `<option value="${k}" ${p && p.tipoComida === k ? 'selected' : ''}>${TIPO_COMIDA_ICON[k]} ${TIPO_COMIDA_LABEL[k]}</option>`).join('')}
             </select>
           </div>
-          <div class="field" style="margin-bottom:0">
-            <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; padding-top:8px">
+          <div class="field autocomplete-wrap" style="margin-bottom:0">
+            <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; text-transform:none; font-weight:400; color:var(--ink-1);">
               <input type="checkbox" id="fPendEsRestaurante" ${p && p.esRestaurante ? 'checked' : ''}> Es un restaurante
             </label>
-          </div>
-          <div class="field autocomplete-wrap" style="margin-bottom:0">
-            <label>Platillo especial <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(agrupa restaurantes del mismo platillo)</span></label>
+            <label style="margin-top:8px">Platillo especial <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(agrupa restaurantes del mismo platillo)</span></label>
             <input type="text" id="fPendAntojo" autocomplete="off" placeholder="Ej: Cochinita, Ramen... vacío si no aplica" value="${escHtml(p ? p.antojo : '')}">
             <div class="autocomplete-list" id="fPendAntojoList"></div>
           </div>
         </div>
       </div>
 
-      <div style="background:#FFFFFF; border:1px solid #808000; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+      <div style="background:#F7F2EA; border:1px solid #D8C8B5; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
         <div class="row-3">
           <div class="field" style="margin-bottom:0"><label>Día</label>
             <select id="fPendDia"><option value="">Sin programar (para después)</option>
