@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 98; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 99; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -4129,14 +4129,12 @@ function abrirVisorPendiente(id) {
       ${(p.fotos && p.fotos.length) ? `<div class="fotos-row" style="margin-bottom:10px">${p.fotos.map((f, i) => `<img class="foto-thumb" src="${f}" onclick="abrirLightboxPendiente('${p.id}', ${i})">`).join('')}</div>` : ''}
       ${p.sugerenciasIA ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(p.sugerenciasIA)}</div>` : ''}
       ${gastoVinculadoHtml('pendiente', p.id, JSON.stringify({nombre:p.nombre,antojo:p.antojo,direccion:p.direccion}))}
-      <div class="modal-actions" style="justify-content:space-between; flex-wrap:wrap; gap:8px">
+      <div class="modal-actions" style="justify-content:flex-start; flex-wrap:wrap; gap:8px">
         <button class="btn-cancel" onclick="eliminarPendiente('${p.id}')" style="color:#b91c1c">🗑 Eliminar</button>
-        <div style="display:flex; gap:8px; flex-wrap:wrap">
-          ${p.diaId || p.horaInicio ? `<button class="btn-cancel" onclick="desasignarDia('${p.id}')" title="Quita la hora y el día, y lo regresa al panel">↩️ Quitar de este día</button>` : ''}
-          ${p.lat && p.lng ? `<button class="btn-cancel" onclick="verEnMapa('pendiente','${p.id}','${p.diaId || ''}')">🗺️ Ver mapa</button>` : ''}
-          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdePendiente('${p.id}')">💴 ${(gastosVinculados[p.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[p.id]||[]).length>0?' ('+(gastosVinculados[p.id]||[]).length+')':''}</button>
-          <button class="btn-save" onclick="openPendienteForm('${p.id}', ${p.diaId ? `'${p.diaId}'` : 'null'})">✏️ Editar</button>
-        </div>
+        ${p.diaId || p.horaInicio ? `<button class="btn-cancel" onclick="desasignarDia('${p.id}')" title="Quita la hora y el día, y lo regresa al panel">↩️ Quitar de este día</button>` : ''}
+        ${p.lat && p.lng ? `<button class="btn-cancel" onclick="verEnMapa('pendiente','${p.id}','${p.diaId || ''}')">🗺️ Ver mapa</button>` : ''}
+        <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdePendiente('${p.id}')">💴 ${(gastosVinculados[p.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[p.id]||[]).length>0?' ('+(gastosVinculados[p.id]||[]).length+')':''}</button>
+        <button class="btn-save" onclick="openPendienteForm('${p.id}', ${p.diaId ? `'${p.diaId}'` : 'null'})">✏️ Editar</button>
       </div>
     </div>`);
 }
@@ -4200,13 +4198,11 @@ function abrirVisorTransporte(id) {
       ${t.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(t.notas)}</div>` : ''}
       ${t.sugerenciasIAOrigen ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(t.sugerenciasIAOrigen).replace(/\n/g, '<br>')}</div>` : ''}
       ${gastoVinculadoHtml('transporte', t.id, JSON.stringify({origen:t.origen,destino:t.destino,diaId:t.diaId}))}
-      <div class="modal-actions" style="justify-content:space-between">
+      <div class="modal-actions" style="justify-content:flex-start; flex-wrap:wrap; gap:8px">
         <button class="btn-cancel" onclick="eliminarTransporte('${t.id}')" style="color:#b91c1c">🗑 Eliminar</button>
-        <div style="display:flex; gap:8px">
-          ${t.origenLat && t.origenLng ? `<button class="btn-cancel" onclick="verEnMapa('transporte','${t.id}','${t.diaId || ''}')">🗺️ Ver mapa</button>` : ''}
-          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdeTransporte('${t.id}')">💴 ${(gastosVinculados[t.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[t.id]||[]).length>0?' ('+(gastosVinculados[t.id]||[]).length+')':''}</button>
-          <button class="btn-save" onclick="openTransporteForm('${t.id}','${t.diaId}')">✏️ Editar</button>
-        </div>
+        ${t.origenLat && t.origenLng ? `<button class="btn-cancel" onclick="verEnMapa('transporte','${t.id}','${t.diaId || ''}')">🗺️ Ver mapa</button>` : ''}
+        <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdeTransporte('${t.id}')">💴 ${(gastosVinculados[t.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[t.id]||[]).length>0?' ('+(gastosVinculados[t.id]||[]).length+')':''}</button>
+        <button class="btn-save" onclick="openTransporteForm('${t.id}','${t.diaId}')">✏️ Editar</button>
       </div>
     </div>`);
 }
@@ -4231,13 +4227,11 @@ function abrirVisorHospedaje(id) {
       ${h.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(h.notas)}</div>` : ''}
       ${h.sugerenciasIA ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(h.sugerenciasIA)}</div>` : ''}
       ${gastoVinculadoHtml('hospedaje', h.id, JSON.stringify({nombre:h.nombre,diaIdInicio:h.diaIdInicio,diaIdFin:h.diaIdFin}))}
-      <div class="modal-actions" style="justify-content:space-between">
+      <div class="modal-actions" style="justify-content:flex-start; flex-wrap:wrap; gap:8px">
         <button class="btn-cancel" onclick="eliminarHospedaje('${h.id}')" style="color:#b91c1c">🗑 Eliminar</button>
-        <div style="display:flex; gap:8px">
-          ${h.lat && h.lng ? `<button class="btn-cancel" onclick="verEnMapa('hospedaje','${h.id}','${h.diaIdInicio || ''}')">🗺️ Ver mapa</button>` : ''}
-          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdeHospedaje('${h.id}')">💴 ${(gastosVinculados[h.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[h.id]||[]).length>0?' ('+(gastosVinculados[h.id]||[]).length+')':''}</button>
-          <button class="btn-save" onclick="openHospedajeForm('${h.id}','${h.diaIdInicio}')">✏️ Editar</button>
-        </div>
+        ${h.lat && h.lng ? `<button class="btn-cancel" onclick="verEnMapa('hospedaje','${h.id}','${h.diaIdInicio || ''}')">🗺️ Ver mapa</button>` : ''}
+        <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdeHospedaje('${h.id}')">💴 ${(gastosVinculados[h.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[h.id]||[]).length>0?' ('+(gastosVinculados[h.id]||[]).length+')':''}</button>
+        <button class="btn-save" onclick="openHospedajeForm('${h.id}','${h.diaIdInicio}')">✏️ Editar</button>
       </div>
     </div>`);
 }
@@ -5002,12 +4996,10 @@ function abrirVisorEvento(id) {
       ${ev.notas ? `<div class="visor-block"><b>📓 Notas</b><br>${escHtml(ev.notas)}</div>` : ''}
       ${ev.sugerenciasIA ? `<div class="visor-block ai"><b>✨ Sugerencia IA</b><br>${escHtml(ev.sugerenciasIA)}</div>` : ''}
       ${gastoVinculadoHtml('evento', ev.id, JSON.stringify({nombre:ev.nombre}))}
-      <div class="modal-actions" style="justify-content:space-between">
+      <div class="modal-actions" style="justify-content:flex-start; flex-wrap:wrap; gap:8px">
         <button class="btn-cancel" onclick="eliminarEvento('${ev.id}')" style="color:#b91c1c">🗑 Eliminar</button>
-        <div style="display:flex; gap:8px">
-          <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdeEvento('${ev.id}')">💴 ${(gastosVinculados[ev.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[ev.id]||[]).length>0?' ('+(gastosVinculados[ev.id]||[]).length+')':''}</button>
-          <button class="btn-save" onclick="openEventoForm('${ev.id}')">✏️ Editar</button>
-        </div>
+        <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdeEvento('${ev.id}')">💴 ${(gastosVinculados[ev.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[ev.id]||[]).length>0?' ('+(gastosVinculados[ev.id]||[]).length+')':''}</button>
+        <button class="btn-save" onclick="openEventoForm('${ev.id}')">✏️ Editar</button>
       </div>
     </div>`);
 }
