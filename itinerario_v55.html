@@ -423,6 +423,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 .pr-contenido.oculta-ia .pr-col-ia,
 .pr-contenido.oculta-desglose .pr-col-desglose,
 .pr-contenido.oculta-costo .pr-col-costo { display: none; }
+.pr-contenido.oculta-costo .pr-solo-costo { display: none; }
 .pr-contenido { max-width: 760px; margin: 0 auto; padding: 20px 24px 60px; font-family: var(--font-sans); color: var(--ink); }
 .pr-contenido h1 { font-family: var(--font-serif); font-size: 24px; margin: 0 0 18px; }
 .pr-dia { margin-bottom: 26px; page-break-inside: avoid; }
@@ -587,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 96; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 97; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2746,7 +2747,7 @@ function construirTimelineDia(dia) {
       notas: p.notasPrevias || '', direccion: p.direccion || '',
       diario: `${p.evaluacion ? '⭐'.repeat(p.evaluacion) + ' ' : ''}${p.notasDiario || ''}`.trim(),
       iaComentario: p.sugerenciasIA || '',
-      itemId: p.id
+      itemId: p.id, tipo: 'pendiente'
     });
   });
   itinerario.transporte.filter(t => t.diaId === dia.id).forEach(t => {
@@ -2755,7 +2756,7 @@ function construirTimelineDia(dia) {
     filas.push({
       hora: op.salida, nombre: '🚆 ' + (TIPO_LABEL[t.tipo] || t.tipo) + ': ' + (t.origen || '') + ' → ' + (t.destino || ''),
       notas: t.notas || '', direccion: [t.direccionOrigen, t.direccionDestino].filter(Boolean).join(' → '), diario: '',
-      iaComentario: [t.sugerenciasIAOrigen, t.sugerenciasIADestino].filter(Boolean).join(' · '), itemId: t.id
+      iaComentario: [t.sugerenciasIAOrigen, t.sugerenciasIADestino].filter(Boolean).join(' · '), itemId: t.id, tipo: 'transporte'
     });
   });
   eventosDelDiaFn(dia.id).forEach(ev => {
@@ -2765,7 +2766,7 @@ function construirTimelineDia(dia) {
         hora: act.horaInicio, nombre: '🎪 ' + (act.nombre || ev.nombre || '(sin nombre)'), notas: '',
         direccion: act.direccion || '',
         diario: `${ev.evaluacion ? '⭐'.repeat(ev.evaluacion) + ' ' : ''}${ev.notas || ''}`.trim(),
-        iaComentario: ev.sugerenciasIA || '', itemId: ev.id
+        iaComentario: ev.sugerenciasIA || '', itemId: ev.id, tipo: 'evento'
       });
     });
   });
@@ -2780,7 +2781,7 @@ function construirTimelineDia(dia) {
     filas.push({
       hora: esCheckin ? (h.horaCheckIn || '') : '', nombre: '🏨 ' + (h.nombre || '') + (esCheckin ? ' (check-in)' : ' (noche)'),
       notas: `${h.evaluacion ? '⭐'.repeat(h.evaluacion) + ' ' : ''}${h.notas || ''}`.trim(),
-      direccion: h.direccion || '', diario: '', iaComentario: h.sugerenciasIA || '', itemId: h.id
+      direccion: h.direccion || '', diario: '', iaComentario: h.sugerenciasIA || '', itemId: h.id, tipo: 'hospedaje'
     });
   });
   filas.sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'));
@@ -2794,16 +2795,25 @@ function prDesgloseDe(g) {
   const paga = g.quien_paga ? `Paga: ${g.quien_paga}` : '';
   return [paga, como].filter(Boolean).join(' · ');
 }
+function prTipoDeItem(itemId) {
+  if (!itemId) return '';
+  if (itinerario.pendientes.some(p => p.id === itemId)) return 'pendiente';
+  if (itinerario.transporte.some(t => t.id === itemId)) return 'transporte';
+  if (itinerario.hospedaje.some(h => h.id === itemId)) return 'hospedaje';
+  if (itinerario.eventos.some(e => e.id === itemId)) return 'evento';
+  return '';
+}
 function filasImprimirDia(dia) {
   const { filas: timeline, extras } = construirTimelineDia(dia);
   const gastos = gastosDeEsteDia(dia.id).filter(g => !g.cotizacion);
   const usados = new Set();
   timeline.forEach(f => {
     const g = gastos.find(x => x.itemId && x.itemId === f.itemId && !usados.has(x.id));
-    if (g) { f.costo = Number(g.costo || 0); f.desglose = prDesgloseDe(g); usados.add(g.id); }
+    if (g) { f.costo = Number(g.costo || 0); f.desglose = prDesgloseDe(g); f.notaGasto = g.notas || ''; usados.add(g.id); }
   });
   const sueltos = gastos.filter(g => !usados.has(g.id)).map(g => ({
-    hora: '', nombre: '💴 ' + (g.concepto || '(sin concepto)'), notas: g.notas || '', costo: Number(g.costo || 0), desglose: prDesgloseDe(g)
+    hora: '', nombre: '💴 ' + (g.concepto || '(sin concepto)'), notas: g.notas || '', costo: Number(g.costo || 0), desglose: prDesgloseDe(g),
+    itemId: g.itemId || '', tipo: prTipoDeItem(g.itemId)
   }));
   const total = gastos.reduce((s, g) => s + Number(g.costo || 0), 0);
   return { filas: [...timeline, ...sueltos], total, extras };
@@ -2811,15 +2821,12 @@ function filasImprimirDia(dia) {
 // Total de todo el viaje, agrupado por apartado — se acumula sobre gastosDeEsteDia de cada día
 // (el hotel ya viene repartido por noche ahí, así que sumar día por día no lo duplica).
 function totalesPorApartado() {
-  const cats = { hospedaje: 0, transporte: 0, comida: 0, eventos: 0, otros: 0 };
+  const cats = {};
   diasFiltrados().forEach(dia => {
     gastosDeEsteDia(dia.id).filter(g => !g.cotizacion).forEach(g => {
       const costo = Number(g.costo || 0);
-      if (g.esHotelPorNoche || itinerario.hospedaje.some(h => h.id === g.itemId)) cats.hospedaje += costo;
-      else if (itinerario.transporte.some(t => t.id === g.itemId)) cats.transporte += costo;
-      else if (itinerario.eventos.some(e => e.id === g.itemId)) cats.eventos += costo;
-      else if (itinerario.pendientes.some(p => p.id === g.itemId)) cats.comida += costo;
-      else cats.otros += costo;
+      const cat = g.categoria || '❓ Sin categoría';
+      cats[cat] = (cats[cat] || 0) + costo;
     });
   });
   return cats;
@@ -2954,6 +2961,13 @@ function listaPrestamos() {
     return { de: otro, a: g.quien_paga, monto: Number(g.costo) || 0, concepto: g.concepto || '', tipo: g.compartido };
   });
 }
+const PR_VISOR_FN = { pendiente: abrirVisorPendiente, transporte: abrirVisorTransporte, hospedaje: abrirVisorHospedaje, evento: abrirVisorEvento };
+function prAbrirVisor(tipo, id) {
+  if (!tipo || !id || !PR_VISOR_FN[tipo]) return;
+  const overlay = document.getElementById('printResumenOverlay');
+  if (overlay) overlay.remove();
+  PR_VISOR_FN[tipo](id);
+}
 function abrirResumenImprimible() {
   const dias = diasFiltrados();
   if (!dias.length) { showToast('Agregá días primero'); return; }
@@ -2964,11 +2978,11 @@ function abrirResumenImprimible() {
     const filasHtml = filas.length ? filas.map(f => `
       <tr>
         <td class="pr-hora pr-col-hora">${escHtml(f.hora || '—')}</td>
-        <td class="pr-col-que">${escHtml(f.nombre || '')}</td>
+        <td class="pr-col-que">${f.itemId && f.tipo ? `<span style="cursor:pointer; text-decoration:underline; text-decoration-style:dotted;" onclick="prAbrirVisor('${f.tipo}','${f.itemId}')">${escHtml(f.nombre || '')}</span>` : escHtml(f.nombre || '')}</td>
         <td class="pr-notas pr-col-notas">${escHtml(f.notas || '')}</td>
         <td class="pr-notas pr-col-desglose">${escHtml(f.desglose || '')}</td>
         <td class="pr-notas pr-col-direccion">${escHtml(f.direccion || '')}</td>
-        <td class="pr-notas pr-col-diario">${escHtml(f.diario || '')}</td>
+        <td class="pr-notas pr-col-diario">${escHtml(f.diario || '')}${f.notaGasto ? `<span class="pr-solo-costo">${f.diario ? ' - ' : ''}${escHtml(f.notaGasto)}</span>` : ''}</td>
         <td class="pr-notas pr-col-ia">${escHtml(f.iaComentario || '')}</td>
         <td class="pr-costo pr-col-costo">${f.costo ? '¥' + Math.round(f.costo).toLocaleString() : ''}</td>
       </tr>`).join('') : `<tr><td colspan="8" class="pr-vacio">Sin actividades registradas.</td></tr>`;
@@ -2995,9 +3009,9 @@ function abrirResumenImprimible() {
   }).join('');
   const cats = totalesPorApartado();
   const granTotal = Object.values(cats).reduce((s, v) => s + v, 0);
-  const catLabel = { hospedaje: '🏨 Hospedaje', transporte: '🚆 Transporte', comida: '🍴 Comida/Restaurantes', eventos: '🎪 Eventos', otros: '💴 Otros' };
-  const totalesHtml = Object.keys(cats).filter(k => cats[k] > 0).map(k => `
-    <tr><td>${catLabel[k]}</td><td class="pr-costo">¥${Math.round(cats[k]).toLocaleString()}</td></tr>`).join('');
+  const catsOrden = [...GASTOS_CATEGORIAS, '❓ Sin categoría'];
+  const totalesHtml = catsOrden.filter(k => cats[k] > 0).map(k => `
+    <tr><td>${escHtml(k)}</td><td class="pr-costo">¥${Math.round(cats[k]).toLocaleString()}</td></tr>`).join('');
   const transPorTipo = transporteResumenPorTipo();
   const ordenTipos = ['vuelo','tren','bus','ferry','carro','caminando','bicicleta','otro'];
   const transTotalGeneral = Object.values(transPorTipo).reduce((s,v) => s + v.total, 0);
