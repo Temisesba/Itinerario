@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 100; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 101; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -1501,6 +1501,46 @@ async function gAnalyzeIA() {
   btn.disabled=false; btn.textContent='🤖 Analizar foto con IA';
 }
 
+// v58: multiplicación rápida para Monto (idéntico a pAbrirMultiplicador de Compras_v46.html) —
+// pensado para cosas como "2 boletos de tren a ¥300 c/u": precio unitario × cantidad, calcula el
+// total solo y deja "300*2" en Notas para saber de dónde salió el monto.
+function gAbrirMultiplicador() {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `<div style="background:var(--paper);border-radius:12px;padding:16px;max-width:280px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.35)">
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px">🔢 Multiplicación rápida</div>
+    <div class="g-field" style="margin-bottom:10px"><label>Precio unitario</label><input type="number" id="gmPrecio" class="g-input" placeholder="0"></div>
+    <div class="g-field" style="margin-bottom:12px"><label>Cantidad</label><input type="number" id="gmCantidad" class="g-input" placeholder="0"></div>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="btn-cancel" style="flex:1" id="gmCancelar">Cancelar</button>
+      <button type="button" class="btn-save" style="flex:1" id="gmCalcular">Calcular</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const pPrecio = ov.querySelector('#gmPrecio'), pCantidad = ov.querySelector('#gmCantidad');
+  setTimeout(() => pPrecio.focus(), 50);
+  const cerrar = () => ov.remove();
+  const calcular = () => {
+    const precio = parseFloat(pPrecio.value) || 0;
+    const cant = parseFloat(pCantidad.value) || 0;
+    if (!precio || !cant) { showToast('Pon precio y cantidad'); return; }
+    const total = precio * cant;
+    const iCosto = document.getElementById('gCosto');
+    if (iCosto) iCosto.value = total;
+    gActualizarHintPagadores();
+    gAutoConvertir('costo', true);
+    const iNotas = document.getElementById('gNotas');
+    const formula = (precio % 1 ? precio : precio.toFixed(0)) + '*' + (cant % 1 ? cant : cant.toFixed(0));
+    if (iNotas) iNotas.value = iNotas.value.trim() ? (iNotas.value.trim() + ' · ' + formula) : formula;
+    cerrar();
+    showToast('✓ ' + formula + ' = ' + total);
+  };
+  ov.addEventListener('click', e => { if (e.target === ov) cerrar(); });
+  ov.querySelector('#gmCancelar').addEventListener('click', cerrar);
+  ov.querySelector('#gmCalcular').addEventListener('click', calcular);
+  [pPrecio, pCantidad].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); calcular(); } }));
+}
+
 // ── Conversión con tipo de cambio real (frankfurter.app, vía backend de Itinerario) ──
 async function gConvertirIA() {
   const monto=document.getElementById('gCosto').value;
@@ -1564,40 +1604,84 @@ function gRenderProdDraft() {
       <input type="text" value="${escHtml(p.cantidad)}" placeholder="500" onchange="gProdDraft[${i}].cantidad=this.value">
       <select onchange="gProdDraft[${i}].unidad=this.value">${GUNIDADES.map(u => '<option' + (u === p.unidad ? ' selected' : '') + '>' + u + '</option>').join('')}</select>
       <input type="text" value="${escHtml(p.precioInd)}" placeholder="¥" onchange="gProdDraft[${i}].precioInd=this.value">
-      <select onchange="gProdDraft[${i}].quienCompra=this.value;gRenderQuienResumen()" title="¿Quién es este producto? (Compartido si es de los dos)">${gQuienCompraOpciones(p.quienCompra)}</select>
+      <button type="button" class="btn-mini" style="font-size:10px;padding:4px 4px;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="gAbrirQuienCompraProducto(${i})" title="¿Quién es este producto?">${escHtml(gQuienCompraLabel(p.quienCompra))}</button>
       <input type="checkbox" ${p.inventario ? 'checked' : ''} onchange="gProdDraft[${i}].inventario=this.checked" title="¿Va a inventario?">
       <button class="g-shop-del" onclick="gProdDraft.splice(${i},1);gRenderProdDraft()" title="Quitar línea">🗑</button>
     </div>`).join('');
   gRenderQuienResumen();
 }
 // v58: "¿quién es este producto?" por línea — igual que v29 de Compras_v46.html, adaptado a
-// GPEOPLE (la lista dinámica de la sesión). En sesión individual no ofrece "Compartido".
+// GPEOPLE (la lista dinámica de la sesión). Cada línea puede ser de todos ("Compartido"), de uno
+// solo, o de un subconjunto (ej. 2 de 3) — se guarda como texto: 'Compartido', un nombre, o
+// nombres separados por coma. En sesión individual no hay nada que elegir.
 function gQuienCompraDefault() { return GPEOPLE.length > 1 ? 'Compartido' : (GPEOPLE[0] || ''); }
-function gQuienCompraOpciones(sel) {
-  const opts = GPEOPLE.length > 1 ? ['Compartido', ...GPEOPLE] : (GPEOPLE.length ? GPEOPLE.slice() : ['']);
-  const actual = sel || gQuienCompraDefault();
-  return opts.map(o => '<option' + (o === actual ? ' selected' : '') + '>' + escHtml(o) + '</option>').join('');
+function gListaQuienCompra(raw) {
+  const s = (raw || '').toString().trim();
+  if (!s || s === 'Compartido') return GPEOPLE.slice();
+  const partes = s.split(',').map(x => x.trim()).filter(Boolean);
+  return partes.length ? partes : GPEOPLE.slice();
 }
-function gCalcTotalesPorPersona(productos) {
+function gQuienCompraLabel(raw) {
+  const lista = gListaQuienCompra(raw);
+  if (GPEOPLE.length <= 1) return lista[0] || '—';
+  if (lista.length >= GPEOPLE.length) return 'Compartido';
+  return lista.join(' + ');
+}
+// Popover con checkboxes (selección múltiple) para elegir exactamente quiénes comparten esta línea.
+function gAbrirQuienCompraProducto(i) {
+  if (GPEOPLE.length <= 1) return; // nada que elegir en sesión individual
+  const p = gProdDraft[i]; if (!p) return;
+  const actual = gListaQuienCompra(p.quienCompra);
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `<div style="background:var(--paper);border-radius:12px;padding:16px;max-width:280px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.35)">
+    <div style="font-weight:700;font-size:14px;margin-bottom:4px">¿Quién es "${escHtml(p.concepto || 'este producto')}"?</div>
+    <div style="font-size:11px;color:var(--ink-3);margin-bottom:10px">Marca a todos los que aplica — si los marcas todos es lo mismo que "Compartido".</div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+      ${GPEOPLE.map(n => '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" class="gqc-chk" value="' + escHtml(n) + '" ' + (actual.includes(n) ? 'checked' : '') + ' style="width:16px;height:16px"> ' + escHtml(n) + '</label>').join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="btn-cancel" style="flex:1" id="gqcCancelar">Cancelar</button>
+      <button type="button" class="btn-save" style="flex:1" id="gqcAplicar">Aplicar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) cerrar(); });
+  ov.querySelector('#gqcCancelar').addEventListener('click', cerrar);
+  ov.querySelector('#gqcAplicar').addEventListener('click', () => {
+    const marcados = [...ov.querySelectorAll('.gqc-chk:checked')].map(c => c.value);
+    gProdDraft[i].quienCompra = marcados.length ? (marcados.length >= GPEOPLE.length ? 'Compartido' : marcados.join(', ')) : 'Compartido';
+    cerrar();
+    gRenderProdDraft();
+  });
+}
+// v58: cuánto le toca a cada quien — cada producto se divide entre exactamente la lista de
+// nombres que le corresponde. Si hay costo real del ticket, reparte por PROPORCIÓN de cada
+// producto sobre ese costo (no sumando precios individuales tal cual, que pueden no cuadrar si
+// no se llenó el precio de cada línea); sin costo real, usa el precio individual tal cual.
+function gCalcTotalesPorPersona(productos, costoReal) {
   const totales = {}; GPEOPLE.forEach(n => totales[n] = 0);
-  let compartido = 0;
+  const sumaProductos = (productos || []).reduce((s, p) => s + ((parseFloat(p.precioInd) || 0) * (parseFloat(p.piezas) || 1)), 0);
+  const usarProporcion = costoReal > 0 && sumaProductos > 0;
   (productos || []).forEach(p => {
     const monto = (parseFloat(p.precioInd) || 0) * (parseFloat(p.piezas) || 1);
-    const quien = p.quienCompra || gQuienCompraDefault();
-    if (quien === 'Compartido' || !GPEOPLE.includes(quien)) compartido += monto;
-    else totales[quien] = (totales[quien] || 0) + monto;
+    const lista = gListaQuienCompra(p.quienCompra);
+    const valor = usarProporcion ? (costoReal * (monto / sumaProductos)) : monto;
+    const cadaUno = valor / Math.max(lista.length, 1);
+    lista.forEach(n => { if (totales[n] !== undefined) totales[n] += cadaUno; });
   });
-  return { totales, compartido };
+  return totales;
 }
-function gTextoResumenPorPersona(productos) {
+function gTextoResumenPorPersona(productos, costoReal) {
   if (!productos || !productos.length || GPEOPLE.length < 2) return '';
-  const { totales, compartido } = gCalcTotalesPorPersona(productos);
-  const porCabeza = compartido / GPEOPLE.length;
-  return '🙋 Le toca: ' + GPEOPLE.map(n => n + ' ¥' + Math.round(totales[n] + porCabeza).toLocaleString()).join(' · ') + (compartido ? ' (incluye su parte de lo Compartido)' : '');
+  const totales = gCalcTotalesPorPersona(productos, costoReal);
+  return '🙋 Le toca: ' + GPEOPLE.map(n => n + ' ¥' + Math.round(totales[n] || 0).toLocaleString()).join(' · ');
 }
 function gRenderQuienResumen() {
   const el = document.getElementById('gProdQuienResumen'); if (!el) return;
-  el.textContent = gTextoResumenPorPersona(gProdDraft);
+  const costoReal = parseFloat(document.getElementById('gCosto').value) || 0;
+  el.textContent = gTextoResumenPorPersona(gProdDraft, costoReal);
 }
 function gProdAdd() {
   gProdDraft.push({ concepto:'', marca:'', categoria:'', ubicacion:'', notas:'', piezas:'1', cantidad:'', unidad:'unidad', precioInd:'', quienCompra: gQuienCompraDefault(), inventario:false });
@@ -1771,7 +1855,7 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
     const pagaTxt = g.quien_paga ? `Paga: ${g.quien_paga}` : '';
     return `<div style="${rs}">
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')}${nProds?` <span class="g-chip" style="font-size:9px;padding:1px 6px;cursor:pointer" onclick="gToggleProdSub('${g.id}')" title="Ver productos">🧾 ${nProds}</span>`:''}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')}${nProds?` <span class="g-chip" style="font-size:9px;padding:1px 6px;cursor:pointer" onclick="gToggleProdSub('${g.id}',${Number(g.costo)||0})" title="Ver productos">🧾 ${nProds}</span>`:''}</span>
       <div style="display:flex;gap:3px;align-items:center;flex-shrink:0;margin-left:6px">
         <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
         <button class="icon-btn" style="font-size:12px" onclick="editarGastoVisor('${tipo}','${itemId}','${g.id}')">✏️</button>
@@ -1794,24 +1878,24 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
 }
 // v58: expandir/colapsar los productos de una compra ya guardada (mismo dato que se ve al
 // editar, pero de solo lectura) — igual que v30SubTable de Compras_v46.html.
-function gToggleProdSub(gastoId) {
+function gToggleProdSub(gastoId, costoReal) {
   const el = document.getElementById('gProdSub-' + gastoId);
   if (!el) return;
   if (el.style.display !== 'none') { el.style.display = 'none'; return; }
   const prods = gAllProds.filter(p => p.compraId === gastoId);
-  el.innerHTML = gSubTablaProductos(prods);
+  el.innerHTML = gSubTablaProductos(prods, costoReal || 0);
   el.style.display = 'block';
 }
-function gSubTablaProductos(prods) {
+function gSubTablaProductos(prods, costoReal) {
   const fila = p => `<tr>
     <td>${escHtml(p.concepto||'')}</td>
     <td>${escHtml(String(p.piezas||''))}</td>
     <td>${p.cantidad ? escHtml(String(p.cantidad)) + ' ' + escHtml(p.unidad||'') : '—'}</td>
     <td>${p.precioInd ? '¥' + escHtml(String(p.precioInd)) : '—'}</td>
     <td style="font-size:10px;color:#b85c8a;font-weight:600">${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--ink-3)">—</span>'}</td>
-    <td style="font-size:10px;font-weight:600">${p.quienCompra ? escHtml(p.quienCompra) : '<span style="color:var(--ink-3)">—</span>'}</td>
+    <td style="font-size:10px;font-weight:600">${p.quienCompra ? escHtml(gQuienCompraLabel(p.quienCompra)) : '<span style="color:var(--ink-3)">—</span>'}</td>
   </tr>`;
-  const resumen = gTextoResumenPorPersona(prods);
+  const resumen = gTextoResumenPorPersona(prods, costoReal || 0);
   return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
     <tr style="border-bottom:1px solid var(--line)"><th style="text-align:left;padding:2px 4px">Producto</th><th style="text-align:left;padding:2px 4px">Pzas</th><th style="text-align:left;padding:2px 4px">Cant.</th><th style="text-align:left;padding:2px 4px">Precio</th><th style="text-align:left;padding:2px 4px">Categoría</th><th style="text-align:left;padding:2px 4px">¿Quién?</th></tr>
     ${prods.map(fila).join('')}
@@ -8657,14 +8741,14 @@ init();
       </div>
       <div class="g-row2-dates">
         <div class="g-field" style="margin-bottom:0"><label>Fecha de compra *</label><input type="date" id="gFecha" class="g-input"></div>
-        <div class="g-field" style="margin-bottom:0"><label>Hora ticket <span style="text-transform:none;font-weight:400">(opc.)</span></label><input type="time" id="gHoraCompra" class="g-input"></div>
+        <div class="g-field" style="margin-bottom:0"><label>Hora ticket</label><input type="time" id="gHoraCompra" class="g-input"></div>
         <div class="g-field" style="margin-bottom:0"><label>Fecha captura</label><input type="date" id="gCaptura" class="g-input" readonly style="background:var(--paper-2);color:var(--ink-3);cursor:not-allowed"></div>
       </div>
       <div class="amounts-row">
         <div class="amount-pair">
-          <label style="display:block;font-size:11px;font-weight:500;color:var(--ink-2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Monto</label>
+          <label style="display:block;font-size:11px;font-weight:500;color:var(--ink-2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Monto <button type="button" class="btn-mini" style="font-size:10px;padding:1px 6px;margin-left:4px;vertical-align:middle;text-transform:none" onclick="gAbrirMultiplicador()" title="Multiplicación rápida (ej. 2 boletos a ¥300 c/u)">🔢</button></label>
           <div class="pair-inputs">
-            <input type="number" id="gCosto" placeholder="0" oninput="gActualizarHintPagadores()" onblur="gAutoConvertir('costo')">
+            <input type="number" id="gCosto" placeholder="0" oninput="gActualizarHintPagadores();gRenderQuienResumen()" onblur="gAutoConvertir('costo')">
             <select id="gMoneda" onchange="gAutoConvertir('costo',true)"><option>JPY</option><option>MXN</option><option>USD</option><option>EUR</option><option>GBP</option></select>
           </div>
         </div>
