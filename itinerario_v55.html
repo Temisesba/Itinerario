@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 102; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 103; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -3324,7 +3324,8 @@ function abrirResumenImprimible() {
         </div>
       </details>
       <div>
-        <button class="btn-mini" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+        <button class="btn-mini" onclick="window.print()">🖨️ Imprimir</button>
+        <button class="btn-mini" id="prGuardarPdfBtn" onclick="guardarResumenPDF()">💾 Guardar PDF</button>
         <button class="btn-mini" onclick="document.getElementById('printResumenOverlay').remove()">✕ Cerrar</button>
       </div>
     </div>
@@ -3400,6 +3401,39 @@ function abrirResumenImprimible() {
 function prToggleCol(col, visible) {
   const cont = document.querySelector('#printResumenOverlay .pr-contenido');
   if (cont) cont.classList.toggle('oculta-' + col, !visible);
+}
+// v58: "💾 Guardar PDF" — genera y descarga el PDF directo (sin pasar por el diálogo de
+// impresión del navegador), para tener un respaldo del resumen tal cual está en ese momento por
+// si después se mueve o borra algo del itinerario. Carga html2pdf.js solo la primera vez que se
+// usa (no en cada carga de la app), igual que ya se hace lazy con otras cosas pesadas.
+function gCargarHtml2Pdf() {
+  return new Promise((resolve, reject) => {
+    if (window.html2pdf) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    s.onload = () => resolve(); s.onerror = () => reject(new Error('No se pudo cargar html2pdf'));
+    document.head.appendChild(s);
+  });
+}
+async function guardarResumenPDF() {
+  const el = document.querySelector('#printResumenOverlay .pr-contenido');
+  if (!el) return;
+  const btn = document.getElementById('prGuardarPdfBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '💾 Generando…'; }
+  showToast('Generando PDF…');
+  try {
+    await gCargarHtml2Pdf();
+    const nombre = (currentProyecto || 'Resumen') + ' - ' + fechaLocalISO(new Date()) + '.pdf';
+    await window.html2pdf().set({
+      margin: 10, filename: nombre,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    }).from(el).save();
+    showToast('💾 PDF guardado ✦');
+  } catch (e) { showToast('⚠️ No se pudo generar el PDF'); }
+  if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PDF'; }
 }
 
 function renderPoolPanel() {
