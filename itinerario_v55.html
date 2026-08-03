@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 101; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 102; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -932,6 +932,99 @@ const GPEOPLE = (() => {
 const GEMOJI_DEFAULT = { Lot: '💙', Temis: '🧡' };
 function gEmojiPersona(nombre) { return GEMOJI_DEFAULT[nombre] || '👤'; }
 let GAS_SESION_PASS = localStorage.getItem('itin_gasSesionPass') || '';
+// v58: selector de sesión reactivo en ➕/Editar gasto — un viaje no siempre es con la misma
+// gente (Lot, mamá, hermana, ambas…), así que cada sesión de Gastos guarda su propia lista de
+// miembros y contraseña en este dispositivo; al cambiar la sesión DENTRO del formulario, "¿Quién
+// paga?"/"Varios pagan"/"¿Quién?" de productos se actualizan con la gente real de esa sesión —
+// pidiendo su contraseña una sola vez (después queda cacheada, como ya pasa con GAS_SESION_PASS).
+// GPEOPLE sigue siendo la sesión "por defecto" del viaje (la que usan el calendario, el balance y
+// el reporte imprimible en general); gFormPeople es solo la vista activa del formulario abierto.
+let GAS_SESION_MIEMBROS_CACHE = (() => { try { return JSON.parse(localStorage.getItem('itin_gasMiembrosPorSesion') || '{}'); } catch (e) { return {}; } })();
+let GAS_SESION_PASS_CACHE = (() => { try { return JSON.parse(localStorage.getItem('itin_gasPassPorSesion') || '{}'); } catch (e) { return {}; } })();
+if (GAS_SESION_GASTOS && GPEOPLE.length && !GAS_SESION_MIEMBROS_CACHE[GAS_SESION_GASTOS]) GAS_SESION_MIEMBROS_CACHE[GAS_SESION_GASTOS] = GPEOPLE.slice();
+if (GAS_SESION_GASTOS && GAS_SESION_PASS && !GAS_SESION_PASS_CACHE[GAS_SESION_GASTOS]) GAS_SESION_PASS_CACHE[GAS_SESION_GASTOS] = GAS_SESION_PASS;
+let gFormPeople = GPEOPLE.slice();
+function gGuardarCachesSesion() {
+  try {
+    localStorage.setItem('itin_gasMiembrosPorSesion', JSON.stringify(GAS_SESION_MIEMBROS_CACHE));
+    localStorage.setItem('itin_gasPassPorSesion', JSON.stringify(GAS_SESION_PASS_CACHE));
+  } catch (e) {}
+}
+function gPeopleDeSesion(sesion) {
+  return (sesion && GAS_SESION_MIEMBROS_CACHE[sesion] && GAS_SESION_MIEMBROS_CACHE[sesion].length) ? GAS_SESION_MIEMBROS_CACHE[sesion] : GPEOPLE;
+}
+// Al elegir otra sesión en el formulario: si ya tenemos su gente en caché, se aplica al toque;
+// si no, pide su contraseña una vez (checkSesion) y la cachea para la próxima.
+async function gOnSesionSelChange() {
+  const sesion = (document.getElementById('gSesionSel') || {}).value || '';
+  if (!sesion) return;
+  if (GAS_SESION_MIEMBROS_CACHE[sesion] && GAS_SESION_MIEMBROS_CACHE[sesion].length) {
+    gFormPeople = GAS_SESION_MIEMBROS_CACHE[sesion];
+    gAplicarFormPeople();
+    return;
+  }
+  gPedirPassSesion(sesion, (miembros) => {
+    gFormPeople = miembros;
+    gAplicarFormPeople();
+  });
+}
+// Refresca todo lo que depende de gFormPeople dentro del formulario ya abierto.
+function gAplicarFormPeople() {
+  gRenderPayerGroup();
+  if (gCurrentVariosPagan) gRenderPagadores();
+  gRenderProdDraft();
+}
+function gPedirPassSesion(sesion, onOk) {
+  const passGuardada = GAS_SESION_PASS_CACHE[sesion];
+  if (passGuardada) {
+    gCheckSesionYCachear(sesion, passGuardada, onOk, () => gPedirPassSesion(sesion, onOk, true));
+    return;
+  }
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `<div style="background:var(--paper);border-radius:12px;padding:16px;max-width:280px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.35)">
+    <div style="font-weight:700;font-size:14px;margin-bottom:4px">🔒 Contraseña de "${escHtml(sesion)}"</div>
+    <div style="font-size:11px;color:var(--ink-3);margin-bottom:10px">Para traer quiénes son de verdad esta sesión. Se guarda en este dispositivo, no hace falta repetirla.</div>
+    <div class="g-field" style="margin-bottom:12px"><input type="password" id="gpsPass" class="g-input" placeholder="Contraseña"></div>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="btn-cancel" style="flex:1" id="gpsCancelar">Cancelar</button>
+      <button type="button" class="btn-save" style="flex:1" id="gpsAceptar">Aceptar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const passEl = ov.querySelector('#gpsPass');
+  setTimeout(() => passEl.focus(), 50);
+  const cerrar = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) cerrar(); });
+  ov.querySelector('#gpsCancelar').addEventListener('click', cerrar);
+  const aceptar = () => {
+    const pass = passEl.value || '';
+    if (!pass) { showToast('Pon la contraseña'); return; }
+    cerrar();
+    gCheckSesionYCachear(sesion, pass, onOk);
+  };
+  ov.querySelector('#gpsAceptar').addEventListener('click', aceptar);
+  passEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); aceptar(); } });
+}
+async function gCheckSesionYCachear(sesion, pass, onOk, onBadPass) {
+  showToast('Verificando sesión…');
+  try {
+    const form = new FormData(); form.append('payload', JSON.stringify({ action: 'checkSesion', sesion, pass }));
+    const resp = await fetch(GAS_URL_GASTOS, { method: 'POST', body: form });
+    const d = await resp.json();
+    if (d && d.ok && Array.isArray(d.miembros) && d.miembros.length) {
+      GAS_SESION_MIEMBROS_CACHE[sesion] = d.miembros;
+      GAS_SESION_PASS_CACHE[sesion] = pass;
+      gGuardarCachesSesion();
+      showToast('✅ ' + sesion + ': ' + d.miembros.join(', '));
+      onOk(d.miembros);
+    } else if (d && d.error === 'PASSWORD') {
+      showToast('⚠️ Contraseña incorrecta para "' + sesion + '"');
+      delete GAS_SESION_PASS_CACHE[sesion]; gGuardarCachesSesion();
+      if (onBadPass) onBadPass(); else gPedirPassSesion(sesion, onOk);
+    } else showToast(d && d.error ? d.error : 'No se pudo verificar la sesión');
+  } catch (e) { showToast('⚠️ Error de red verificando la sesión'); }
+}
 // ── Varios pagan (idéntico a v32* de Compras) ──
 let gCurrentVariosPagan = false;
 let gCurrentPagadores = {}; // {persona: monto}
@@ -976,6 +1069,10 @@ async function gSincronizarConGastos() {
       if (dM && dM.ok && Array.isArray(dM.miembros) && dM.miembros.length) {
         GPEOPLE.splice(0, GPEOPLE.length, ...dM.miembros);
         try { localStorage.setItem('itin_gasMiembrosCache', JSON.stringify(GPEOPLE)); } catch (e) {}
+        GAS_SESION_MIEMBROS_CACHE[GAS_SESION_GASTOS] = GPEOPLE.slice();
+        GAS_SESION_PASS_CACHE[GAS_SESION_GASTOS] = GAS_SESION_PASS;
+        gGuardarCachesSesion();
+        gFormPeople = GPEOPLE.slice();
         gRenderPayerGroup();
       } else if (dM && dM.error === 'PASSWORD') {
         showToast('⚠️ Contraseña de sesión incorrecta — no se actualizaron los miembros');
@@ -1169,7 +1266,9 @@ function abrirGastosForm(tipo, itemId, datosStr, editGastoId, diaIdInicial) {
   gPoblarDiaItinerario(diaEfectivo);
   gPoblarAsociarA(diaEfectivo, itemId);
   gActualizarEstadoDiaItinerario();
-  gPoblarSesionSel(prev && prev.sesion ? prev.sesion : GAS_SESION_GASTOS);
+  const sesionEfectiva = (prev && prev.sesion) ? prev.sesion : GAS_SESION_GASTOS;
+  gPoblarSesionSel(sesionEfectiva);
+  gFormPeople = gPeopleDeSesion(sesionEfectiva);
   gRenderPayerGroup();
   document.getElementById('gTitle').textContent = prev ? '💴 Editar gasto' : '💴 Registrar gasto';
   // v57: Fecha de compra por defecto — si el día asociado ya pasó respecto a hoy, se asume que
@@ -1272,7 +1371,7 @@ function gCloseModal(force) {
 // reflejen a quien de verdad esté en la sesión de Gastos configurada.
 function gRenderPayerGroup() {
   const box = document.getElementById('gPayerGroup'); if (!box) return;
-  box.innerHTML = GPEOPLE.map(n => `<button class="g-tbtn" data-persona="${escHtml(n)}" onclick="gSetPayer('${n.replace(/'/g,"\\'")}')">${gEmojiPersona(n)} ${escHtml(n)}</button>`).join('')
+  box.innerHTML = gFormPeople.map(n => `<button class="g-tbtn" data-persona="${escHtml(n)}" onclick="gSetPayer('${n.replace(/'/g,"\\'")}')">${gEmojiPersona(n)} ${escHtml(n)}</button>`).join('')
     + `<button class="g-tbtn" data-persona="NA" onclick="gSetPayer('NA')">— N/A</button>`;
 }
 function gSetPayer(p, silent) {
@@ -1298,7 +1397,7 @@ function gOnToggleVariosPagan() {
 }
 function gRenderPagadores() {
   const box = document.getElementById('gPagadoresBox'); if (!box) return;
-  box.innerHTML = GPEOPLE.map(n => {
+  box.innerHTML = gFormPeople.map(n => {
     const val = gCurrentPagadores[n] !== undefined ? gCurrentPagadores[n] : '';
     return '<div style="display:flex;align-items:center;gap:8px">'
       + '<span class="g-chip" style="min-width:76px;justify-content:center">' + gEmojiPersona(n) + ' ' + n + '</span>'
@@ -1315,9 +1414,9 @@ function gSetPagadorMonto(persona, val) {
 }
 function gPartesIguales() {
   const costo = parseFloat(document.getElementById('gCosto').value) || 0;
-  if (!costo || !GPEOPLE.length) return;
-  const share = Math.round((costo / GPEOPLE.length) * 100) / 100;
-  GPEOPLE.forEach(n => gCurrentPagadores[n] = share);
+  if (!costo || !gFormPeople.length) return;
+  const share = Math.round((costo / gFormPeople.length) * 100) / 100;
+  gFormPeople.forEach(n => gCurrentPagadores[n] = share);
   gRenderPagadores();
 }
 function gActualizarHintPagadores() {
@@ -1364,7 +1463,7 @@ function gToggleCot() {
     if(pBadge) pBadge.style.display='none';
     payBtns.forEach(b=>{b.style.opacity='1';b.style.pointerEvents='';});
     // Solo restaurar defaults si veníamos de cotización activa (no al abrir form nuevo)
-    if(window._gWasCot) { gSetType('Compartido', true); gSetPayer(GPEOPLE[0] || 'Lot', true); }
+    if(window._gWasCot) { gSetType('Compartido', true); gSetPayer(gFormPeople[0] || 'Lot', true); }
     window._gWasCot = false;
     if (pagoField) pagoField.style.display = '';
   }
@@ -1610,26 +1709,30 @@ function gRenderProdDraft() {
     </div>`).join('');
   gRenderQuienResumen();
 }
-// v58: "¿quién es este producto?" por línea — igual que v29 de Compras_v46.html, adaptado a
-// GPEOPLE (la lista dinámica de la sesión). Cada línea puede ser de todos ("Compartido"), de uno
-// solo, o de un subconjunto (ej. 2 de 3) — se guarda como texto: 'Compartido', un nombre, o
-// nombres separados por coma. En sesión individual no hay nada que elegir.
-function gQuienCompraDefault() { return GPEOPLE.length > 1 ? 'Compartido' : (GPEOPLE[0] || ''); }
-function gListaQuienCompra(raw) {
+// v58: "¿quién es este producto?" por línea — igual que v29 de Compras_v46.html. Todas estas
+// reciben `personas` explícito (por defecto gFormPeople, la gente de la sesión elegida en el
+// formulario abierto) para poder reusarlas también al expandir un gasto YA GUARDADO con su
+// propia sesión (que puede no ser la que está activa ahora mismo en el formulario).
+// Cada línea puede ser de todos ("Compartido"), de uno solo, o de un subconjunto (ej. 2 de 3) —
+// se guarda como texto: 'Compartido', un nombre, o nombres separados por coma.
+function gQuienCompraDefault(personas) { personas = personas || gFormPeople; return personas.length > 1 ? 'Compartido' : (personas[0] || ''); }
+function gListaQuienCompra(raw, personas) {
+  personas = personas || gFormPeople;
   const s = (raw || '').toString().trim();
-  if (!s || s === 'Compartido') return GPEOPLE.slice();
+  if (!s || s === 'Compartido') return personas.slice();
   const partes = s.split(',').map(x => x.trim()).filter(Boolean);
-  return partes.length ? partes : GPEOPLE.slice();
+  return partes.length ? partes : personas.slice();
 }
-function gQuienCompraLabel(raw) {
-  const lista = gListaQuienCompra(raw);
-  if (GPEOPLE.length <= 1) return lista[0] || '—';
-  if (lista.length >= GPEOPLE.length) return 'Compartido';
+function gQuienCompraLabel(raw, personas) {
+  personas = personas || gFormPeople;
+  const lista = gListaQuienCompra(raw, personas);
+  if (personas.length <= 1) return lista[0] || '—';
+  if (lista.length >= personas.length) return 'Compartido';
   return lista.join(' + ');
 }
 // Popover con checkboxes (selección múltiple) para elegir exactamente quiénes comparten esta línea.
 function gAbrirQuienCompraProducto(i) {
-  if (GPEOPLE.length <= 1) return; // nada que elegir en sesión individual
+  if (gFormPeople.length <= 1) return; // nada que elegir en sesión individual
   const p = gProdDraft[i]; if (!p) return;
   const actual = gListaQuienCompra(p.quienCompra);
   const ov = document.createElement('div');
@@ -1638,7 +1741,7 @@ function gAbrirQuienCompraProducto(i) {
     <div style="font-weight:700;font-size:14px;margin-bottom:4px">¿Quién es "${escHtml(p.concepto || 'este producto')}"?</div>
     <div style="font-size:11px;color:var(--ink-3);margin-bottom:10px">Marca a todos los que aplica — si los marcas todos es lo mismo que "Compartido".</div>
     <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
-      ${GPEOPLE.map(n => '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" class="gqc-chk" value="' + escHtml(n) + '" ' + (actual.includes(n) ? 'checked' : '') + ' style="width:16px;height:16px"> ' + escHtml(n) + '</label>').join('')}
+      ${gFormPeople.map(n => '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" class="gqc-chk" value="' + escHtml(n) + '" ' + (actual.includes(n) ? 'checked' : '') + ' style="width:16px;height:16px"> ' + escHtml(n) + '</label>').join('')}
     </div>
     <div style="display:flex;gap:8px">
       <button type="button" class="btn-cancel" style="flex:1" id="gqcCancelar">Cancelar</button>
@@ -1651,7 +1754,7 @@ function gAbrirQuienCompraProducto(i) {
   ov.querySelector('#gqcCancelar').addEventListener('click', cerrar);
   ov.querySelector('#gqcAplicar').addEventListener('click', () => {
     const marcados = [...ov.querySelectorAll('.gqc-chk:checked')].map(c => c.value);
-    gProdDraft[i].quienCompra = marcados.length ? (marcados.length >= GPEOPLE.length ? 'Compartido' : marcados.join(', ')) : 'Compartido';
+    gProdDraft[i].quienCompra = marcados.length ? (marcados.length >= gFormPeople.length ? 'Compartido' : marcados.join(', ')) : 'Compartido';
     cerrar();
     gRenderProdDraft();
   });
@@ -1660,23 +1763,25 @@ function gAbrirQuienCompraProducto(i) {
 // nombres que le corresponde. Si hay costo real del ticket, reparte por PROPORCIÓN de cada
 // producto sobre ese costo (no sumando precios individuales tal cual, que pueden no cuadrar si
 // no se llenó el precio de cada línea); sin costo real, usa el precio individual tal cual.
-function gCalcTotalesPorPersona(productos, costoReal) {
-  const totales = {}; GPEOPLE.forEach(n => totales[n] = 0);
+function gCalcTotalesPorPersona(productos, costoReal, personas) {
+  personas = personas || gFormPeople;
+  const totales = {}; personas.forEach(n => totales[n] = 0);
   const sumaProductos = (productos || []).reduce((s, p) => s + ((parseFloat(p.precioInd) || 0) * (parseFloat(p.piezas) || 1)), 0);
   const usarProporcion = costoReal > 0 && sumaProductos > 0;
   (productos || []).forEach(p => {
     const monto = (parseFloat(p.precioInd) || 0) * (parseFloat(p.piezas) || 1);
-    const lista = gListaQuienCompra(p.quienCompra);
+    const lista = gListaQuienCompra(p.quienCompra, personas);
     const valor = usarProporcion ? (costoReal * (monto / sumaProductos)) : monto;
     const cadaUno = valor / Math.max(lista.length, 1);
     lista.forEach(n => { if (totales[n] !== undefined) totales[n] += cadaUno; });
   });
   return totales;
 }
-function gTextoResumenPorPersona(productos, costoReal) {
-  if (!productos || !productos.length || GPEOPLE.length < 2) return '';
-  const totales = gCalcTotalesPorPersona(productos, costoReal);
-  return '🙋 Le toca: ' + GPEOPLE.map(n => n + ' ¥' + Math.round(totales[n] || 0).toLocaleString()).join(' · ');
+function gTextoResumenPorPersona(productos, costoReal, personas) {
+  personas = personas || gFormPeople;
+  if (!productos || !productos.length || personas.length < 2) return '';
+  const totales = gCalcTotalesPorPersona(productos, costoReal, personas);
+  return '🙋 Le toca: ' + personas.map(n => n + ' ¥' + Math.round(totales[n] || 0).toLocaleString()).join(' · ');
 }
 function gRenderQuienResumen() {
   const el = document.getElementById('gProdQuienResumen'); if (!el) return;
@@ -1855,7 +1960,7 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
     const pagaTxt = g.quien_paga ? `Paga: ${g.quien_paga}` : '';
     return `<div style="${rs}">
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')}${nProds?` <span class="g-chip" style="font-size:9px;padding:1px 6px;cursor:pointer" onclick="gToggleProdSub('${g.id}',${Number(g.costo)||0})" title="Ver productos">🧾 ${nProds}</span>`:''}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(g.concepto||'')}${nProds?` <span class="g-chip" style="font-size:9px;padding:1px 6px;cursor:pointer" onclick="gToggleProdSub('${g.id}',${Number(g.costo)||0},'${escHtml((g.sesion||'').replace(/'/g,"\\'"))}')" title="Ver productos">🧾 ${nProds}</span>`:''}</span>
       <div style="display:flex;gap:3px;align-items:center;flex-shrink:0;margin-left:6px">
         <b style="font-size:11.5px">¥${Number(g.costo||0).toLocaleString()}</b>
         <button class="icon-btn" style="font-size:12px" onclick="editarGastoVisor('${tipo}','${itemId}','${g.id}')">✏️</button>
@@ -1878,24 +1983,27 @@ function gastoVinculadoHtml(tipo, itemId, datosStr) {
 }
 // v58: expandir/colapsar los productos de una compra ya guardada (mismo dato que se ve al
 // editar, pero de solo lectura) — igual que v30SubTable de Compras_v46.html.
-function gToggleProdSub(gastoId, costoReal) {
+function gToggleProdSub(gastoId, costoReal, sesion) {
   const el = document.getElementById('gProdSub-' + gastoId);
   if (!el) return;
   if (el.style.display !== 'none') { el.style.display = 'none'; return; }
   const prods = gAllProds.filter(p => p.compraId === gastoId);
-  el.innerHTML = gSubTablaProductos(prods, costoReal || 0);
+  // La gente que corresponde es la de la sesión CON QUE SE GUARDÓ ese gasto, no la del
+  // formulario que esté abierto ahora mismo (pueden ser sesiones/viajes distintos).
+  el.innerHTML = gSubTablaProductos(prods, costoReal || 0, gPeopleDeSesion(sesion));
   el.style.display = 'block';
 }
-function gSubTablaProductos(prods, costoReal) {
+function gSubTablaProductos(prods, costoReal, personas) {
+  personas = personas || gFormPeople;
   const fila = p => `<tr>
     <td>${escHtml(p.concepto||'')}</td>
     <td>${escHtml(String(p.piezas||''))}</td>
     <td>${p.cantidad ? escHtml(String(p.cantidad)) + ' ' + escHtml(p.unidad||'') : '—'}</td>
     <td>${p.precioInd ? '¥' + escHtml(String(p.precioInd)) : '—'}</td>
     <td style="font-size:10px;color:#b85c8a;font-weight:600">${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--ink-3)">—</span>'}</td>
-    <td style="font-size:10px;font-weight:600">${p.quienCompra ? escHtml(gQuienCompraLabel(p.quienCompra)) : '<span style="color:var(--ink-3)">—</span>'}</td>
+    <td style="font-size:10px;font-weight:600">${p.quienCompra ? escHtml(gQuienCompraLabel(p.quienCompra, personas)) : '<span style="color:var(--ink-3)">—</span>'}</td>
   </tr>`;
-  const resumen = gTextoResumenPorPersona(prods, costoReal || 0);
+  const resumen = gTextoResumenPorPersona(prods, costoReal || 0, personas);
   return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
     <tr style="border-bottom:1px solid var(--line)"><th style="text-align:left;padding:2px 4px">Producto</th><th style="text-align:left;padding:2px 4px">Pzas</th><th style="text-align:left;padding:2px 4px">Cant.</th><th style="text-align:left;padding:2px 4px">Precio</th><th style="text-align:left;padding:2px 4px">Categoría</th><th style="text-align:left;padding:2px 4px">¿Quién?</th></tr>
     ${prods.map(fila).join('')}
@@ -8711,7 +8819,7 @@ init();
       <datalist id="gListProdLugares"></datalist>
       <div class="g-field">
         <label>Sesión</label>
-        <select id="gSesionSel" class="g-select"></select>
+        <select id="gSesionSel" class="g-select" onchange="gOnSesionSelChange()"></select>
       </div>
       <div class="g-field">
         <label>Foto del ticket</label>
