@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 104; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 105; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -3325,7 +3325,7 @@ function abrirResumenImprimible() {
       </details>
       <div>
         <button class="btn-mini" onclick="window.print()">🖨️ Imprimir</button>
-        <button class="btn-mini" id="prGuardarPdfBtn" onclick="guardarResumenPDF()">💾 Guardar PDF</button>
+        <button class="btn-mini" id="prGuardarPdfBtn" onclick="guardarResumenPDF()">💾 Guardar PDF (queda en ⚙ Info técnica)</button>
         <button class="btn-mini" onclick="document.getElementById('printResumenOverlay').remove()">✕ Cerrar</button>
       </div>
     </div>
@@ -3436,13 +3436,13 @@ async function guardarResumenPDF() {
     }).from(el).outputPdf('datauristring');
     showToast('Subiendo PDF…');
     const r = await postGAS({ action: 'subirFoto', base64: dataUri, nombre });
-    if (!r || !r.ok) { showToast('⚠️ No se pudo subir el PDF'); if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PDF'; } return; }
+    if (!r || !r.ok) { showToast('⚠️ No se pudo subir el PDF'); if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PDF (queda en ⚙ Info técnica)'; } return; }
     const urlVer = 'https://drive.google.com/file/d/' + r.fileId + '/view';
     await postGAS({ action: 'guardarRespaldoPdf', proyecto: currentProyecto, nombre, url: urlVer, fileId: r.fileId });
     gRespaldosCache = null; // invalida caché para que "Info técnica" traiga este nuevo al abrir
     showToast('💾 PDF guardado en la app ✦');
   } catch (e) { showToast('⚠️ No se pudo generar el PDF'); }
-  if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PDF'; }
+  if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PDF (queda en ⚙ Info técnica)'; }
 }
 // ── Respaldos PDF guardados (listado en ⚙ Info técnica) ──
 let gRespaldosCache = null;
@@ -5061,9 +5061,12 @@ function renderSedesEditor() {
         <span style="font-size:11px; color:var(--ink-3)">a</span>
         <input type="time" id="sedeHoraFin-${i}" value="${s.horaFin||''}" style="padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
       </div>
-      <div class="autocomplete-wrap">
-        <input type="text" id="sedeDireccion-${i}" value="${escHtml(s.direccion||'')}" placeholder="Dirección / lugar de esta actividad" autocomplete="off" style="width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
-        <div class="autocomplete-list" id="sedeDireccionList-${i}"></div>
+      <div class="autocomplete-wrap" style="display:flex; gap:6px; align-items:flex-start">
+        <div style="flex:1; min-width:0; position:relative">
+          <input type="text" id="sedeDireccion-${i}" value="${escHtml(s.direccion||'')}" placeholder="Dirección / lugar de esta actividad" autocomplete="off" style="width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+          <div class="autocomplete-list" id="sedeDireccionList-${i}"></div>
+        </div>
+        <button class="btn-mini" type="button" style="flex:none" onclick="abrirMapaPicker('sedeLat-${i}','sedeLng-${i}','sedeDireccion-${i}')" title="Ajustar el punto exacto en el mapa">📍</button>
       </div>
       <input type="hidden" id="sedeLat-${i}" value="${s.lat||''}">
       <input type="hidden" id="sedeLng-${i}" value="${s.lng||''}">
@@ -6575,6 +6578,63 @@ function attachAutocomplete(inputId, listId, latHiddenId, lngHiddenId, coordsTxt
   input.addEventListener('blur', () => setTimeout(() => list.classList.remove('show'), 200));
 }
 
+// v58: "📍 Ubicar en mapa" — la IA/el buscador de direcciones deja las coordenadas
+// "aproximadas" (el punto que Nominatim asocia a ese texto, no necesariamente la entrada exacta
+// del lugar); esto abre un mapa para arrastrar el pin al punto exacto y corregir lat/lng a mano.
+// Si direccionId viene y está vacío, también intenta rellenarlo con geocodificación inversa
+// (best-effort — si falla o no hay direccionId, no pasa nada, solo quedan las coordenadas).
+let _mapaPickerLeaflet = null, _mapaPickerMarker = null;
+function abrirMapaPicker(latId, lngId, direccionId) {
+  const latEl = document.getElementById(latId), lngEl = document.getElementById(lngId);
+  if (!latEl || !lngEl) return;
+  const latIni = parseFloat(latEl.value) || 26.2124; // fallback: Naha, Okinawa
+  const lngIni = parseFloat(lngEl.value) || 127.6809;
+  const ov = document.createElement('div');
+  ov.id = 'mapaPickerOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `<div style="background:var(--paper);border-radius:12px;padding:14px;max-width:480px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.35)">
+    <div style="font-weight:700;font-size:14px;margin-bottom:4px">📍 Ubicar en el mapa</div>
+    <div style="font-size:11px;color:var(--ink-3);margin-bottom:8px">Toca el mapa o arrastra el pin al lugar exacto.</div>
+    <div id="mapaPickerMap" style="height:320px;border-radius:8px;overflow:hidden;border:1px solid var(--line)"></div>
+    <div id="mapaPickerCoords" style="font-size:11px;color:var(--ink-3);margin-top:6px;font-family:monospace"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button type="button" class="btn-cancel" style="flex:1" id="mpCancelar">Cancelar</button>
+      <button type="button" class="btn-save" style="flex:1" id="mpConfirmar">Confirmar ubicación</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const actualizarTxt = (lat, lng) => { const el = document.getElementById('mapaPickerCoords'); if (el) el.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`; };
+  setTimeout(() => {
+    _mapaPickerLeaflet = L.map('mapaPickerMap').setView([latIni, lngIni], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(_mapaPickerLeaflet);
+    _mapaPickerMarker = L.marker([latIni, lngIni], { draggable: true }).addTo(_mapaPickerLeaflet);
+    actualizarTxt(latIni, lngIni);
+    _mapaPickerMarker.on('dragend', () => { const p = _mapaPickerMarker.getLatLng(); actualizarTxt(p.lat, p.lng); });
+    _mapaPickerLeaflet.on('click', (e) => { _mapaPickerMarker.setLatLng(e.latlng); actualizarTxt(e.latlng.lat, e.latlng.lng); });
+  }, 50);
+  const cerrar = () => {
+    if (_mapaPickerLeaflet) { _mapaPickerLeaflet.remove(); _mapaPickerLeaflet = null; _mapaPickerMarker = null; }
+    ov.remove();
+  };
+  ov.addEventListener('click', e => { if (e.target === ov) cerrar(); });
+  ov.querySelector('#mpCancelar').addEventListener('click', cerrar);
+  ov.querySelector('#mpConfirmar').addEventListener('click', async () => {
+    const p = _mapaPickerMarker.getLatLng();
+    latEl.value = p.lat.toFixed(6);
+    lngEl.value = p.lng.toFixed(6);
+    cerrar();
+    showToast('📍 Ubicación actualizada');
+    const dirEl = direccionId && document.getElementById(direccionId);
+    if (dirEl && !dirEl.value.trim()) {
+      try {
+        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${p.lat}&lon=${p.lng}`, { headers: { 'Accept-Language': 'es' } });
+        const d = await r.json();
+        if (d && d.display_name) { dirEl.value = d.display_name; showToast('📍 Ubicación y dirección actualizadas'); }
+      } catch (e) { /* silencioso — ya quedaron las coordenadas, la dirección se puede llenar a mano */ }
+    }
+  });
+}
+
 // ── IA: sugerir lugares (hotel, pendiente, aeropuerto/parada de transporte) ──
 function tipoTransporteToLugar(tipo) {
   return { vuelo: 'aeropuerto', tren: 'estación de tren', bus: 'parada de autobús' }[tipo] || 'punto de transporte';
@@ -7365,6 +7425,7 @@ function openTransporteForm(id, diaId) {
           <div style="display:flex; gap:4px; margin-top:3px">
             <input type="text" id="fTransOrigenLat" value="${t && t.origenLat ? t.origenLat : ''}" placeholder="Lat" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
             <input type="text" id="fTransOrigenLng" value="${t && t.origenLng ? t.origenLng : ''}" placeholder="Lng" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
+            <button class="btn-mini" type="button" style="flex:none" onclick="abrirMapaPicker('fTransOrigenLat','fTransOrigenLng','fTransDireccionOrigen')" title="Ajustar el punto exacto en el mapa">📍</button>
           </div>
         </div>
         <div class="field autocomplete-wrap">
@@ -7374,6 +7435,7 @@ function openTransporteForm(id, diaId) {
           <div style="display:flex; gap:4px; margin-top:3px">
             <input type="text" id="fTransDestinoLat" value="${t && t.destinoLat ? t.destinoLat : ''}" placeholder="Lat" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
             <input type="text" id="fTransDestinoLng" value="${t && t.destinoLng ? t.destinoLng : ''}" placeholder="Lng" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
+            <button class="btn-mini" type="button" style="flex:none" onclick="abrirMapaPicker('fTransDestinoLat','fTransDestinoLng','fTransDireccionDestino')" title="Ajustar el punto exacto en el mapa">📍</button>
           </div>
         </div>
       </div>
@@ -7610,6 +7672,7 @@ function openHospedajeForm(id, diaId) {
         <div style="display:flex; gap:6px; margin-top:6px;">
            <input type="text" id="fHospChatIA" placeholder="Corregir hotel ej: No, el que está cerca de la estación..." style="flex:1; padding:6px; font-size:12px; border:1px solid var(--line); border-radius:4px;">
            <button class="btn-mini ai" type="button" onclick="refinarConIALocal('hotel', 'fHospNombre', 'fHospDireccion', 'fHospSugIA', 'fHospChatIA', null, 'fHospLat', 'fHospLng', this)">🤖 Sugerencias IA</button>
+           <button class="btn-mini" type="button" onclick="abrirMapaPicker('fHospLat','fHospLng','fHospDireccion')" title="Ajustar el punto exacto en el mapa">📍 Ubicar en mapa</button>
         </div>
       </div>
       <div class="field"><label>Sugerencias IA</label><textarea id="fHospSugIA" readonly style="background:var(--paper-2); font-size:12px; color:var(--ink-2); min-height:60px;">${escHtml(h ? h.sugerenciasIA : '')}</textarea></div>
@@ -7734,6 +7797,7 @@ function openPendienteForm(id, diaId) {
         <div style="display:flex; gap:6px; margin-top:6px;">
           <input type="text" id="fPendChatIA" placeholder="Corregir a la IA ej: No, la sucursal del centro..." style="flex:1; padding:6px; font-size:12px; border:1px solid var(--line); border-radius:4px;">
           <button class="btn-mini ai" type="button" onclick="refinarConIALocal(document.getElementById('fPendEsRestaurante').checked ? 'restaurante' : 'lugar para visitar', 'fPendNombre', 'fPendDireccion', 'fPendSugIA', 'fPendChatIA', 'fPendDuracion', 'fPendLat', 'fPendLng', this)">🤖 Sugerencias IA</button>
+          <button class="btn-mini" type="button" onclick="abrirMapaPicker('fPendLat','fPendLng','fPendDireccion')" title="Ajustar el punto exacto en el mapa">📍 Ubicar en mapa</button>
         </div>
       </div>
       <div class="field"><label>Sugerencias IA</label><textarea id="fPendSugIA" readonly style="background:var(--paper-2); font-size:12px; color:var(--ink-2); min-height:60px;">${escHtml(p ? p.sugerenciasIA : '')}</textarea></div>
