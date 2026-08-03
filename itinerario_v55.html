@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 103; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 104; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -3415,6 +3415,9 @@ function gCargarHtml2Pdf() {
     document.head.appendChild(s);
   });
 }
+// Guarda el PDF DENTRO de la app (sube a Drive, igual que las fotos, y queda listado en
+// "⚙ Info técnica → 📎 Respaldos PDF") — no solo una descarga suelta al dispositivo, que se
+// puede perder o quedar solo en un celular.
 async function guardarResumenPDF() {
   const el = document.querySelector('#printResumenOverlay .pr-contenido');
   if (!el) return;
@@ -3424,16 +3427,49 @@ async function guardarResumenPDF() {
   try {
     await gCargarHtml2Pdf();
     const nombre = (currentProyecto || 'Resumen') + ' - ' + fechaLocalISO(new Date()) + '.pdf';
-    await window.html2pdf().set({
+    const dataUri = await window.html2pdf().set({
       margin: 10, filename: nombre,
       image: { type: 'jpeg', quality: 0.95 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
-    }).from(el).save();
-    showToast('💾 PDF guardado ✦');
+    }).from(el).outputPdf('datauristring');
+    showToast('Subiendo PDF…');
+    const r = await postGAS({ action: 'subirFoto', base64: dataUri, nombre });
+    if (!r || !r.ok) { showToast('⚠️ No se pudo subir el PDF'); if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PDF'; } return; }
+    const urlVer = 'https://drive.google.com/file/d/' + r.fileId + '/view';
+    await postGAS({ action: 'guardarRespaldoPdf', proyecto: currentProyecto, nombre, url: urlVer, fileId: r.fileId });
+    gRespaldosCache = null; // invalida caché para que "Info técnica" traiga este nuevo al abrir
+    showToast('💾 PDF guardado en la app ✦');
   } catch (e) { showToast('⚠️ No se pudo generar el PDF'); }
   if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PDF'; }
+}
+// ── Respaldos PDF guardados (listado en ⚙ Info técnica) ──
+let gRespaldosCache = null;
+async function gCargarRespaldosPdf() {
+  if (gRespaldosCache) return gRespaldosCache;
+  const r = await postGAS({ action: 'cargarRespaldosPdf', proyecto: currentProyecto });
+  gRespaldosCache = (r && r.ok && Array.isArray(r.respaldos)) ? r.respaldos : [];
+  return gRespaldosCache;
+}
+async function gRenderRespaldosPdf() {
+  const cont = document.getElementById('respaldosPdfList');
+  if (!cont) return;
+  cont.innerHTML = 'Cargando…';
+  const respaldos = await gCargarRespaldosPdf();
+  if (!respaldos.length) { cont.innerHTML = '<div class="empty-mini">Sin respaldos guardados todavía — usa "💾 Guardar PDF" en el resumen imprimible.</div>'; return; }
+  cont.innerHTML = respaldos.map(r => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:12px">
+      <a href="${escHtml(r.url)}" target="_blank" rel="noopener" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ${escHtml(r.nombre)}</a>
+      <span style="color:var(--ink-3);white-space:nowrap;font-size:10.5px">${escHtml(fechaLocalISO(new Date(r.fecha)))}</span>
+      <button class="icon-btn" style="font-size:12px" onclick="gEliminarRespaldoPdf('${r.id}')">🗑</button>
+    </div>`).join('');
+}
+async function gEliminarRespaldoPdf(id) {
+  if (!confirm('¿Eliminar este respaldo? También se borra el archivo de Drive.')) return;
+  const r = await postGAS({ action: 'eliminarRespaldoPdf', id });
+  if (r && r.ok) { gRespaldosCache = null; showToast('Respaldo eliminado'); gRenderRespaldosPdf(); }
+  else showToast('⚠️ No se pudo eliminar');
 }
 
 function renderPoolPanel() {
@@ -8675,6 +8711,10 @@ function openDevInfo() {
         <button class="btn-mini" style="margin-top:6px" onclick="gSincronizarConGastos()">🔄 Sincronizar con Gastos <span style="text-transform:none; font-weight:400; font-size:11px; color:var(--ink-3)">(trae sesiones, sus miembros reales y tarjetas — solo cuando lo toques)</span></button>
       </div>
       <div class="field"><label>Proyecto / viaje activo</label><input readonly value="${escHtml(currentProyecto || '(sin proyecto)')}"></div>
+      <div class="field">
+        <label>📎 Respaldos PDF <span style="text-transform:none;font-weight:400;font-size:11px;color:var(--ink-3)">(guardados desde "💾 Guardar PDF" en el resumen imprimible)</span></label>
+        <div id="respaldosPdfList">Cargando…</div>
+      </div>
       <div class="field"><label>Conteo de datos cargados</label><textarea readonly style="font-size:11.5px; min-height:84px">Días: ${itinerario.dias.length}\nTransporte: ${itinerario.transporte.length}\nHospedaje: ${itinerario.hospedaje.length}\nPendientes: ${itinerario.pendientes.length}</textarea></div>
       <div class="field">
         <label>✏️ Versión HTML activa <span style="text-transform:none;font-weight:400;font-size:11px;color:var(--ink-3)">(editable — se guarda en _NOTAS_DEV A1)</span></label>
@@ -8701,6 +8741,7 @@ function openDevInfo() {
       <div class="modal-actions"><button class="btn-cancel" onclick="modalClose()">Cerrar</button><button class="btn-save" onclick="guardarTodoYCerrar(this)">💾 Guardar todo y cerrar</button></div>
     </div>`);
   window._devNotaModif = false; window._devVerModif = false;
+  gRenderRespaldosPdf();
   // Cargar con caché inmediato (actualiza en background)
   const cached = window._devInfoCache;
   if (cached) {
