@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 106; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 107; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -4408,13 +4408,13 @@ function coordsMini(lat, lng) {
   return `<div class="visor-coords">${escHtml(lat)}, ${escHtml(lng)}</div>`;
 }
 
-function abrirVisor(tipo, id) {
+function abrirVisor(tipo, id, actividadId) {
   const box = document.getElementById('modalBox');
   if (box) { box.dataset.visorTipo = tipo; box.dataset.visorId = id; }
   if (tipo === 'pendiente') abrirVisorPendiente(id);
   else if (tipo === 'transporte') abrirVisorTransporte(id);
   else if (tipo === 'hospedaje') abrirVisorHospedaje(id);
-  else if (tipo === 'evento') abrirVisorEvento(id);
+  else if (tipo === 'evento') abrirVisorEvento(id, actividadId);
 }
 
 function abrirVisorPendiente(id) {
@@ -5980,13 +5980,21 @@ function renderMapaGeneral() {
 
       if (verEventos) {
         itinerario.eventos.filter(ev => (ev.proyecto || currentProyecto) === currentProyecto).forEach(ev => {
-          (ev.sedes || []).filter(s => s.diaId === dia.id && s.lat && s.lng).forEach(s => {
+          // v58: cada actividad usa SU propio punto si lo tiene; solo si le falta, se cae en la
+          // "locación general" del evento (no al revés — la específica siempre gana). Antes,
+          // además, los eventos se dibujaban como marcador suelto sin entrar a la línea de ruta
+          // del día (a diferencia de pendientes/transporte), así que la ruta los "brincaba".
+          (ev.sedes || []).filter(s => s.diaId === dia.id).forEach(s => {
+            const lat = (s.lat && s.lng) ? s.lat : ev.latGeneral;
+            const lng = (s.lat && s.lng) ? s.lng : ev.lngGeneral;
+            if (!lat || !lng) return;
             const ot = op('evento', ev.id, false);
-            const m = mkr(s.lat, s.lng, shapeDivIcon(color, 'square', '🎪', 22, ot), ot);
-            bindEtiquetaMapa(m, ev.nombre, () => abrirVisor('evento', ev.id), ot, ot >= 0.9);
-            puntos.push([s.lat, s.lng]);
-            puntosProgramados.push([s.lat, s.lng]);
-            if (foco && foco.tipo === 'evento' && foco.id === ev.id) { puntoFoco = [s.lat, s.lng]; }
+            const m = mkr(lat, lng, shapeDivIcon(color, 'square', '🎪', 22, ot), ot);
+            bindEtiquetaMapa(m, ev.nombre, () => abrirVisor('evento', ev.id, s.id), ot, ot >= 0.9);
+            puntos.push([lat, lng]);
+            puntosProgramados.push([lat, lng]);
+            if (s.horaInicio) puntosOrdenados.push({ lat, lng, hora: s.horaInicio, esTrans: false });
+            if (foco && foco.tipo === 'evento' && foco.id === ev.id) { puntoFoco = [lat, lng]; }
           });
         });
       }
@@ -6198,6 +6206,20 @@ function renderMiniMapa(diaIdActivo) {
         puntosOrdenados.push({ lat: t.destinoLat, lng: t.destinoLng, hora: horaDestino, esTrans: true, transId: t.id, esDestino: true });
         if (esHoy) puntosHoy.push([t.destinoLat, t.destinoLng]);
       }
+    });
+
+    // Eventos/actividades — misma lógica que el mapa general: punto propio de la actividad si lo
+    // tiene, si no la "locación general" del evento; entran a la ruta igual que lo demás.
+    itinerario.eventos.filter(ev => (ev.proyecto || currentProyecto) === currentProyecto).forEach(ev => {
+      (ev.sedes || []).filter(s => s.diaId === dia.id).forEach(s => {
+        const lat = (s.lat && s.lng) ? s.lat : ev.latGeneral;
+        const lng = (s.lat && s.lng) ? s.lng : ev.lngGeneral;
+        if (!lat || !lng) return;
+        L.marker([lat, lng], { icon: shapeDivIcon(color, 'square', '🎪', tamMarker, opacidad), zIndexOffset: zHoy }).addTo(miniMap)
+          .on('click', () => abrirVisor('evento', ev.id, s.id));
+        if (esHoy) puntosHoy.push([lat, lng]);
+        if (s.horaInicio) puntosOrdenados.push({ lat, lng, hora: s.horaInicio, esTrans: false });
+      });
     });
 
     // Ordenar por hora igual que el mapa principal (mismo fallback '99:99')
