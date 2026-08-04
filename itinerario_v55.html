@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 107; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 108; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -3438,7 +3438,12 @@ async function guardarResumenPDF() {
     const r = await postGAS({ action: 'subirFoto', base64: dataUri, nombre });
     if (!r || !r.ok) { showToast('⚠️ No se pudo subir el PDF'); if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PDF (queda en ⚙ Info técnica)'; } return; }
     const urlVer = 'https://drive.google.com/file/d/' + r.fileId + '/view';
-    await postGAS({ action: 'guardarRespaldoPdf', proyecto: currentProyecto, nombre, url: urlVer, fileId: r.fileId });
+    // v58 fix: el PDF ya estaba subido a Drive en este punto (paso anterior), pero este segundo
+    // guardado (la referencia que arma la lista de "Respaldos PDF") nunca se revisaba — si
+    // fallaba, igual se avisaba "guardado" y el archivo quedaba huérfano en Drive, sin aparecer
+    // nunca en Info técnica.
+    const r2 = await postGAS({ action: 'guardarRespaldoPdf', proyecto: currentProyecto, nombre, url: urlVer, fileId: r.fileId });
+    if (!r2 || !r2.ok) { showToast('⚠️ El PDF se subió pero no se pudo guardar su referencia — intenta de nuevo'); if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PDF (queda en ⚙ Info técnica)'; } return; }
     gRespaldosCache = null; // invalida caché para que "Info técnica" traiga este nuevo al abrir
     showToast('💾 PDF guardado en la app ✦');
   } catch (e) { showToast('⚠️ No se pudo generar el PDF'); }
@@ -3447,9 +3452,13 @@ async function guardarResumenPDF() {
 // ── Respaldos PDF guardados (listado en ⚙ Info técnica) ──
 let gRespaldosCache = null;
 async function gCargarRespaldosPdf() {
-  if (gRespaldosCache) return gRespaldosCache;
+  // v58 fix: un arreglo vacío es "truthy" en JS — con `if (gRespaldosCache)` a secas, en cuanto
+  // la primera carga volvía vacía (por lo que fuera) quedaba cacheado ese "vacío" para siempre,
+  // sin volver a intentar. Ahora solo se usa la caché si de verdad ya se cargó (no es null).
+  if (gRespaldosCache !== null) return gRespaldosCache;
   const r = await postGAS({ action: 'cargarRespaldosPdf', proyecto: currentProyecto });
-  gRespaldosCache = (r && r.ok && Array.isArray(r.respaldos)) ? r.respaldos : [];
+  if (!r || !r.ok) { showToast('⚠️ No se pudieron cargar los respaldos'); return []; }
+  gRespaldosCache = Array.isArray(r.respaldos) ? r.respaldos : [];
   return gRespaldosCache;
 }
 async function gRenderRespaldosPdf() {
@@ -5064,6 +5073,7 @@ function renderSedesEditor() {
         <span style="font-size:11px; color:var(--ink-3)">a</span>
         <input type="time" id="sedeHoraFin-${i}" value="${s.horaFin||''}" style="padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
       </div>
+      ${s.fechaSugerida && !s.diaId ? `<div style="font-size:10.5px; color:#b45309; margin:-2px 0 6px">📅 La IA sugirió ${escHtml(s.fechaSugerida)}, pero no hay ningún día de tu viaje con esa fecha — se guarda como referencia; asígnale un día si quieres que aparezca en el calendario.</div>` : ''}
       <div class="autocomplete-wrap" style="display:flex; gap:6px; align-items:flex-start">
         <div style="flex:1; min-width:0; position:relative">
           <input type="text" id="sedeDireccion-${i}" value="${escHtml(s.direccion||'')}" placeholder="Dirección / lugar de esta actividad" autocomplete="off" style="width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
@@ -5077,7 +5087,7 @@ function renderSedesEditor() {
   currentEventoSedes.forEach((s, i) => attachAutocomplete(`sedeDireccion-${i}`, `sedeDireccionList-${i}`, `sedeLat-${i}`, `sedeLng-${i}`, null));
 }
 function agregarSedeEvento() {
-  currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: currentDiaId || '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
+  currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: currentDiaId || '', fechaSugerida: '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
   renderSedesEditor();
 }
 function eliminarSedeEvento(i) {
@@ -5150,6 +5160,7 @@ function openEventoForm(id, diaId, actividadId) {
       </div>
       <div class="field">
         <label>Actividades <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(cada parte puntual del evento, con su propio lugar/hora)</span></label>
+        ${(ev && (ev.fechaInicioReal || ev.fechaFinReal)) ? `<div style="font-size:11px; color:var(--ink-3); margin-bottom:6px">📅 El evento dura del ${escHtml(ev.fechaInicioReal || '?')} al ${escHtml(ev.fechaFinReal || ev.fechaInicioReal || '?')} — usa esto de referencia al elegir el día de cada actividad (no hace falta que caiga dentro de tu viaje).</div>` : ''}
         <div id="sedesEventoHost"></div>
         <button type="button" class="btn-mini" onclick="agregarSedeEvento()">＋ Agregar actividad</button>
       </div>
@@ -5182,6 +5193,7 @@ async function guardarEvento() {
     id: s.id,
     nombre: (document.getElementById(`sedeNombre-${i}`)||{}).value || '',
     diaId: (document.getElementById(`sedeDia-${i}`)||{}).value || '',
+    fechaSugerida: s.fechaSugerida || '', // no tiene input propio — se conserva tal cual vino de la IA
     horaInicio: (document.getElementById(`sedeHoraIni-${i}`)||{}).value || '',
     horaFin: (document.getElementById(`sedeHoraFin-${i}`)||{}).value || '',
     direccion: (document.getElementById(`sedeDireccion-${i}`)||{}).value || '',
@@ -5244,14 +5256,26 @@ async function refinarEventoConIA(btnEl) {
 
   if (r.ok && r.data) {
     if (r.data.nombreConEmoji) document.getElementById('fEventoNombre').value = r.data.nombreConEmoji;
+    // v58 fix: la "locación general" (fuera, en el visor) se estaba quedando siempre vacía
+    // porque este bloque solo usaba r.data.direccionExacta cuando NO había actividades[] — si
+    // la IA mandaba ambas cosas (lo normal: la sede principal + las actividades puntuales), la
+    // general se descartaba. Ahora se llena aparte, sin importar si hay actividades o no — pero
+    // sin pisar lo que ya hayas escrito a mano.
+    if (r.data.direccionExacta && !document.getElementById('fEventoDireccionGeneral').value.trim()) {
+      document.getElementById('fEventoDireccionGeneral').value = r.data.direccionExacta;
+      if (r.data.lat) document.getElementById('fEventoLatGeneral').value = r.data.lat;
+      if (r.data.lng) document.getElementById('fEventoLngGeneral').value = r.data.lng;
+    }
     if (r.data.actividades && r.data.actividades.length) {
       // La IA reconoció varias partes del evento (carrera, ceremonia, etc.) — se agregan como
       // actividades nuevas, tratando de emparejar la fecha sugerida con un día real del viaje.
+      // Si esa fecha no cae en ningún día del viaje, se guarda igual (fechaSugerida) para no
+      // perderla — se muestra como referencia aunque no haya un día del viaje que asignarle.
       r.data.actividades.forEach(a => {
         const diaMatch = a.fechaSugerida ? diasFiltrados().find(d => d.fecha === a.fechaSugerida) : null;
         currentEventoSedes.push({
           id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-          nombre: a.nombre || '', diaId: diaMatch ? diaMatch.id : '',
+          nombre: a.nombre || '', diaId: diaMatch ? diaMatch.id : '', fechaSugerida: a.fechaSugerida || '',
           horaInicio: a.horaSugerida || '', horaFin: '',
           direccion: a.direccionExacta || '', lat: a.lat || '', lng: a.lng || ''
         });
