@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 112; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 113; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -5111,11 +5111,11 @@ function renderSedesEditor() {
   const host = document.getElementById('sedesEventoHost');
   if (!host) return;
   host.innerHTML = currentEventoSedes.length ? currentEventoSedes.map((s, i) => `
-    <div id="sedeRow-${i}" style="border:1px solid ${s.id===_sedeResaltarId?'#c4b5fd':'var(--line)'}; ${s.id===_sedeResaltarId?'background:#f3e8ff;':''} border-radius:8px; padding:8px; margin-bottom:6px">
-      <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px">
-        <input type="text" id="sedeNombre-${i}" value="${escHtml(s.nombre||'')}" placeholder="Nombre de la actividad (ej. Carrera de botes dragón)" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
-        <button type="button" class="icon-btn" onclick="eliminarSedeEvento(${i})" title="Quitar actividad">🗑</button>
-      </div>
+    <details id="sedeRow-${i}" ${(s.id===_sedeResaltarId || !s.nombre) ? 'open' : ''} style="border:1px solid ${s.id===_sedeResaltarId?'#c4b5fd':'var(--line)'}; ${s.id===_sedeResaltarId?'background:#f3e8ff;':''} border-radius:8px; padding:8px; margin-bottom:6px">
+      <summary style="cursor:pointer; display:flex; gap:6px; align-items:center; margin-bottom:6px" onclick="event.stopPropagation()">
+        <input type="text" id="sedeNombre-${i}" value="${escHtml(s.nombre||'')}" placeholder="Nombre de la actividad (ej. Carrera de botes dragón)" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px" onclick="event.stopPropagation()">
+        <button type="button" class="icon-btn" onclick="event.stopPropagation(); eliminarSedeEvento(${i})" title="Quitar actividad">🗑</button>
+      </summary>
       <div style="font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); margin-bottom:3px">📅 Programada (cuándo es de verdad — puede ser varios días)</div>
       <div style="display:flex; gap:6px; align-items:center; margin-bottom:2px">
         <input type="date" id="sedeFechaProgramada-${i}" value="${escHtml(s.fechaProgramada||s.fechaSugerida||'')}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
@@ -5157,7 +5157,7 @@ function renderSedesEditor() {
         <input type="text" id="sedeLng-${i}" value="${escHtml(s.lng||'')}" placeholder="Lng" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
       </div>
       <div class="visor-coords" id="sedeCoordsTxt-${i}">${s.lat && s.lng ? escHtml(s.lat) + ', ' + escHtml(s.lng) : ''}</div>
-    </div>`).join('') : `<div class="empty-mini">Sin actividades agregadas — agrega una por cada cosa puntual del evento (ej. la carrera, los fuegos artificiales), con su propio lugar y hora.</div>`;
+    </details>`).join('') : `<div class="empty-mini">Sin actividades agregadas — agrega una por cada cosa puntual del evento (ej. la carrera, los fuegos artificiales), con su propio lugar y hora.</div>`;
   currentEventoSedes.forEach((s, i) => attachAutocomplete(`sedeDireccion-${i}`, `sedeDireccionList-${i}`, `sedeLat-${i}`, `sedeLng-${i}`, `sedeCoordsTxt-${i}`));
 }
 // v58: si eliges "Día asignado — inicio" y todavía no tocaste "fin", se autocompleta con el
@@ -5187,8 +5187,14 @@ function openEventoForm(id, diaId, actividadId) {
   currentEventoProgramaUrl = null;
   currentEventoProgramaFileId = null;
   // v58: sabe qué actividad resaltar en el editor (si se abrió desde un bloque puntual del
-  // calendario) — así no se confunde con estar editando la info general del evento.
+  // calendario) — así no se confunde con estar editando la info general del evento. Se reordena
+  // el arreglo (no solo la vista) para que quede primera — así el índice usado para leer/guardar
+  // sus campos (sedeNombre-0, sedeDia-0, etc.) sigue siendo consistente entre render y guardado.
   _sedeResaltarId = actividadId || null;
+  if (actividadId) {
+    const idx = currentEventoSedes.findIndex(s => s.id === actividadId);
+    if (idx > 0) currentEventoSedes.unshift(currentEventoSedes.splice(idx, 1)[0]);
+  }
   const actividadActiva = actividadId ? currentEventoSedes.find(s => s.id === actividadId) : null;
   const diaOptionsIni = '<option value="">— Sin asignar —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${(diaId===d.id)||(ev&&ev.diaIdInicio===d.id) ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
   const diaOptionsFin = '<option value="">— Sin asignar —</option>' + diasFiltrados().map(d => `<option value="${d.id}" ${ev&&ev.diaIdFin===d.id ? 'selected' : ''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('');
@@ -5490,19 +5496,21 @@ function abrirVisorEvento(id, actividadId) {
       ${(ev.sedes && ev.sedes.length) ? `<div style="margin-bottom:8px">
         <b style="font-size:12.5px">🎪 Actividades</b>
         <div style="display:flex; flex-direction:column; gap:6px; margin-top:6px">
-        ${ev.sedes.map(s => {
+        ${[...ev.sedes].sort((a, b) => (a.id === actividadId ? -1 : b.id === actividadId ? 1 : 0)).map(s => {
           const activa = s.id === actividadId;
           const progTxt = s.fechaProgramada ? `📅 ${escHtml(s.fechaProgramada)}${s.fechaProgramadaFin && s.fechaProgramadaFin !== s.fechaProgramada ? ' – ' + escHtml(s.fechaProgramadaFin) : ''}` : '';
           const horaTxt = s.horaInicio ? `🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''}` : '';
           const horaAsigTxt = sedeHoraIni(s) ? ` · 🕐 ${escHtml(sedeHoraIni(s))}${sedeHoraFin(s) ? '–' + escHtml(sedeHoraFin(s)) : ''}` : '';
           const asignadoTxt = s.diaId ? `✅ Asignado: ${diaLabel(s.diaId)}${s.diaIdFin && s.diaIdFin !== s.diaId ? ' – ' + diaLabel(s.diaIdFin) : ''}${horaAsigTxt}` : '⬜ No asignado a tu viaje';
-          return `<div style="border:1px solid ${activa?'#c4b5fd':'var(--line)'}; background:${activa?'#f3e8ff':'var(--paper-2)'}; border-radius:8px; padding:8px 10px; font-size:12px">
-            ${s.nombre ? `<div style="font-weight:600; ${activa?'color:#5b21b6':''}">${escHtml(s.nombre)}</div>` : ''}
-            <div style="color:${activa?'#5b21b6':'var(--ink-2)'}">${[progTxt, horaTxt].filter(Boolean).join(' · ')}</div>
-            <div style="color:${activa?'#5b21b6':'var(--ink-3)'}; font-size:11px; margin-top:2px">${asignadoTxt}</div>
-            ${s.direccion ? `<div style="color:var(--ink-3); font-size:11px; margin-top:2px">📍 ${escHtml(s.direccion)}</div>` : ''}
-            ${s.notas ? `<div style="color:var(--ink-3); font-size:11px; margin-top:2px">📝 ${escHtml(s.notas)}</div>` : ''}
-          </div>`;
+          return `<details ${activa ? 'open' : ''} style="border:1px solid ${activa?'#c4b5fd':'var(--line)'}; background:${activa?'#f3e8ff':'var(--paper-2)'}; border-radius:8px; padding:8px 10px; font-size:12px">
+            <summary style="cursor:pointer; font-weight:600; ${activa?'color:#5b21b6':''}">${escHtml(s.nombre || '(sin nombre)')}</summary>
+            <div style="margin-top:6px">
+              <div style="color:${activa?'#5b21b6':'var(--ink-2)'}">${[progTxt, horaTxt].filter(Boolean).join(' · ')}</div>
+              <div style="color:${activa?'#5b21b6':'var(--ink-3)'}; font-size:11px; margin-top:2px">${asignadoTxt}</div>
+              ${s.direccion ? `<div style="color:var(--ink-3); font-size:11px; margin-top:2px">📍 ${escHtml(s.direccion)}</div>` : ''}
+              ${s.notas ? `<div style="color:var(--ink-3); font-size:11px; margin-top:2px">📝 ${escHtml(s.notas)}</div>` : ''}
+            </div>
+          </details>`;
         }).join('')}
         </div>
       </div>` : ''}
