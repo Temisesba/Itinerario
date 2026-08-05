@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 109; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 110; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -5071,11 +5071,16 @@ function renderSedesEditor() {
         <span style="font-size:11px; color:var(--ink-3)">a</span>
         <input type="time" id="sedeHoraFin-${i}" value="${s.horaFin||''}" style="padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
       </div>
-      <div style="font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); margin-bottom:3px">✅ Asignar a un día de tu viaje (opcional — solo si decides ir)</div>
+      <div style="font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); margin-bottom:3px">✅ Asignar a día(s) de tu viaje (opcional — solo si decides ir)</div>
       <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px">
         <select id="sedeDia-${i}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
           <option value="">— No asignado todavía —</option>
           ${diasFiltrados().map(d => `<option value="${d.id}" ${s.diaId===d.id?'selected':''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('')}
+        </select>
+        <span style="font-size:11px; color:var(--ink-3)">a</span>
+        <select id="sedeDiaFin-${i}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+          <option value="">— Mismo día —</option>
+          ${diasFiltrados().map(d => `<option value="${d.id}" ${s.diaIdFin===d.id?'selected':''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('')}
         </select>
       </div>
       <div class="autocomplete-wrap" style="display:flex; gap:6px; align-items:flex-start">
@@ -5083,15 +5088,26 @@ function renderSedesEditor() {
           <input type="text" id="sedeDireccion-${i}" value="${escHtml(s.direccion||'')}" placeholder="Dirección / lugar de esta actividad" autocomplete="off" style="width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
           <div class="autocomplete-list" id="sedeDireccionList-${i}"></div>
         </div>
-        <button class="btn-mini" type="button" style="flex:none" onclick="abrirMapaPicker('sedeLat-${i}','sedeLng-${i}','sedeDireccion-${i}')" title="Ajustar el punto exacto en el mapa">📍</button>
+        <button class="btn-mini" type="button" style="flex:none" onclick="abrirMapaPicker('sedeLat-${i}','sedeLng-${i}','sedeDireccion-${i}','sedeCoordsTxt-${i}')" title="Ajustar el punto exacto en el mapa">📍</button>
       </div>
-      <input type="hidden" id="sedeLat-${i}" value="${s.lat||''}">
-      <input type="hidden" id="sedeLng-${i}" value="${s.lng||''}">
+      <div style="display:flex; gap:4px; margin-top:3px">
+        <input type="text" id="sedeLat-${i}" value="${escHtml(s.lat||'')}" placeholder="Lat" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
+        <input type="text" id="sedeLng-${i}" value="${escHtml(s.lng||'')}" placeholder="Lng" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
+      </div>
+      <div class="visor-coords" id="sedeCoordsTxt-${i}">${s.lat && s.lng ? escHtml(s.lat) + ', ' + escHtml(s.lng) : ''}</div>
     </div>`).join('') : `<div class="empty-mini">Sin actividades agregadas — agrega una por cada cosa puntual del evento (ej. la carrera, los fuegos artificiales), con su propio lugar y hora.</div>`;
-  currentEventoSedes.forEach((s, i) => attachAutocomplete(`sedeDireccion-${i}`, `sedeDireccionList-${i}`, `sedeLat-${i}`, `sedeLng-${i}`, null));
+  currentEventoSedes.forEach((s, i) => attachAutocomplete(`sedeDireccion-${i}`, `sedeDireccionList-${i}`, `sedeLat-${i}`, `sedeLng-${i}`, `sedeCoordsTxt-${i}`));
+}
+// v58: si eliges "Día asignado — inicio" y todavía no tocaste "fin", se autocompleta con el
+// mismo día (lo normal es un evento de un solo día) — puedes cambiarlo después si en verdad
+// abarca varios. No pisa "fin" si ya tenía algo puesto.
+function fEventoSyncDiaFin() {
+  const fin = document.getElementById('fEventoDiaFin');
+  const ini = document.getElementById('fEventoDiaInicio');
+  if (fin && ini && !fin.value) fin.value = ini.value;
 }
 function agregarSedeEvento() {
-  currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: currentDiaId || '', fechaProgramada: '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
+  currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: currentDiaId || '', diaIdFin: '', fechaProgramada: '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
   renderSedesEditor();
 }
 function eliminarSedeEvento(i) {
@@ -5136,7 +5152,7 @@ function openEventoForm(id, diaId, actividadId) {
       </div>
       <div class="field" style="margin-top:-6px; margin-bottom:14px; font-size:11px; color:var(--ink-3)">La fecha real puede ser distinta a los días de tu viaje (ej. el festival dura más, o ya empezó antes de que llegues).</div>
       <div class="row-2">
-        <div class="field"><label>Día asignado — inicio <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><select id="fEventoDiaInicio">${diaOptionsIni}</select></div>
+        <div class="field"><label>Día asignado — inicio <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><select id="fEventoDiaInicio" onchange="fEventoSyncDiaFin()">${diaOptionsIni}</select></div>
         <div class="field"><label>Día asignado — fin <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional)</span></label><select id="fEventoDiaFin">${diaOptionsFin}</select></div>
       </div>
       <div class="row-2">
@@ -5198,6 +5214,7 @@ async function guardarEvento() {
     id: s.id,
     nombre: (document.getElementById(`sedeNombre-${i}`)||{}).value || '',
     diaId: (document.getElementById(`sedeDia-${i}`)||{}).value || '',
+    diaIdFin: (document.getElementById(`sedeDiaFin-${i}`)||{}).value || '',
     fechaProgramada: (document.getElementById(`sedeFechaProgramada-${i}`)||{}).value || '',
     horaInicio: (document.getElementById(`sedeHoraIni-${i}`)||{}).value || '',
     horaFin: (document.getElementById(`sedeHoraFin-${i}`)||{}).value || '',
@@ -5280,9 +5297,10 @@ async function refinarEventoConIA(btnEl) {
       // (lo puedes quitar si no vas a ir).
       r.data.actividades.forEach(a => {
         const diaMatch = a.fechaSugerida ? diasFiltrados().find(d => d.fecha === a.fechaSugerida) : null;
+        // Es un solo día sugerido — inicio y fin del rango asignado quedan en el mismo día.
         currentEventoSedes.push({
           id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-          nombre: a.nombre || '', diaId: diaMatch ? diaMatch.id : '', fechaProgramada: a.fechaSugerida || '',
+          nombre: a.nombre || '', diaId: diaMatch ? diaMatch.id : '', diaIdFin: diaMatch ? diaMatch.id : '', fechaProgramada: a.fechaSugerida || '',
           horaInicio: a.horaSugerida || '', horaFin: '',
           direccion: a.direccionExacta || '', lat: a.lat || '', lng: a.lng || ''
         });
@@ -5372,7 +5390,10 @@ function abrirVisorEvento(id, actividadId) {
       ${ev.ciudades ? `<div class="visor-row">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.direccionGeneral ? `<div class="visor-row">📍 Locación general: ${escHtml(ev.direccionGeneral)}</div>` : ''}
       ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
-      ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>🎪 Actividades</b><br>${ev.sedes.map(s => `${s.id === actividadId ? '<span style="background:#f3e8ff">' : ''}${s.nombre ? `<b>${escHtml(s.nombre)}</b> — ` : ''}${escHtml(diaLabel(s.diaId) || (s.fechaProgramada ? `📅 ${s.fechaProgramada} (no asignado a tu viaje)` : 'Sin fecha'))}${s.horaInicio ? ` · 🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''}` : ''}${s.direccion ? ` — ${escHtml(s.direccion)}` : ''}${s.id === actividadId ? '</span>' : ''}`).join('<br>')}</div>` : ''}
+      ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>🎪 Actividades</b><br>${ev.sedes.map(s => {
+        const asignadoTxt = s.diaId ? `✅ Asignado: ${diaLabel(s.diaId)}${s.diaIdFin && s.diaIdFin !== s.diaId ? ' – ' + diaLabel(s.diaIdFin) : ''}` : '⬜ No asignado a tu viaje';
+        return `${s.id === actividadId ? '<span style="background:#f3e8ff">' : ''}${s.nombre ? `<b>${escHtml(s.nombre)}</b> — ` : ''}${s.fechaProgramada ? `📅 ${escHtml(s.fechaProgramada)} · ` : ''}${s.horaInicio ? `🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''} · ` : ''}${asignadoTxt}${s.direccion ? ` — ${escHtml(s.direccion)}` : ''}${s.id === actividadId ? '</span>' : ''}`;
+      }).join('<br>')}</div>` : ''}
       ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a></div>` : ''}
       <div class="visor-row" style="display:flex; align-items:center; gap:8px">
         <span style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em">Evaluación</span>
