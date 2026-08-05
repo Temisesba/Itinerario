@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 113; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 114; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -5074,7 +5074,7 @@ function renderEventoCard(ev, esDelDia) {
   const gCotsE = gastosE.filter(g => g.cotizacion).reduce((s,g) => s + Number(g.costo||0), 0);
   const rangoReal = ev.fechaInicioReal ? `${escHtml(ev.fechaInicioReal)}${ev.fechaFinReal && ev.fechaFinReal !== ev.fechaInicioReal ? ' → ' + escHtml(ev.fechaFinReal) : ''}` : '';
   const actividades = ev.sedes || [];
-  const actividadesHtml = actividades.length
+  const actividadesFilas = actividades.length
     ? actividades.map(act => {
         const agendada = act.diaId && sedeHoraIni(act);
         return `<div id="actividad-${act.id}" style="display:flex; align-items:center; gap:5px; padding:3px 6px; margin-top:3px; border-radius:6px; cursor:grab; background:${agendada ? 'var(--route-light)' : 'var(--paper-2)'}">
@@ -5083,6 +5083,9 @@ function renderEventoCard(ev, esDelDia) {
         </div>`;
       }).join('')
     : `<div class="empty-mini">Sin actividades — editá el evento para agregar una (ej. la carrera, los fuegos artificiales), cada una con su propio lugar y hora.</div>`;
+  const actividadesHtml = actividades.length
+    ? `<details open style="margin-top:3px"><summary style="cursor:pointer; font-size:11px; color:var(--ink-3)">🎪 Actividades (${actividades.length})</summary>${actividadesFilas}</details>`
+    : actividadesFilas;
   return `<div style="margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; ${esDelDia ? 'border-color:var(--route)' : ''}${ev.realizado ? ' opacity:.7' : ''}">
     <div style="display:flex; align-items:center; gap:5px; padding:5px 8px; background:${esDelDia ? 'var(--route-light)' : 'var(--paper-2)'}">
       <span style="flex:1; font-size:12px; font-weight:600; cursor:pointer; text-decoration:${ev.realizado ? 'line-through' : 'underline dotted'}" onclick="abrirVisorEvento('${ev.id}')">${ev.realizado ? '✅ ' : ''}🎪 ${escHtml(ev.nombre || '(sin nombre)')}</span>
@@ -5247,12 +5250,12 @@ function openEventoForm(id, diaId, actividadId) {
           <button class="btn-mini" type="button" onclick="abrirMapaPicker('fEventoLatGeneral','fEventoLngGeneral','fEventoDireccionGeneral','fEventoCoordsGeneralTxt')" title="Ajustar el punto exacto en el mapa">📍 Ubicar en mapa</button>
         </div>
       </div>
-      <div class="field">
-        <label>Actividades <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(cada parte puntual del evento, con su propio lugar/hora)</span></label>
+      <details open class="field">
+        <summary style="cursor:pointer"><label style="display:inline; cursor:pointer">Actividades${currentEventoSedes.length ? ` (${currentEventoSedes.length})` : ''} <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(cada parte puntual del evento, con su propio lugar/hora)</span></label></summary>
         ${(ev && (ev.fechaInicioReal || ev.fechaFinReal)) ? `<div style="font-size:11px; color:var(--ink-3); margin-bottom:6px">📅 El evento dura del ${escHtml(ev.fechaInicioReal || '?')} al ${escHtml(ev.fechaFinReal || ev.fechaInicioReal || '?')} — usa esto de referencia al elegir el día de cada actividad (no hace falta que caiga dentro de tu viaje).</div>` : ''}
         <div id="sedesEventoHost"></div>
         <button type="button" class="btn-mini" onclick="agregarSedeEvento()">＋ Agregar actividad</button>
-      </div>
+      </details>
       <div class="field">
         <label>Evaluación</label>
         <div id="fEventoEstrellas" style="padding:4px 0">${renderEstrellas(ev ? (ev.evaluacion||0) : 0, n => `fEventoSetEstrella(${n})`)}</div>
@@ -5493,8 +5496,8 @@ function abrirVisorEvento(id, actividadId) {
       ${ev.ciudades ? `<div class="visor-row">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.direccionGeneral ? `<div class="visor-row">📍 Locación general: ${escHtml(ev.direccionGeneral)}</div>` : ''}
       ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
-      ${(ev.sedes && ev.sedes.length) ? `<div style="margin-bottom:8px">
-        <b style="font-size:12.5px">🎪 Actividades</b>
+      ${(ev.sedes && ev.sedes.length) ? `<details open style="margin-bottom:8px">
+        <summary style="cursor:pointer"><b style="font-size:12.5px">🎪 Actividades (${ev.sedes.length})</b></summary>
         <div style="display:flex; flex-direction:column; gap:6px; margin-top:6px">
         ${[...ev.sedes].sort((a, b) => (a.id === actividadId ? -1 : b.id === actividadId ? 1 : 0)).map(s => {
           const activa = s.id === actividadId;
@@ -5513,7 +5516,7 @@ function abrirVisorEvento(id, actividadId) {
           </details>`;
         }).join('')}
         </div>
-      </div>` : ''}
+      </details>` : ''}
       ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a></div>` : ''}
       <div class="visor-row" style="display:flex; align-items:center; gap:8px">
         <span style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em">Evaluación</span>
