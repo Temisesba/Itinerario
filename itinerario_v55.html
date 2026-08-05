@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 108; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 109; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -5064,16 +5064,20 @@ function renderSedesEditor() {
         <input type="text" id="sedeNombre-${i}" value="${escHtml(s.nombre||'')}" placeholder="Nombre de la actividad (ej. Carrera de botes dragón)" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
         <button type="button" class="icon-btn" onclick="eliminarSedeEvento(${i})" title="Quitar actividad">🗑</button>
       </div>
-      <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px">
-        <select id="sedeDia-${i}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
-          <option value="">— Sin día asignado —</option>
-          ${diasFiltrados().map(d => `<option value="${d.id}" ${s.diaId===d.id?'selected':''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('')}
-        </select>
+      <div style="font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); margin-bottom:3px">📅 Programada (cuándo es de verdad)</div>
+      <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px">
+        <input type="date" id="sedeFechaProgramada-${i}" value="${escHtml(s.fechaProgramada||s.fechaSugerida||'')}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
         <input type="time" id="sedeHoraIni-${i}" value="${s.horaInicio||''}" style="padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
         <span style="font-size:11px; color:var(--ink-3)">a</span>
         <input type="time" id="sedeHoraFin-${i}" value="${s.horaFin||''}" style="padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
       </div>
-      ${s.fechaSugerida && !s.diaId ? `<div style="font-size:10.5px; color:#b45309; margin:-2px 0 6px">📅 La IA sugirió ${escHtml(s.fechaSugerida)}, pero no hay ningún día de tu viaje con esa fecha — se guarda como referencia; asígnale un día si quieres que aparezca en el calendario.</div>` : ''}
+      <div style="font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); margin-bottom:3px">✅ Asignar a un día de tu viaje (opcional — solo si decides ir)</div>
+      <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px">
+        <select id="sedeDia-${i}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+          <option value="">— No asignado todavía —</option>
+          ${diasFiltrados().map(d => `<option value="${d.id}" ${s.diaId===d.id?'selected':''}>${d.fecha}${d.zona?' · '+escHtml(d.zona):''}</option>`).join('')}
+        </select>
+      </div>
       <div class="autocomplete-wrap" style="display:flex; gap:6px; align-items:flex-start">
         <div style="flex:1; min-width:0; position:relative">
           <input type="text" id="sedeDireccion-${i}" value="${escHtml(s.direccion||'')}" placeholder="Dirección / lugar de esta actividad" autocomplete="off" style="width:100%; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
@@ -5087,7 +5091,7 @@ function renderSedesEditor() {
   currentEventoSedes.forEach((s, i) => attachAutocomplete(`sedeDireccion-${i}`, `sedeDireccionList-${i}`, `sedeLat-${i}`, `sedeLng-${i}`, null));
 }
 function agregarSedeEvento() {
-  currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: currentDiaId || '', fechaSugerida: '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
+  currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: currentDiaId || '', fechaProgramada: '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
   renderSedesEditor();
 }
 function eliminarSedeEvento(i) {
@@ -5148,15 +5152,16 @@ function openEventoForm(id, diaId, actividadId) {
       <div class="field"><label>Página web</label><input type="url" id="fEventoWeb" value="${escHtml(ev ? ev.paginaWeb : '')}" placeholder="https://..."></div>
       <div class="field autocomplete-wrap">
         <label>📍 Locación general <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(opcional — el punto general del evento/festival, aparte del de cada actividad)</span></label>
-        <div style="display:flex; gap:6px; align-items:flex-start">
-          <div style="flex:1; min-width:0; position:relative">
-            <input type="text" id="fEventoDireccionGeneral" value="${escHtml(ev ? ev.direccionGeneral||'' : '')}" placeholder="Ej: Parque Central, Naha" autocomplete="off">
-            <div class="autocomplete-list" id="fEventoDireccionGeneralList"></div>
-          </div>
-          <button class="btn-mini" type="button" style="flex:none" onclick="abrirMapaPicker('fEventoLatGeneral','fEventoLngGeneral','fEventoDireccionGeneral')" title="Ajustar el punto exacto en el mapa">📍</button>
+        <input type="text" id="fEventoDireccionGeneral" value="${escHtml(ev ? ev.direccionGeneral||'' : '')}" placeholder="Ej: Parque Central, Naha" autocomplete="off">
+        <div class="autocomplete-list" id="fEventoDireccionGeneralList"></div>
+        <div style="display:flex; gap:4px; margin-top:3px">
+          <input type="text" id="fEventoLatGeneral" value="${ev ? ev.latGeneral||'' : ''}" placeholder="Lat" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
+          <input type="text" id="fEventoLngGeneral" value="${ev ? ev.lngGeneral||'' : ''}" placeholder="Lng" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
         </div>
-        <input type="hidden" id="fEventoLatGeneral" value="${ev ? ev.latGeneral||'' : ''}">
-        <input type="hidden" id="fEventoLngGeneral" value="${ev ? ev.lngGeneral||'' : ''}">
+        <div class="visor-coords" id="fEventoCoordsGeneralTxt">${ev && ev.latGeneral && ev.lngGeneral ? escHtml(ev.latGeneral) + ', ' + escHtml(ev.lngGeneral) : ''}</div>
+        <div style="display:flex; gap:6px; margin-top:6px;">
+          <button class="btn-mini" type="button" onclick="abrirMapaPicker('fEventoLatGeneral','fEventoLngGeneral','fEventoDireccionGeneral','fEventoCoordsGeneralTxt')" title="Ajustar el punto exacto en el mapa">📍 Ubicar en mapa</button>
+        </div>
       </div>
       <div class="field">
         <label>Actividades <span style="text-transform:none; font-weight:400; color:var(--ink-3)">(cada parte puntual del evento, con su propio lugar/hora)</span></label>
@@ -5178,7 +5183,7 @@ function openEventoForm(id, diaId, actividadId) {
         </div>
       </div>
     </div>`);
-  attachAutocomplete('fEventoDireccionGeneral', 'fEventoDireccionGeneralList', 'fEventoLatGeneral', 'fEventoLngGeneral', null);
+  attachAutocomplete('fEventoDireccionGeneral', 'fEventoDireccionGeneralList', 'fEventoLatGeneral', 'fEventoLngGeneral', 'fEventoCoordsGeneralTxt');
   renderSedesEditor();
   if (_sedeResaltarId) {
     const idx = currentEventoSedes.findIndex(s => s.id === _sedeResaltarId);
@@ -5193,7 +5198,7 @@ async function guardarEvento() {
     id: s.id,
     nombre: (document.getElementById(`sedeNombre-${i}`)||{}).value || '',
     diaId: (document.getElementById(`sedeDia-${i}`)||{}).value || '',
-    fechaSugerida: s.fechaSugerida || '', // no tiene input propio — se conserva tal cual vino de la IA
+    fechaProgramada: (document.getElementById(`sedeFechaProgramada-${i}`)||{}).value || '',
     horaInicio: (document.getElementById(`sedeHoraIni-${i}`)||{}).value || '',
     horaFin: (document.getElementById(`sedeHoraFin-${i}`)||{}).value || '',
     direccion: (document.getElementById(`sedeDireccion-${i}`)||{}).value || '',
@@ -5265,17 +5270,19 @@ async function refinarEventoConIA(btnEl) {
       document.getElementById('fEventoDireccionGeneral').value = r.data.direccionExacta;
       if (r.data.lat) document.getElementById('fEventoLatGeneral').value = r.data.lat;
       if (r.data.lng) document.getElementById('fEventoLngGeneral').value = r.data.lng;
+      const coordsTxtEl = document.getElementById('fEventoCoordsGeneralTxt');
+      if (coordsTxtEl && r.data.lat && r.data.lng) coordsTxtEl.textContent = `${r.data.lat}, ${r.data.lng}`;
     }
     if (r.data.actividades && r.data.actividades.length) {
       // La IA reconoció varias partes del evento (carrera, ceremonia, etc.) — se agregan como
-      // actividades nuevas, tratando de emparejar la fecha sugerida con un día real del viaje.
-      // Si esa fecha no cae en ningún día del viaje, se guarda igual (fechaSugerida) para no
-      // perderla — se muestra como referencia aunque no haya un día del viaje que asignarle.
+      // actividades nuevas. "fechaProgramada" es la fecha real en que pasa (independiente de tu
+      // viaje); si esa fecha coincide con un día real de tu viaje, además se preasigna ese día
+      // (lo puedes quitar si no vas a ir).
       r.data.actividades.forEach(a => {
         const diaMatch = a.fechaSugerida ? diasFiltrados().find(d => d.fecha === a.fechaSugerida) : null;
         currentEventoSedes.push({
           id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-          nombre: a.nombre || '', diaId: diaMatch ? diaMatch.id : '', fechaSugerida: a.fechaSugerida || '',
+          nombre: a.nombre || '', diaId: diaMatch ? diaMatch.id : '', fechaProgramada: a.fechaSugerida || '',
           horaInicio: a.horaSugerida || '', horaFin: '',
           direccion: a.direccionExacta || '', lat: a.lat || '', lng: a.lng || ''
         });
@@ -5365,7 +5372,7 @@ function abrirVisorEvento(id, actividadId) {
       ${ev.ciudades ? `<div class="visor-row">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.direccionGeneral ? `<div class="visor-row">📍 Locación general: ${escHtml(ev.direccionGeneral)}</div>` : ''}
       ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
-      ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>🎪 Actividades</b><br>${ev.sedes.map(s => `${s.id === actividadId ? '<span style="background:#f3e8ff">' : ''}${s.nombre ? `<b>${escHtml(s.nombre)}</b> — ` : ''}${escHtml(diaLabel(s.diaId) || 'Sin día')}${s.horaInicio ? ` · 🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''}` : ''}${s.direccion ? ` — ${escHtml(s.direccion)}` : ''}${s.id === actividadId ? '</span>' : ''}`).join('<br>')}</div>` : ''}
+      ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>🎪 Actividades</b><br>${ev.sedes.map(s => `${s.id === actividadId ? '<span style="background:#f3e8ff">' : ''}${s.nombre ? `<b>${escHtml(s.nombre)}</b> — ` : ''}${escHtml(diaLabel(s.diaId) || (s.fechaProgramada ? `📅 ${s.fechaProgramada} (no asignado a tu viaje)` : 'Sin fecha'))}${s.horaInicio ? ` · 🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''}` : ''}${s.direccion ? ` — ${escHtml(s.direccion)}` : ''}${s.id === actividadId ? '</span>' : ''}`).join('<br>')}</div>` : ''}
       ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a></div>` : ''}
       <div class="visor-row" style="display:flex; align-items:center; gap:8px">
         <span style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em">Evaluación</span>
@@ -6664,7 +6671,7 @@ function attachAutocomplete(inputId, listId, latHiddenId, lngHiddenId, coordsTxt
 // Si direccionId viene y está vacío, también intenta rellenarlo con geocodificación inversa
 // (best-effort — si falla o no hay direccionId, no pasa nada, solo quedan las coordenadas).
 let _mapaPickerLeaflet = null, _mapaPickerMarker = null;
-function abrirMapaPicker(latId, lngId, direccionId) {
+function abrirMapaPicker(latId, lngId, direccionId, coordsTxtId) {
   const latEl = document.getElementById(latId), lngEl = document.getElementById(lngId);
   if (!latEl || !lngEl) return;
   const latIni = parseFloat(latEl.value) || 26.2124; // fallback: Naha, Okinawa
@@ -6702,6 +6709,8 @@ function abrirMapaPicker(latId, lngId, direccionId) {
     const p = _mapaPickerMarker.getLatLng();
     latEl.value = p.lat.toFixed(6);
     lngEl.value = p.lng.toFixed(6);
+    const coordsTxtEl = coordsTxtId && document.getElementById(coordsTxtId);
+    if (coordsTxtEl) coordsTxtEl.textContent = `${latEl.value}, ${lngEl.value}`;
     cerrar();
     showToast('📍 Ubicación actualizada');
     const dirEl = direccionId && document.getElementById(direccionId);
@@ -7755,7 +7764,7 @@ function openHospedajeForm(id, diaId) {
         <div style="display:flex; gap:6px; margin-top:6px;">
            <input type="text" id="fHospChatIA" placeholder="Corregir hotel ej: No, el que está cerca de la estación..." style="flex:1; padding:6px; font-size:12px; border:1px solid var(--line); border-radius:4px;">
            <button class="btn-mini ai" type="button" onclick="refinarConIALocal('hotel', 'fHospNombre', 'fHospDireccion', 'fHospSugIA', 'fHospChatIA', null, 'fHospLat', 'fHospLng', this)">🤖 Sugerencias IA</button>
-           <button class="btn-mini" type="button" onclick="abrirMapaPicker('fHospLat','fHospLng','fHospDireccion')" title="Ajustar el punto exacto en el mapa">📍 Ubicar en mapa</button>
+           <button class="btn-mini" type="button" onclick="abrirMapaPicker('fHospLat','fHospLng','fHospDireccion','fHospCoordsTxt')" title="Ajustar el punto exacto en el mapa">📍 Ubicar en mapa</button>
         </div>
       </div>
       <div class="field"><label>Sugerencias IA</label><textarea id="fHospSugIA" readonly style="background:var(--paper-2); font-size:12px; color:var(--ink-2); min-height:60px;">${escHtml(h ? h.sugerenciasIA : '')}</textarea></div>
@@ -7880,7 +7889,7 @@ function openPendienteForm(id, diaId) {
         <div style="display:flex; gap:6px; margin-top:6px;">
           <input type="text" id="fPendChatIA" placeholder="Corregir a la IA ej: No, la sucursal del centro..." style="flex:1; padding:6px; font-size:12px; border:1px solid var(--line); border-radius:4px;">
           <button class="btn-mini ai" type="button" onclick="refinarConIALocal(document.getElementById('fPendEsRestaurante').checked ? 'restaurante' : 'lugar para visitar', 'fPendNombre', 'fPendDireccion', 'fPendSugIA', 'fPendChatIA', 'fPendDuracion', 'fPendLat', 'fPendLng', this)">🤖 Sugerencias IA</button>
-          <button class="btn-mini" type="button" onclick="abrirMapaPicker('fPendLat','fPendLng','fPendDireccion')" title="Ajustar el punto exacto en el mapa">📍 Ubicar en mapa</button>
+          <button class="btn-mini" type="button" onclick="abrirMapaPicker('fPendLat','fPendLng','fPendDireccion','fPendCoordsTxt')" title="Ajustar el punto exacto en el mapa">📍 Ubicar en mapa</button>
         </div>
       </div>
       <div class="field"><label>Sugerencias IA</label><textarea id="fPendSugIA" readonly style="background:var(--paper-2); font-size:12px; color:var(--ink-2); min-height:60px;">${escHtml(p ? p.sugerenciasIA : '')}</textarea></div>
