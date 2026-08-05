@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 114; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 115; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -5114,11 +5114,11 @@ function renderSedesEditor() {
   const host = document.getElementById('sedesEventoHost');
   if (!host) return;
   host.innerHTML = currentEventoSedes.length ? currentEventoSedes.map((s, i) => `
-    <details id="sedeRow-${i}" ${(s.id===_sedeResaltarId || !s.nombre) ? 'open' : ''} style="border:1px solid ${s.id===_sedeResaltarId?'#c4b5fd':'var(--line)'}; ${s.id===_sedeResaltarId?'background:#f3e8ff;':''} border-radius:8px; padding:8px; margin-bottom:6px">
-      <summary style="cursor:pointer; display:flex; gap:6px; align-items:center; margin-bottom:6px" onclick="event.stopPropagation()">
-        <input type="text" id="sedeNombre-${i}" value="${escHtml(s.nombre||'')}" placeholder="Nombre de la actividad (ej. Carrera de botes dragón)" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px" onclick="event.stopPropagation()">
-        <button type="button" class="icon-btn" onclick="event.stopPropagation(); eliminarSedeEvento(${i})" title="Quitar actividad">🗑</button>
-      </summary>
+    <div id="sedeRow-${i}" style="border:1px solid ${s.id===_sedeResaltarId?'#c4b5fd':'var(--line)'}; ${s.id===_sedeResaltarId?'background:#f3e8ff;':''} border-radius:8px; padding:8px; margin-bottom:6px">
+      <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px">
+        <input type="text" id="sedeNombre-${i}" value="${escHtml(s.nombre||'')}" placeholder="Nombre de la actividad (ej. Carrera de botes dragón)" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+        <button type="button" class="icon-btn" onclick="eliminarSedeEvento(${i})" title="Quitar actividad">🗑</button>
+      </div>
       <div style="font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); margin-bottom:3px">📅 Programada (cuándo es de verdad — puede ser varios días)</div>
       <div style="display:flex; gap:6px; align-items:center; margin-bottom:2px">
         <input type="date" id="sedeFechaProgramada-${i}" value="${escHtml(s.fechaProgramada||s.fechaSugerida||'')}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
@@ -5160,7 +5160,7 @@ function renderSedesEditor() {
         <input type="text" id="sedeLng-${i}" value="${escHtml(s.lng||'')}" placeholder="Lng" style="flex:1; padding:5px 7px; border:1px dashed var(--line); border-radius:6px; font-size:11px; font-family:monospace; background:var(--paper-2); color:var(--ink-2)">
       </div>
       <div class="visor-coords" id="sedeCoordsTxt-${i}">${s.lat && s.lng ? escHtml(s.lat) + ', ' + escHtml(s.lng) : ''}</div>
-    </details>`).join('') : `<div class="empty-mini">Sin actividades agregadas — agrega una por cada cosa puntual del evento (ej. la carrera, los fuegos artificiales), con su propio lugar y hora.</div>`;
+    </div>`).join('') : `<div class="empty-mini">Sin actividades agregadas — agrega una por cada cosa puntual del evento (ej. la carrera, los fuegos artificiales), con su propio lugar y hora.</div>`;
   currentEventoSedes.forEach((s, i) => attachAutocomplete(`sedeDireccion-${i}`, `sedeDireccionList-${i}`, `sedeLat-${i}`, `sedeLng-${i}`, `sedeCoordsTxt-${i}`));
 }
 // v58: si eliges "Día asignado — inicio" y todavía no tocaste "fin", se autocompleta con el
