@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 110; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 111; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -5064,12 +5064,16 @@ function renderSedesEditor() {
         <input type="text" id="sedeNombre-${i}" value="${escHtml(s.nombre||'')}" placeholder="Nombre de la actividad (ej. Carrera de botes dragón)" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
         <button type="button" class="icon-btn" onclick="eliminarSedeEvento(${i})" title="Quitar actividad">🗑</button>
       </div>
-      <div style="font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); margin-bottom:3px">📅 Programada (cuándo es de verdad)</div>
-      <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px">
+      <div style="font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); margin-bottom:3px">📅 Programada (cuándo es de verdad — puede ser varios días)</div>
+      <div style="display:flex; gap:6px; align-items:center; margin-bottom:2px">
         <input type="date" id="sedeFechaProgramada-${i}" value="${escHtml(s.fechaProgramada||s.fechaSugerida||'')}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
-        <input type="time" id="sedeHoraIni-${i}" value="${s.horaInicio||''}" style="padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
         <span style="font-size:11px; color:var(--ink-3)">a</span>
-        <input type="time" id="sedeHoraFin-${i}" value="${s.horaFin||''}" style="padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+        <input type="date" id="sedeFechaProgramadaFin-${i}" value="${escHtml(s.fechaProgramadaFin||'')}" placeholder="mismo día" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+      </div>
+      <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px">
+        <input type="time" id="sedeHoraIni-${i}" value="${s.horaInicio||''}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
+        <span style="font-size:11px; color:var(--ink-3)">a</span>
+        <input type="time" id="sedeHoraFin-${i}" value="${s.horaFin||''}" style="flex:1; padding:6px; border:1px solid var(--line); border-radius:6px; font-size:12px">
       </div>
       <div style="font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); margin-bottom:3px">✅ Asignar a día(s) de tu viaje (opcional — solo si decides ir)</div>
       <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px">
@@ -5107,7 +5111,7 @@ function fEventoSyncDiaFin() {
   if (fin && ini && !fin.value) fin.value = ini.value;
 }
 function agregarSedeEvento() {
-  currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: currentDiaId || '', diaIdFin: '', fechaProgramada: '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
+  currentEventoSedes.push({ id: 'ACT-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), nombre: '', diaId: currentDiaId || '', diaIdFin: '', fechaProgramada: '', fechaProgramadaFin: '', horaInicio: '', horaFin: '', direccion: '', lat: '', lng: '' });
   renderSedesEditor();
 }
 function eliminarSedeEvento(i) {
@@ -5216,6 +5220,7 @@ async function guardarEvento() {
     diaId: (document.getElementById(`sedeDia-${i}`)||{}).value || '',
     diaIdFin: (document.getElementById(`sedeDiaFin-${i}`)||{}).value || '',
     fechaProgramada: (document.getElementById(`sedeFechaProgramada-${i}`)||{}).value || '',
+    fechaProgramadaFin: (document.getElementById(`sedeFechaProgramadaFin-${i}`)||{}).value || '',
     horaInicio: (document.getElementById(`sedeHoraIni-${i}`)||{}).value || '',
     horaFin: (document.getElementById(`sedeHoraFin-${i}`)||{}).value || '',
     direccion: (document.getElementById(`sedeDireccion-${i}`)||{}).value || '',
@@ -5390,10 +5395,23 @@ function abrirVisorEvento(id, actividadId) {
       ${ev.ciudades ? `<div class="visor-row">📍 ${escHtml(ev.ciudades)}</div>` : ''}
       ${ev.direccionGeneral ? `<div class="visor-row">📍 Locación general: ${escHtml(ev.direccionGeneral)}</div>` : ''}
       ${ev.paginaWeb ? `<div class="visor-row">🔗 <a href="${escHtml(ev.paginaWeb)}" target="_blank">${escHtml(ev.paginaWeb)}</a></div>` : ''}
-      ${(ev.sedes && ev.sedes.length) ? `<div class="visor-block"><b>🎪 Actividades</b><br>${ev.sedes.map(s => {
-        const asignadoTxt = s.diaId ? `✅ Asignado: ${diaLabel(s.diaId)}${s.diaIdFin && s.diaIdFin !== s.diaId ? ' – ' + diaLabel(s.diaIdFin) : ''}` : '⬜ No asignado a tu viaje';
-        return `${s.id === actividadId ? '<span style="background:#f3e8ff">' : ''}${s.nombre ? `<b>${escHtml(s.nombre)}</b> — ` : ''}${s.fechaProgramada ? `📅 ${escHtml(s.fechaProgramada)} · ` : ''}${s.horaInicio ? `🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''} · ` : ''}${asignadoTxt}${s.direccion ? ` — ${escHtml(s.direccion)}` : ''}${s.id === actividadId ? '</span>' : ''}`;
-      }).join('<br>')}</div>` : ''}
+      ${(ev.sedes && ev.sedes.length) ? `<div style="margin-bottom:8px">
+        <b style="font-size:12.5px">🎪 Actividades</b>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:6px">
+        ${ev.sedes.map(s => {
+          const activa = s.id === actividadId;
+          const progTxt = s.fechaProgramada ? `📅 ${escHtml(s.fechaProgramada)}${s.fechaProgramadaFin && s.fechaProgramadaFin !== s.fechaProgramada ? ' – ' + escHtml(s.fechaProgramadaFin) : ''}` : '';
+          const horaTxt = s.horaInicio ? `🕐 ${escHtml(s.horaInicio)}${s.horaFin ? '–' + escHtml(s.horaFin) : ''}` : '';
+          const asignadoTxt = s.diaId ? `✅ Asignado: ${diaLabel(s.diaId)}${s.diaIdFin && s.diaIdFin !== s.diaId ? ' – ' + diaLabel(s.diaIdFin) : ''}` : '⬜ No asignado a tu viaje';
+          return `<div style="border:1px solid ${activa?'#c4b5fd':'var(--line)'}; background:${activa?'#f3e8ff':'var(--paper-2)'}; border-radius:8px; padding:8px 10px; font-size:12px">
+            ${s.nombre ? `<div style="font-weight:600; ${activa?'color:#5b21b6':''}">${escHtml(s.nombre)}</div>` : ''}
+            <div style="color:${activa?'#5b21b6':'var(--ink-2)'}">${[progTxt, horaTxt].filter(Boolean).join(' · ')}</div>
+            <div style="color:${activa?'#5b21b6':'var(--ink-3)'}; font-size:11px; margin-top:2px">${asignadoTxt}</div>
+            ${s.direccion ? `<div style="color:var(--ink-3); font-size:11px; margin-top:2px">📍 ${escHtml(s.direccion)}</div>` : ''}
+          </div>`;
+        }).join('')}
+        </div>
+      </div>` : ''}
       ${ev.programaUrl ? `<div class="visor-row"><a href="${ev.programaUrl}" target="_blank" class="btn-mini">📄 Ver programa</a></div>` : ''}
       <div class="visor-row" style="display:flex; align-items:center; gap:8px">
         <span style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em">Evaluación</span>
