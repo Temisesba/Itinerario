@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 116; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 117; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -4394,11 +4394,15 @@ async function desasignarDia(id) {
 // ── Tarjeta de transporte ────────────────────────────────────
 function formatOpcionTexto(o) {
   if (!o) return 'Sin horario';
-  if (o.salida && o.llegada) return `${o.salida} → ${o.llegada}`;
-  if (o.salida && o.duracionMin !== '' && o.duracionMin != null) return `Sale ${o.salida} (~${o.duracionMin} min)`;
-  if (o.duracionMin !== '' && o.duracionMin != null) return `~${o.duracionMin} min`;
-  if (o.salida) return `Sale ${o.salida}`;
-  return 'Sin horario aún';
+  let base;
+  if (o.salida && o.llegada) base = `${o.salida} → ${o.llegada}`;
+  else if (o.salida && o.duracionMin !== '' && o.duracionMin != null) base = `Sale ${o.salida} (~${o.duracionMin} min)`;
+  else if (o.duracionMin !== '' && o.duracionMin != null) base = `~${o.duracionMin} min`;
+  else if (o.salida) base = `Sale ${o.salida}`;
+  else base = 'Sin horario aún';
+  // v58: precioEstimado es solo una cotización de referencia (manual o sugerida por IA) para
+  // comparar entre opciones — no es un gasto real, por eso no se toca gastoVinculadoHtml/Gastos.
+  return o.precioEstimado ? `${base} · 💬 ${o.precioEstimado}` : base;
 }
 
 // ── Visor: vista de lectura compartida (clic en un evento → visor → Editar) ──
@@ -4490,7 +4494,6 @@ function abrirVisorTransporte(id) {
       <span class="modal-title">${t.realizado ? '✅ ' : ''}${TIPO_LABEL[t.tipo] || t.tipo}</span>
       <div style="display:flex; align-items:center; gap:10px">
         <button class="icon-btn" title="${sinHora ? 'Sin hora fija — toca para ponerle una y que se vea en mapa/calendario' : oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
-        ${(opciones.length > 1 || otrosModos.length) ? `<button class="icon-btn" title="Ver todas las opciones de horario y modos" onclick="mostrarTodasOpcionesTransporte('${vId}','${vId}-btn','${vOtrosId}')">🔍</button>` : ''}
         <button class="icon-btn" title="Ver en panel lateral" onclick="scrollPanelATransporte('${t.id}')">👉</button>
         <button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button>
         <button class="modal-close" onclick="modalClose()">✕</button>
@@ -4505,8 +4508,8 @@ function abrirVisorTransporte(id) {
       <div class="visor-block" style="background:var(--paper-2); border-radius:10px; padding:8px 10px; margin-bottom:10px">
         <div style="font-size:13px; font-weight:500">🕐 ${escHtml(horarioResumen)}${opSel && opSel.notas ? ` · <span style="color:var(--ink-3)">${escHtml(opSel.notas)}</span>` : ''}</div>
         ${opciones.length > 1 ? `
-        <button id="${vId}-btn" class="btn-mini horarios-toggle-btn" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${vId}', this)">▾ Ver más horarios</button>
-        <div id="${vId}" style="display:none; margin-top:6px">
+        <button id="${vId}-btn" class="btn-mini horarios-toggle-btn" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${vId}', this)">▴ Ocultar horarios</button>
+        <div id="${vId}" style="margin-top:6px">
           ${opciones.map((o, i) => `
             <div class="opcion-pill ${i === (t.opcionElegida || 0) ? 'elegida' : ''}" onclick="elegirOpcionTransporte('${t.id}', ${i})">
               <b>${escHtml(formatOpcionTexto(o))}</b>
@@ -4514,8 +4517,8 @@ function abrirVisorTransporte(id) {
             </div>`).join('')}
         </div>` : ''}
         ${otrosModos.length ? `
-        <div class="otros-modos-toggle" style="margin-top:6px" onclick="toggleOtrosModos('${t.id}', '${vOtrosId}')">▾ Ver otros modos (${otrosModos.map(m => TIPO_LABEL[m.modo]?.split(' ').slice(1).join(' ') || m.modo).join(', ')})</div>
-        <div class="otros-modos-panel" id="${vOtrosId}" style="display:none">
+        <div class="otros-modos-toggle" style="margin-top:6px" onclick="toggleOtrosModos('${t.id}', '${vOtrosId}')">▴ Ver otros modos (${otrosModos.map(m => TIPO_LABEL[m.modo]?.split(' ').slice(1).join(' ') || m.modo).join(', ')})</div>
+        <div class="otros-modos-panel" id="${vOtrosId}" style="display:block">
           ${otrosModos.map(m => `
             <div style="margin-top:6px">
               <div class="empty-mini" style="padding:0 0 3px; font-weight:600">${escHtml(TIPO_LABEL[m.modo] || m.modo)}${m.tiempoTotal ? ' · ' + escHtml(m.tiempoTotal) : ''}</div>
@@ -4653,14 +4656,6 @@ function toggleHorariosPanel(id, btn) {
   const open = el.style.display !== 'none';
   el.style.display = open ? 'none' : '';
   btn.textContent = open ? '▾ Ver más horarios' : '▴ Ocultar horarios';
-}
-// v58: "🔍" en el header del visor de transporte — abre de un toque los horarios alternos Y los
-// otros modos (tren/bus/carro/etc.), en vez de tener que tocar cada "▾" por separado.
-function mostrarTodasOpcionesTransporte(vId, hBtnId, vOtrosId) {
-  const el = document.getElementById(vId);
-  if (el) { el.style.display = ''; const hBtn = document.getElementById(hBtnId); if (hBtn) hBtn.textContent = '▴ Ocultar horarios'; }
-  const elO = document.getElementById(vOtrosId);
-  if (elO) elO.style.display = 'block';
 }
 
 // Genera HTML de una lista de pendientes con flechitas de orden
@@ -7539,6 +7534,7 @@ function renderModosEditor() {
             <input type="radio" name="modoOpcionElegida" class="opt-radio" ${elegido.modo === m.modo && Number(elegido.idx) === i ? 'checked' : ''} onclick="marcarModoElegido('${m.modo}',${i})" title="Marcar como la elegida">
             <input type="number" min="0" class="time" style="max-width:64px" placeholder="min" value="${o.duracionMin != null ? o.duracionMin : ''}" onchange="actualizarModoOpcion('${m.modo}',${i},'duracionMin',this.value)">
             <input class="time" placeholder="Salida (opcional)" value="${escHtml(o.salida || '')}" onchange="actualizarModoOpcion('${m.modo}',${i},'salida',this.value)">
+            <input class="time" style="max-width:80px" placeholder="Cotiz. ~¥" value="${escHtml(o.precioEstimado || '')}" onchange="actualizarModoOpcion('${m.modo}',${i},'precioEstimado',this.value)" title="Cotización aproximada — no es un gasto real, solo para comparar">
             <input placeholder="Notas" value="${escHtml(o.notas || '')}" onchange="actualizarModoOpcion('${m.modo}',${i},'notas',this.value)">
             <button class="icon-btn" type="button" onclick="eliminarModoOpcion('${m.modo}',${i})">🗑</button>
           </div>` : `
@@ -7546,6 +7542,7 @@ function renderModosEditor() {
             <input type="radio" name="modoOpcionElegida" class="opt-radio" ${elegido.modo === m.modo && Number(elegido.idx) === i ? 'checked' : ''} onclick="marcarModoElegido('${m.modo}',${i})" title="Marcar como la elegida">
             <input class="time" placeholder="Sale 08:05" value="${escHtml(o.salida || '')}" onchange="actualizarModoOpcion('${m.modo}',${i},'salida',this.value)">
             <input class="time" placeholder="Llega 09:45" value="${escHtml(o.llegada || '')}" onchange="actualizarModoOpcion('${m.modo}',${i},'llegada',this.value)">
+            <input class="time" style="max-width:80px" placeholder="Cotiz. ~¥" value="${escHtml(o.precioEstimado || '')}" onchange="actualizarModoOpcion('${m.modo}',${i},'precioEstimado',this.value)" title="Cotización aproximada — no es un gasto real, solo para comparar">
             <input placeholder="Notas" value="${escHtml(o.notas || '')}" onchange="actualizarModoOpcion('${m.modo}',${i},'notas',this.value)">
             <button class="icon-btn" type="button" onclick="eliminarModoOpcion('${m.modo}',${i})">🗑</button>
           </div>`).join('')}
@@ -7596,7 +7593,7 @@ function agregarModoOpcion(modo) {
   const m = currentModosData.modos.find(x => x.modo === modo);
   if (m) {
     m.opciones = m.opciones || [];
-    m.opciones.push(MODOS_SIN_HORARIO.includes(modo) ? { duracionMin: '', salida: '', notas: '' } : { salida: '', llegada: '', notas: '' });
+    m.opciones.push(MODOS_SIN_HORARIO.includes(modo) ? { duracionMin: '', salida: '', notas: '', precioEstimado: '' } : { salida: '', llegada: '', notas: '', precioEstimado: '' });
     m.aplica = true;
   }
   renderModosEditor();
