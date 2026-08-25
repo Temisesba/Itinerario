@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 115; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 116; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -4490,6 +4490,7 @@ function abrirVisorTransporte(id) {
       <span class="modal-title">${t.realizado ? '✅ ' : ''}${TIPO_LABEL[t.tipo] || t.tipo}</span>
       <div style="display:flex; align-items:center; gap:10px">
         <button class="icon-btn" title="${sinHora ? 'Sin hora fija — toca para ponerle una y que se vea en mapa/calendario' : oculto ? 'Oculto del visor y mapa — toca para mostrar' : 'Visible — toca para ocultar del visor y mapa'}" onclick="toggleOcultarTransporte('${t.id}', this)">${oculto ? '🙈' : '👁️'}</button>
+        ${(opciones.length > 1 || otrosModos.length) ? `<button class="icon-btn" title="Ver todas las opciones de horario y modos" onclick="mostrarTodasOpcionesTransporte('${vId}','${vId}-btn','${vOtrosId}')">🔍</button>` : ''}
         <button class="icon-btn" title="Ver en panel lateral" onclick="scrollPanelATransporte('${t.id}')">👉</button>
         <button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button>
         <button class="modal-close" onclick="modalClose()">✕</button>
@@ -4504,7 +4505,7 @@ function abrirVisorTransporte(id) {
       <div class="visor-block" style="background:var(--paper-2); border-radius:10px; padding:8px 10px; margin-bottom:10px">
         <div style="font-size:13px; font-weight:500">🕐 ${escHtml(horarioResumen)}${opSel && opSel.notas ? ` · <span style="color:var(--ink-3)">${escHtml(opSel.notas)}</span>` : ''}</div>
         ${opciones.length > 1 ? `
-        <button class="btn-mini horarios-toggle-btn" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${vId}', this)">▾ Ver más horarios</button>
+        <button id="${vId}-btn" class="btn-mini horarios-toggle-btn" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${vId}', this)">▾ Ver más horarios</button>
         <div id="${vId}" style="display:none; margin-top:6px">
           ${opciones.map((o, i) => `
             <div class="opcion-pill ${i === (t.opcionElegida || 0) ? 'elegida' : ''}" onclick="elegirOpcionTransporte('${t.id}', ${i})">
@@ -4652,6 +4653,14 @@ function toggleHorariosPanel(id, btn) {
   const open = el.style.display !== 'none';
   el.style.display = open ? 'none' : '';
   btn.textContent = open ? '▾ Ver más horarios' : '▴ Ocultar horarios';
+}
+// v58: "🔍" en el header del visor de transporte — abre de un toque los horarios alternos Y los
+// otros modos (tren/bus/carro/etc.), en vez de tener que tocar cada "▾" por separado.
+function mostrarTodasOpcionesTransporte(vId, hBtnId, vOtrosId) {
+  const el = document.getElementById(vId);
+  if (el) { el.style.display = ''; const hBtn = document.getElementById(hBtnId); if (hBtn) hBtn.textContent = '▴ Ocultar horarios'; }
+  const elO = document.getElementById(vOtrosId);
+  if (elO) elO.style.display = 'block';
 }
 
 // Genera HTML de una lista de pendientes con flechitas de orden
