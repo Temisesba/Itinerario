@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 117; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 118; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -4508,8 +4508,8 @@ function abrirVisorTransporte(id) {
       <div class="visor-block" style="background:var(--paper-2); border-radius:10px; padding:8px 10px; margin-bottom:10px">
         <div style="font-size:13px; font-weight:500">🕐 ${escHtml(horarioResumen)}${opSel && opSel.notas ? ` · <span style="color:var(--ink-3)">${escHtml(opSel.notas)}</span>` : ''}</div>
         ${opciones.length > 1 ? `
-        <button id="${vId}-btn" class="btn-mini horarios-toggle-btn" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${vId}', this)">▴ Ocultar horarios</button>
-        <div id="${vId}" style="margin-top:6px">
+        <button id="${vId}-btn" class="btn-mini horarios-toggle-btn" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${vId}', this)">▾ Ver más horarios</button>
+        <div id="${vId}" style="display:none; margin-top:6px">
           ${opciones.map((o, i) => `
             <div class="opcion-pill ${i === (t.opcionElegida || 0) ? 'elegida' : ''}" onclick="elegirOpcionTransporte('${t.id}', ${i})">
               <b>${escHtml(formatOpcionTexto(o))}</b>
@@ -4517,8 +4517,8 @@ function abrirVisorTransporte(id) {
             </div>`).join('')}
         </div>` : ''}
         ${otrosModos.length ? `
-        <div class="otros-modos-toggle" style="margin-top:6px" onclick="toggleOtrosModos('${t.id}', '${vOtrosId}')">▴ Ver otros modos (${otrosModos.map(m => TIPO_LABEL[m.modo]?.split(' ').slice(1).join(' ') || m.modo).join(', ')})</div>
-        <div class="otros-modos-panel" id="${vOtrosId}" style="display:block">
+        <div class="otros-modos-toggle" style="margin-top:6px" onclick="toggleOtrosModos('${t.id}', '${vOtrosId}')">▾ Ver otros modos (${otrosModos.map(m => TIPO_LABEL[m.modo]?.split(' ').slice(1).join(' ') || m.modo).join(', ')})</div>
+        <div class="otros-modos-panel" id="${vOtrosId}" style="display:none">
           ${otrosModos.map(m => `
             <div style="margin-top:6px">
               <div class="empty-mini" style="padding:0 0 3px; font-weight:600">${escHtml(TIPO_LABEL[m.modo] || m.modo)}${m.tiempoTotal ? ' · ' + escHtml(m.tiempoTotal) : ''}</div>
