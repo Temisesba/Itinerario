@@ -588,7 +588,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 118; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 119; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -4527,6 +4527,7 @@ function abrirVisorTransporte(id) {
               </div>
             </div>`).join('')}
         </div>` : ''}
+        <button id="visor-buscar-modos-${t.id}" class="btn-mini ai" style="margin-top:6px; font-size:10px" onclick="buscarOtrosModosVisor('${t.id}', this)">🤖 ${otrosModos.length ? 'Buscar de nuevo' : 'Buscar'} bus/tren/otras opciones</button>
       </div>
       <div class="visor-row">📅 ${escHtml(diaLabel(t.diaId))}</div>
       ${t.direccionOrigen ? `<div class="visor-row">📍 Origen: ${escHtml(t.direccionOrigen)}</div>` : ''}
@@ -4798,6 +4799,29 @@ async function elegirModoEnCard(transporteId, modo, idx) {
   renderSemana(); renderPoolPanel(); renderSpine();
   await postGAS(body);
   showToast('Cambiado a ' + (TIPO_LABEL[modo] || modo));
+}
+
+// v58: "🤖 Buscar bus/tren/otras opciones" directo desde el visor — para transportes viejos o
+// cargados a mano que nunca pasaron por "Sugerir todo" y por eso no tienen modos alternos
+// guardados (de ahí que el visor solo mostrara la opción ya elegida, sin nada más que comparar).
+// Conserva tal cual el modo/horario ya elegido — solo agrega/actualiza los DEMÁS modos.
+async function buscarOtrosModosVisor(id, btnEl) {
+  const t = itinerario.transporte.find(x => x.id === id);
+  if (!t) return;
+  const textoOriginal = btnEl ? btnEl.innerHTML : '';
+  if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<span class="spinner-mini"></span> Pensando…'; }
+  showToast('Buscando otras opciones…');
+  const dia = itinerario.dias.find(d => d.id === t.diaId);
+  const r = await postGAS({ action: 'sugerirTransporteCompleto', origenTexto: t.origen || '', destinoTexto: t.destino || '', pista: '', zona: dia ? dia.zona : '', fecha: dia ? dia.fecha : '' });
+  if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = textoOriginal; }
+  if (!r.ok || !r.data) { showToast(r.error || 'No se pudo buscar'); return; }
+  const nuevosModos = normalizarModosIA(r.data.modos || []);
+  const modosFinal = nuevosModos.map(m => m.modo === t.tipo ? { ...m, opciones: t.opciones, aplica: true } : m);
+  if (!modosFinal.some(m => m.modo === t.tipo)) modosFinal.unshift({ modo: t.tipo, aplica: true, tiempoTotal: '', opciones: t.opciones || [] });
+  t.modosData = { modos: modosFinal, mixto: (t.modosData && t.modosData.mixto) || { requiere: false, descripcion: '' } };
+  await postGAS({ action: 'updateTransporte', id: t.id, modosData: t.modosData });
+  showToast('✨ Listo — se agregaron las otras opciones');
+  abrirVisorTransporte(t.id);
 }
 
 // ── Cuadrito de instrucción opcional antes de pedir sugerencias de transporte del día ──
