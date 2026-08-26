@@ -135,6 +135,12 @@ body.drag-locked .cal-resize-handle { display: none; }
 .cal-block.comida.realizado { background: #e1e9e3; border-color: #a7c4ae; color: #55705f; }
 .cal-block.evento.realizado, .cal-block.eventoActividad.realizado { background: #e9e2ec; border-color: #bfaec8; color: #6b5878; }
 .cbnota { font-size: 9.5px; opacity: 0.8; margin-top: 1px; line-height: 1.25; }
+/* v58: "bloques fantasma" — opciones de transporte no elegidas, dibujadas en el calendario solo
+   mientras el panel "Ver más horarios/otros modos" está desplegado (comparar dónde caería cada
+   una); punteado y semitransparente para no confundirse con un bloque real ya fijado. */
+.cal-block-ghost { border-radius: 8px; padding: 4px 8px 3px; font-size: 11px; overflow: hidden; border: 2px dashed #6b98b8; background: rgba(219,234,254,0.75); color: #0c4a68; cursor: pointer; z-index: 40; }
+.cal-block-ghost:hover { background: rgba(219,234,254,0.95); }
+.cal-block-ghost .cbtitle { font-weight: 600; }
 .cal-block.dragging { opacity: 0.75; z-index: 20; box-shadow: 0 4px 14px rgba(0,0,0,0.18); cursor: grabbing; }
 .drag-arm-fill { position: absolute; left: 0; bottom: 0; height: 5px; width: 0; background: var(--ink); opacity: 0.75; transition: width 1.6s linear; border-radius: 0 0 6px 6px; pointer-events: none; z-index: 2; }
 /* z-index más alto que el bloque arrastrado (que queda en 3000, sin resetear, mientras se
@@ -588,7 +594,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 119; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 120; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -4508,7 +4514,7 @@ function abrirVisorTransporte(id) {
       <div class="visor-block" style="background:var(--paper-2); border-radius:10px; padding:8px 10px; margin-bottom:10px">
         <div style="font-size:13px; font-weight:500">🕐 ${escHtml(horarioResumen)}${opSel && opSel.notas ? ` · <span style="color:var(--ink-3)">${escHtml(opSel.notas)}</span>` : ''}</div>
         ${opciones.length > 1 ? `
-        <button id="${vId}-btn" class="btn-mini horarios-toggle-btn" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${vId}', this)">▾ Ver más horarios</button>
+        <button id="${vId}-btn" class="btn-mini horarios-toggle-btn" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${vId}', this, '${t.id}')">▾ Ver más horarios</button>
         <div id="${vId}" style="display:none; margin-top:6px">
           ${opciones.map((o, i) => `
             <div class="opcion-pill ${i === (t.opcionElegida || 0) ? 'elegida' : ''}" onclick="elegirOpcionTransporte('${t.id}', ${i})">
@@ -4627,7 +4633,7 @@ function renderTransporteCard(t) {
     <div style="margin-top:4px">
       <div style="font-size:12px; font-weight:500; color:var(--ink-2)">${escHtml(horarioResumen)}${opSel && opSel.notas ? ` · <span style="color:var(--ink-3)">${escHtml(opSel.notas)}</span>` : ''}</div>
       ${opciones.length > 1 ? `
-      <button class="btn-mini horarios-toggle-btn" style="margin-top:4px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${tId}', this)">▾ Ver más horarios</button>
+      <button class="btn-mini horarios-toggle-btn" style="margin-top:4px; font-size:10px" onclick="event.stopPropagation(); toggleHorariosPanel('${tId}', this, '${t.id}')">▾ Ver más horarios</button>
       <div id="${tId}" style="display:none; margin-top:6px">
         ${opciones.map((o, i) => `
           <div class="opcion-pill ${i === (t.opcionElegida || 0) ? 'elegida' : ''}" onclick="elegirOpcionTransporte('${t.id}', ${i})">
@@ -4651,12 +4657,48 @@ function renderTransporteCard(t) {
   </div>`;
 }
 
-function toggleHorariosPanel(id, btn) {
+function toggleHorariosPanel(id, btn, transporteId) {
   const el = document.getElementById(id);
   if (!el) return;
   const open = el.style.display !== 'none';
   el.style.display = open ? 'none' : '';
   btn.textContent = open ? '▾ Ver más horarios' : '▴ Ocultar horarios';
+  limpiarGhostBlocks();
+  if (!open && transporteId) {
+    const t = itinerario.transporte.find(x => x.id === transporteId);
+    if (t) mostrarGhostBlocksCalendario(t.diaId, t.opciones || [], tipoEmoji(t.tipo), t.opcionElegida || 0, i => elegirOpcionTransporte(transporteId, i));
+  }
+}
+// v58: "bloques fantasma" — al desplegar "Ver más horarios"/"Ver otros modos" (desde el panel
+// lateral o el visor), las opciones que NO elegiste se dibujan también como bloques punteados en
+// el calendario semanal, en su horario real, para comparar de un vistazo dónde caería cada una.
+// Son solo visuales (no se guardan) y se quitan solos al volver a plegar el panel, tocar una
+// (la selecciona de una vez), cerrar el visor, o re-dibujar el calendario.
+let _ghostBlockIds = [];
+function limpiarGhostBlocks() {
+  _ghostBlockIds.forEach(id => { const el = document.getElementById(id); if (el) el.remove(); });
+  _ghostBlockIds = [];
+}
+function mostrarGhostBlocksCalendario(diaId, opciones, emoji, excluyeIdx, onSelect) {
+  if (!diaId) return;
+  const col = document.querySelector(`.week-col[data-dia="${diaId}"] .week-col-events`);
+  if (!col) return; // ese día no está en el rango visible de la semana ahora mismo
+  const px = pxPerMin();
+  (opciones || []).forEach((o, i) => {
+    if (i === excluyeIdx) return;
+    const ini = hhmmToMin(o.salida);
+    let fin = o.llegada ? hhmmToMin(o.llegada) : null;
+    if (fin === null && ini !== null && o.duracionMin !== '' && o.duracionMin != null) fin = ini + Number(o.duracionMin);
+    if (ini === null || fin === null) return;
+    const div = document.createElement('div');
+    div.id = 'ghost-' + Math.random().toString(36).slice(2, 9);
+    div.className = 'cal-block-ghost';
+    div.style.cssText = `position:absolute; top:${ini * px}px; height:${Math.max(20, (fin - ini) * px)}px; left:2%; width:96%;`;
+    div.innerHTML = `<div class="cbtitle">${emoji} ${escHtml(formatOpcionTexto(o))}</div>`;
+    div.addEventListener('click', (e) => { e.stopPropagation(); onSelect(i); limpiarGhostBlocks(); });
+    col.appendChild(div);
+    _ghostBlockIds.push(div.id);
+  });
 }
 
 // Genera HTML de una lista de pendientes con flechitas de orden
@@ -4778,7 +4820,17 @@ async function elegirOpcionTransporte(id, idx) {
 }
 function toggleOtrosModos(id, panelId) {
   const el = document.getElementById(panelId || ('otrosModos-' + id));
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (!el) return;
+  const abrir = el.style.display === 'none';
+  el.style.display = abrir ? 'block' : 'none';
+  limpiarGhostBlocks();
+  if (abrir) {
+    const t = itinerario.transporte.find(x => x.id === id);
+    if (t) {
+      const otros = ((t.modosData && t.modosData.modos) || []).filter(m => m.modo !== t.tipo && m.aplica !== false && (m.opciones || []).length);
+      otros.forEach(m => mostrarGhostBlocksCalendario(t.diaId, m.opciones || [], tipoEmoji(m.modo), -1, i => elegirModoEnCard(id, m.modo, i)));
+    }
+  }
 }
 async function elegirModoEnCard(transporteId, modo, idx) {
   const t = itinerario.transporte.find(x => x.id === transporteId);
@@ -6516,6 +6568,7 @@ function renderSemana() {
   // ya había un scroll previo (no es la primera vez que se pinta), se conserva tal cual.
   const _scrollElPrevio = document.getElementById('weekScroll');
   const _scrollTopPrevio = _scrollElPrevio ? _scrollElPrevio.scrollTop : null;
+  _ghostBlockIds = []; // el host se reconstruye entero abajo — los fantasmas viejos ya no existen
   const host = document.getElementById('semanaHost');
   const todosDelProyecto = diasFiltrados();
   if (!todosDelProyecto.length) { host.innerHTML = `<div class="empty-mini">Agrega días primero.</div>`; return; }
@@ -7286,6 +7339,7 @@ function modalOpen(html) {
   }, 50);
 }
 function modalClose() {
+  limpiarGhostBlocks();
   document.getElementById('modalOverlay').classList.remove('open');
   modalEsFormulario = false;
   const box = document.getElementById('modalBox');
