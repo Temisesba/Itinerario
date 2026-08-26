@@ -1238,6 +1238,20 @@ function abrirGastoDesdePendiente(id) {
   const p = itinerario.pendientes.find(x => x.id === id); if (!p) return;
   abrirGastosForm('pendiente', id, { nombre: p.nombre || '', antojo: p.antojo || '', direccion: p.direccion || '' }, null, p.diaId || '');
 }
+// Fase D (App_Completa/Comidas): abre Comidas directo en "Registrar comida",
+// precargada con el nombre del restaurante y la fecha real de este día
+// (resuelta vía itinerario.dias, igual que hace el mirror de solo lectura
+// en el Calendario de App_Completa) — mismo patrón de deep-link por hash
+// que ya usan las demás apps de esta familia. Comidas vive en un origen
+// distinto (temisesba.github.io/comidas/), así que esto es una navegación
+// de página completa, no un fetch — no hace falta ninguna llave/URL nueva
+// aquí, todo lo maneja Comidas del otro lado.
+function abrirRegistrarComidaDesdePendiente(id) {
+  const p = itinerario.pendientes.find(x => x.id === id); if (!p) return;
+  const dia = itinerario.dias.find(d => d.id === p.diaId);
+  const params = new URLSearchParams({ restaurante: p.nombre || '', fecha: (dia && dia.fecha) || '' });
+  location.href = 'https://temisesba.github.io/comidas/#nueva-comida?' + params.toString();
+}
 function abrirGastoDesdeTransporte(id) {
   const t = itinerario.transporte.find(x => x.id === id); if (!t) return;
   abrirGastosForm('transporte', id, { origen: t.origen || '', destino: t.destino || '', diaId: t.diaId || '', tipo: t.tipo || '' }, null, t.diaId || '');
@@ -4477,6 +4491,7 @@ function abrirVisorPendiente(id) {
         ${p.diaId || p.horaInicio ? `<button class="btn-cancel" onclick="desasignarDia('${p.id}')" title="Quita la hora y el día, y lo regresa al panel">↩️ Quitar de este día</button>` : ''}
         ${p.lat && p.lng ? `<button class="btn-cancel" onclick="verEnMapa('pendiente','${p.id}','${p.diaId || ''}')">🗺️ Ver mapa</button>` : ''}
         <button class="btn-mini" style="border-color:#22c55e; color:#15803d" onclick="abrirGastoDesdePendiente('${p.id}')">💴 ${(gastosVinculados[p.id]||[]).length>0?'+ ':''} Gasto${(gastosVinculados[p.id]||[]).length>0?' ('+(gastosVinculados[p.id]||[]).length+')':''}</button>
+        ${p.esRestaurante ? `<button class="btn-mini" style="border-color:#f59e0b; color:#b45309" onclick="abrirRegistrarComidaDesdePendiente('${p.id}')" title="Abre tu app Comidas para registrar lo que comiste aquí">📸 Registrar comida</button>` : ''}
         <button class="btn-mini" onclick="duplicarPendiente('${p.id}')" title="Crea una copia para otro día, sin tocar esta">📋 Duplicar</button>
         <button class="btn-save" onclick="openPendienteForm('${p.id}', ${p.diaId ? `'${p.diaId}'` : 'null'})">✏️ Editar</button>
       </div>
