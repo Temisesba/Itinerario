@@ -594,7 +594,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 121; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 122; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -4533,7 +4533,7 @@ function abrirVisorTransporte(id) {
               </div>
             </div>`).join('')}
         </div>` : ''}
-        ${(opciones.length > 1 || otrosModos.length) ? `<button class="btn-mini" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleTodasOpcionesCalendario('${t.id}', this)">👁️ Ver todas las opciones en el calendario</button>` : ''}
+        ${(opciones.length > 1 || otrosModos.length) ? `<button class="btn-mini" style="margin-top:6px; font-size:10px" onclick="event.stopPropagation(); toggleTodasOpcionesCalendario('${t.id}', this)">${textoBotonGhosts(t.id)}</button>` : ''}
         <button id="visor-buscar-modos-${t.id}" class="btn-mini ai" style="margin-top:6px; font-size:10px" onclick="buscarOtrosModosVisor('${t.id}', this)">🤖 ${otrosModos.length ? 'Buscar de nuevo' : 'Buscar'} bus/tren/otras opciones</button>
       </div>
       <div class="visor-row">📅 ${escHtml(diaLabel(t.diaId))}</div>
@@ -4676,10 +4676,17 @@ function toggleHorariosPanel(id, btn) {
 // se quitan solos al volver a tocar el botón, tocar una opción (la selecciona), cerrar el visor,
 // o re-dibujar el calendario.
 let _ghostBlockIds = [];
+let _ghostBlockTransporteId = null; // de cuál transporte son los fantasmas activos ahora mismo (o null)
 const GHOST_DUR_DEFAULT = 45; // minutos — cuando una opción solo tiene "salida", sin llegada ni duración
 function limpiarGhostBlocks() {
   _ghostBlockIds.forEach(id => { const el = document.getElementById(id); if (el) el.remove(); });
   _ghostBlockIds = [];
+  _ghostBlockTransporteId = null;
+}
+// Texto/estado del botón — se calcula siempre desde el estado real (_ghostBlockTransporteId),
+// nunca queda "atorado" aunque el botón se haya vuelto a dibujar desde cero mientras tanto.
+function textoBotonGhosts(transporteId) {
+  return _ghostBlockTransporteId === transporteId ? '🙈 Quitar del calendario' : '👁️ Ver todas las opciones en el calendario';
 }
 function mostrarGhostBlocksCalendario(diaId, opciones, emoji, excluyeIdx, onSelect) {
   if (!diaId) return;
@@ -4704,15 +4711,31 @@ function mostrarGhostBlocksCalendario(diaId, opciones, emoji, excluyeIdx, onSele
   });
 }
 // Junta las opciones del modo actual + todos los otros modos y las dibuja todas de una vez.
-function toggleTodasOpcionesCalendario(transporteId, btn) {
-  if (_ghostBlockIds.length) { limpiarGhostBlocks(); if (btn) btn.textContent = '👁️ Ver todas las opciones en el calendario'; return; }
+// v58 fix: ya no depende de que el botón que se tocó siga siendo el mismo elemento del DOM (el
+// texto se recalcula siempre con textoBotonGhosts()) — así no importa si el visor se cerró y
+// reabrió, o si el panel lateral se volvió a dibujar de por medio.
+function dibujarGhostsDeTransporte(transporteId) {
   const t = itinerario.transporte.find(x => x.id === transporteId);
   if (!t) return;
   mostrarGhostBlocksCalendario(t.diaId, t.opciones || [], tipoEmoji(t.tipo), t.opcionElegida || 0, i => elegirOpcionTransporte(transporteId, i));
   const otros = ((t.modosData && t.modosData.modos) || []).filter(m => m.modo !== t.tipo && m.aplica !== false && (m.opciones || []).length);
   otros.forEach(m => mostrarGhostBlocksCalendario(t.diaId, m.opciones || [], tipoEmoji(m.modo), -1, i => elegirModoEnCard(transporteId, m.modo, i)));
+}
+function toggleTodasOpcionesCalendario(transporteId, btn) {
+  if (_ghostBlockTransporteId === transporteId) { limpiarGhostBlocks(); if (btn) btn.textContent = textoBotonGhosts(transporteId); return; }
+  limpiarGhostBlocks(); // por si había fantasmas de OTRO transporte activos
+  dibujarGhostsDeTransporte(transporteId);
   if (!_ghostBlockIds.length) { showToast('No hay otras opciones con hora para comparar'); return; }
-  if (btn) btn.textContent = '🙈 Quitar del calendario';
+  _ghostBlockTransporteId = transporteId;
+  if (btn) btn.textContent = textoBotonGhosts(transporteId);
+}
+// Si el calendario se vuelve a dibujar (cambiar de semana, zoom, mover un bloque…) mientras había
+// fantasmas activos, se redibujan solos en vez de quedar el botón diciendo "Quitar" sin nada que quitar.
+function redibujarGhostsSiActivos() {
+  if (!_ghostBlockTransporteId) return;
+  const id = _ghostBlockTransporteId;
+  _ghostBlockIds = [];
+  dibujarGhostsDeTransporte(id);
 }
 
 // Genera HTML de una lista de pendientes con flechitas de orden
@@ -6689,6 +6712,7 @@ function renderSemana() {
     const isAnyToday = visibleDias.some(d => d.fecha === hoy);
     scrollEl.scrollTop = (isAnyToday ? Math.max(0, now_minutes() - 120) : 6 * 60) * px;
   }
+  redibujarGhostsSiActivos();
 }
 
 function weekBlockHtml(b, px) {
@@ -7343,7 +7367,8 @@ function modalOpen(html) {
   }, 50);
 }
 function modalClose() {
-  limpiarGhostBlocks();
+  // v58 fix: cerrar el visor de transporte YA NO borra los "fantasmas" de opciones que hayas
+  // pedido ver en el calendario — se quedan comparables ahí hasta que los quites a propósito.
   document.getElementById('modalOverlay').classList.remove('open');
   modalEsFormulario = false;
   const box = document.getElementById('modalBox');
