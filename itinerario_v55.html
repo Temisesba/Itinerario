@@ -594,7 +594,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 123; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 124; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -8526,11 +8526,16 @@ async function sincronizarPendientes(silencioso) {
       }
       if (conflicto && conflicto.tipo === 'campos') { mostrarModalConflicto(cambio, conflicto.campos, fresco); return; }
       const { _opId, ...bodyReal } = cambio;
+      let rr;
       try {
         const form = new FormData(); form.append('payload', JSON.stringify(bodyReal));
         const resp = await fetch(GAS_URL, { method: 'POST', body: form });
-        await resp.json();
+        rr = await resp.json();
       } catch (e) { return; } // se cortó la señal a mitad de camino
+      // v124 fix: antes esto no revisaba rr.ok y sacaba el cambio de la cola igual — si el
+      // servidor lo rechazaba (o devolvía algo inesperado) el cambio se perdía en silencio: se
+      // veía aplicado un rato (por el optimista local) y después, al recargar, "regresaba solo".
+      if (!rr || !rr.ok) { showToast('⚠️ Un cambio no se pudo sincronizar — se reintentará'); continue; }
       quitarDeColaPendiente(_opId);
     }
     if (!cargarColaPendiente().length) {
