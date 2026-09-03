@@ -134,6 +134,9 @@ body.drag-locked .cal-resize-handle { display: none; }
 .cal-block.transporte.realizado { background: #e2e9eb; border-color: #a7bdc5; color: #5c7178; }
 .cal-block.comida.realizado { background: #e1e9e3; border-color: #a7c4ae; color: #55705f; }
 .cal-block.evento.realizado, .cal-block.eventoActividad.realizado { background: #e9e2ec; border-color: #bfaec8; color: #6b5878; }
+/* Modo agua: plan tentativo (todavía viendo si lo hacemos) — se ve "diluido", como acuarela,
+   para distinguirlo a simple vista de un plan ya confirmado, sin necesidad de abrirlo. */
+.cal-block.tentativo:not(.realizado) { opacity: 0.62; border-style: dashed; }
 .cbnota { font-size: 9.5px; opacity: 0.8; margin-top: 1px; line-height: 1.25; }
 /* v58: "bloques fantasma" — opciones de transporte no elegidas, dibujadas en el calendario solo
    mientras el panel "Ver más horarios/otros modos" está desplegado (comparar dónde caería cada
@@ -594,7 +597,7 @@ body.drag-locked .cal-resize-handle { display: none; }
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── Config ───────────────────────────────────────────────────
-const APP_VERSION = 124; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
+const APP_VERSION = 125; // ← subir en 1 cada vez que se publica (se muestra en Info técnica, para saber qué versión cargó cada quien)
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2T-9RpwVEj56j3sLUNrsUGfFgj354lAM82N32t5lJpd3WCEENFF4r0NN9sKDhc6IEIg/exec';
 // Ojo: esta página se publica en un repo público de GitHub Pages — a diferencia de GAS_URL (arriba),
 // esta URL NO va fija en el código (tiene lectura/escritura de gastos sin contraseña). Se pega una
@@ -2322,7 +2325,7 @@ function hospedajeOrdenParaDia(diaId) {
   const idx = dias.findIndex(d => d.id === diaId);
   const idxDeDia = (id) => { const i = dias.findIndex(d => d.id === id); return i < 0 ? Infinity : i; };
   // Orden: primero los elegidos (⭐), luego por fecha de check-in, y por último el orden manual.
-  const todosHosp = itinerario.hospedaje.filter(h => (h.proyecto || currentProyecto) === currentProyecto || true).sort((a, b) => {
+  const todosHosp = itinerario.hospedaje.filter(h => (h.proyecto || currentProyecto) === currentProyecto).sort((a, b) => {
     if (!!b.elegido !== !!a.elegido) return (b.elegido ? 1 : 0) - (a.elegido ? 1 : 0);
     const fa = idxDeDia(a.diaIdInicio), fb = idxDeDia(b.diaIdInicio);
     if (fa !== fb) return fa - fb;
@@ -2598,8 +2601,9 @@ function getCalendarBlocks(diaId) {
     const estrella = p.prioritaria ? '⭐ ' : '';
     const check = p.realizado ? '✅ ' : '';
     const gasto = (gastosVinculados[p.id]||[]).some(g => !g.cotizacion) ? '💸 ' : '';
+    const agua = p.plan === 'tentativo' ? '💧 ' : '';
     // Orden: realizado, reservación, pago asociado, y el resto (prioritaria, comida).
-    blocks.push({ id: p.id, kind: 'pendiente', esComida: !!(p.tipoComida || p.esRestaurante || p.antojo), esPrioritaria: !!p.prioritaria, esRealizado: !!p.realizado, duracionBloqueada: !!p.duracionBloqueada, notaPrevia: p.notasPrevias || '', sugerenciasIA: p.sugerenciasIA || '', title: `${check}${icono}${gasto}${estrella}${comida}` + (p.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
+    blocks.push({ id: p.id, kind: 'pendiente', esComida: !!(p.tipoComida || p.esRestaurante || p.antojo), esPrioritaria: !!p.prioritaria, esRealizado: !!p.realizado, esTentativo: p.plan === 'tentativo', duracionBloqueada: !!p.duracionBloqueada, notaPrevia: p.notasPrevias || '', sugerenciasIA: p.sugerenciasIA || '', title: `${check}${icono}${gasto}${agua}${estrella}${comida}` + (p.nombre || '(sin nombre)'), ini, fin: Math.max(fin, ini + 15) });
   });
   itinerario.transporte.forEach(t => {
     if (t.diaId !== diaId) return;
@@ -3593,7 +3597,7 @@ function renderPoolPanel() {
     eventos: (function() {
       const dias = diasFiltrados();
       const idx = dias.findIndex(d => d.id === dia.id);
-      const todosEventos = itinerario.eventos.filter(e => (e.proyecto || currentProyecto) === currentProyecto || true).sort((a,b)=>(a.orden||0)-(b.orden||0));
+      const todosEventos = itinerario.eventos.filter(e => (e.proyecto || currentProyecto) === currentProyecto).sort((a,b)=>(a.orden||0)-(b.orden||0));
       const eventosDelDia = idx < 0 ? [] : todosEventos.filter(e => {
         const i1 = dias.findIndex(d => d.id === e.diaIdInicio);
         const i2 = dias.findIndex(d => d.id === e.diaIdFin);
@@ -3854,6 +3858,8 @@ function agregarRestauranteAntojo(antojo) {
 function poolItemHtml(p) {
   const comida = p.tipoComida ? `<span title="${escHtml(TIPO_COMIDA_LABEL[p.tipoComida] || '')}" style="margin-left:4px">${TIPO_COMIDA_ICON[p.tipoComida] || ''}</span>` : '';
   const estrella = p.prioritaria ? `<span title="Prioritaria" style="margin-left:4px">⭐</span>` : '';
+  const esTentativo = p.plan === 'tentativo' && !p.realizado;
+  const agua = esTentativo ? `<span title="Modo agua: todavía viendo si lo hacemos" style="margin-left:4px">💧</span>` : '';
   const yaAsignado = (p.diaId && p.horaInicio) ? `<div class="psub" style="color:var(--ok)">✅ Ya asignado: ${escHtml(diaLabel(p.diaId))} · ${escHtml(p.horaInicio)}–${escHtml(p.horaFin || '')}</div>` : '';
   // v57: en Platillos y restaurantes la dirección no aporta tanto como
   // las notas (o, si no hay, lo que ya dijo la IA) — igual que se ve en el visor. El resto de
@@ -3868,11 +3874,11 @@ function poolItemHtml(p) {
   // v57: para lugares (no-comida) ya no se muestra la dirección acá — notas y notas IA aportan
   // más de un vistazo en esta lista compacta (la dirección se sigue viendo en el visor completo).
   const subtitulo = `${p.notasPrevias ? `<div class="psub psub-clamp">📌 ${escHtml(p.notasPrevias)}</div>` : ''}${p.sugerenciasIA ? `<div class="psub psub-clamp">✨ ${escHtml(p.sugerenciasIA)}</div>` : ''}`;
-  return `<div class="pool-item-mini" id="pool-${p.id}" style="${p.realizado ? 'opacity:.6; background:var(--paper-2)' : ''}">
+  return `<div class="pool-item-mini" id="pool-${p.id}" style="${p.realizado ? 'opacity:.6; background:var(--paper-2)' : esTentativo ? 'opacity:.68' : ''}">
     <span class="handle">⠿</span>
     <div style="flex:1; min-width:0">
-      <div style="margin-bottom:3px; display:flex; align-items:center">${reservadoToggleHtml('pendiente', p.id, p.reservado)}${comida}${estrella}</div>
-      <div class="pname" style="${p.realizado ? 'text-decoration:line-through' : ''}">${p.realizado ? '✅ ' : ''}${escHtml(p.nombre || '')}</div>
+      <div style="margin-bottom:3px; display:flex; align-items:center">${reservadoToggleHtml('pendiente', p.id, p.reservado)}${comida}${estrella}${agua}</div>
+      <div class="pname" style="${p.realizado ? 'text-decoration:line-through' : ''}">${p.realizado ? '✅ ' : ''}${esTentativo ? '💧 ' : ''}${escHtml(p.nombre || '')}</div>
       ${subtitulo}
       ${yaAsignado}
       ${p.duracionMin ? `<div class="psub">⏱ ~${formatDuracion(p.duracionMin)}</div>` : ''}
@@ -4374,6 +4380,17 @@ async function toggleDuracionBloqueadaPendiente(id, btnEl) {
   await postGAS({ action: 'updatePendiente', id, duracionBloqueada: p.duracionBloqueada });
   renderSemana();
 }
+async function togglePlanPendiente(id, btnEl) {
+  const p = itinerario.pendientes.find(x => x.id === id);
+  if (!p) return;
+  p.plan = (p.plan === 'tentativo') ? 'confirmado' : 'tentativo';
+  if (btnEl) {
+    btnEl.textContent = p.plan === 'tentativo' ? '💧 Modo agua (viendo si sí)' : '✅ Plan confirmado';
+    btnEl.style.cssText = p.plan === 'tentativo' ? 'background:#e0f2fe;border-color:#7dd3fc;color:#075985' : '';
+  }
+  await postGAS({ action: 'updatePendiente', id, plan: p.plan });
+  renderSemana(); renderPoolPanel();
+}
 async function toggleRealizadoPendiente(id, btnEl) {
   const p = itinerario.pendientes.find(x => x.id === id);
   if (!p) return;
@@ -4465,10 +4482,11 @@ function abrirVisorPendiente(id) {
   const p = itinerario.pendientes.find(x => x.id === id);
   if (!p) return;
   modalOpen(`
-    <div class="modal-head"><span class="modal-title">${p.realizado ? '✅ ' : ''}${p.prioritaria ? '⭐ ' : ''}${escHtml(p.nombre || '(sin nombre)')}</span><div style="display:flex; align-items:center; gap:8px"><button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button><button class="modal-close" onclick="modalClose()">✕</button></div></div>
+    <div class="modal-head"><span class="modal-title">${p.realizado ? '✅ ' : ''}${p.plan === 'tentativo' && !p.realizado ? '💧 ' : ''}${p.prioritaria ? '⭐ ' : ''}${escHtml(p.nombre || '(sin nombre)')}</span><div style="display:flex; align-items:center; gap:8px"><button class="icon-btn" title="Copiar texto" onclick="copiarVisorActual()">📋</button><button class="modal-close" onclick="modalClose()">✕</button></div></div>
     <div class="modal-body">
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
         <button class="btn-mini" style="${p.realizado ? 'background:var(--ok-light);border-color:var(--ok);color:#0d5c2a' : ''}" onclick="toggleRealizadoPendiente('${p.id}', this)">${p.realizado ? '✅ Realizado' : '⬜ Marcar como realizado'}</button>
+        <button class="btn-mini" style="${p.plan === 'tentativo' ? 'background:#e0f2fe;border-color:#7dd3fc;color:#075985' : ''}" onclick="togglePlanPendiente('${p.id}', this)" title="Si todavía estás viendo si lo vas a hacer o no, ponlo en modo agua">${p.plan === 'tentativo' ? '💧 Modo agua (viendo si sí)' : '✅ Plan confirmado'}</button>
         <button class="btn-mini" onclick="togglePrioridadPendiente('${p.id}', this)" data-pri="${p.prioritaria ? '1' : '0'}">${p.prioritaria ? '⭐ Prioritaria' : '☆ Marcar como prioritaria'}</button>
         <button class="btn-mini" id="btnDurLock-${p.id}" onclick="toggleDuracionBloqueadaPendiente('${p.id}', this)" title="Si está bloqueada, la duración no cambia al arrastrar en el calendario">${p.duracionBloqueada ? '⏱🔒 Duración fija' : '⏱🔓 Duración libre'}</button>
         ${reservadoToggleHtml('pendiente', p.id, p.reservado)}
@@ -5682,7 +5700,8 @@ async function duplicarPendiente(id) {
     reservado: 'pendiente',
     tipoComida: p.tipoComida || '', antojo: p.antojo || '',
     prioritaria: !!p.prioritaria, realizado: false, evaluacion: 0,
-    duracionBloqueada: !!p.duracionBloqueada, esRestaurante: !!p.esRestaurante
+    duracionBloqueada: !!p.duracionBloqueada, esRestaurante: !!p.esRestaurante,
+    plan: p.plan || 'confirmado'
   };
   showToast('Duplicando…');
   const r = await postGAS(body);
@@ -6741,7 +6760,7 @@ function weekBlockHtml(b, px) {
   const widthPct = 100 / totalCols;
   const leftPct = col * widthPct;
   const notaTxt = (height > 38) ? (b.notaPrevia ? `<div class="cbnota">📌 ${escHtml(b.notaPrevia)}</div>` : (b.sugerenciasIA ? `<div class="cbnota">✨ ${escHtml(b.sugerenciasIA)}</div>` : '')) : '';
-  return `<div class="cal-block ${b.kind}${b.esComida ? ' comida' : ''}${b.esPrioritaria ? ' prioritaria' : ''}${b.esRealizado ? ' realizado' : ''} week-block" id="wb-${b.id}" style="top:${top}px;height:${height}px;left:${leftPct}%;right:auto;width:calc(${widthPct}% - 3px)">
+  return `<div class="cal-block ${b.kind}${b.esComida ? ' comida' : ''}${b.esPrioritaria ? ' prioritaria' : ''}${b.esRealizado ? ' realizado' : ''}${b.esTentativo ? ' tentativo' : ''} week-block" id="wb-${b.id}" style="top:${top}px;height:${height}px;left:${leftPct}%;right:auto;width:calc(${widthPct}% - 3px)">
     <div class="cal-resize-handle top"></div>
     <div class="cbtitle">${escHtml(b.title)}</div>
     <div class="cbtime">${minToHHMM(b.ini)}–${minToHHMM(b.fin)}</div>
@@ -8241,6 +8260,9 @@ function openPendienteForm(id, diaId) {
           ${reservadoSelectHtml('fPendReservado', p ? p.reservado : 'pendiente')}
         </div>
         <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin:10px 0 0;">
+          <input type="checkbox" id="fPendTentativo" ${p && p.plan === 'tentativo' ? 'checked' : ''}> 💧 Todavía estamos viendo si lo hacemos (modo agua)
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin:10px 0 0;">
           <input type="checkbox" id="fPendRealizado" ${p && p.realizado ? 'checked' : ''}> ✅ Ya lo realicé
         </label>
       </div>
@@ -8351,7 +8373,8 @@ async function guardarPendiente() {
     realizado: document.getElementById('fPendRealizado').checked,
     evaluacion: Number(document.getElementById('fPendEvaluacion').value) || 0,
     duracionBloqueada: document.getElementById('fPendDurBloqueada').checked,
-    esRestaurante: document.getElementById('fPendEsRestaurante').checked
+    esRestaurante: document.getElementById('fPendEsRestaurante').checked,
+    plan: document.getElementById('fPendTentativo').checked ? 'tentativo' : 'confirmado'
   };
   body.action = id ? 'updatePendiente' : 'savePendiente';
   if (id) body.id = id;
@@ -8761,7 +8784,7 @@ const TABLA_COLS = {
     { key: 'dia', label: 'Día' }, { key: 'hora', label: 'Hora' },
     { key: 'duracion', label: 'Duración' }, { key: 'reservado', label: 'Reservado' },
     { key: 'esRestaurante', label: 'Restaurante' }, { key: 'antojo', label: 'Platillo especial' }, { key: 'notaprevia', label: 'Nota previa' }, { key: 'tipoComida', label: 'Comida' }, { key: 'prioritaria', label: 'Prioritaria' },
-    { key: 'realizado', label: 'Realizado' }, { key: 'duracionBloqueada', label: 'Duración fija' }, { key: 'evaluacion', label: 'Evaluación' },
+    { key: 'realizado', label: 'Realizado' }, { key: 'plan', label: 'Plan' }, { key: 'duracionBloqueada', label: 'Duración fija' }, { key: 'evaluacion', label: 'Evaluación' },
     { key: 'notadiario', label: 'Diario' }, { key: 'lat', label: 'Lat' }, { key: 'lng', label: 'Lng' },
     { key: 'sugerenciaIA', label: 'Sugerencia IA' }
   ],
@@ -8943,6 +8966,7 @@ function renderTabla() {
       prioritaria: p.prioritaria ? '⭐ Sí' : '—',
       esRestaurante: p.esRestaurante ? 'Sí' : '',
       realizado: p.realizado ? '✅ Sí' : '—',
+      plan: p.plan === 'tentativo' ? '💧 Modo agua' : '✅ Confirmado',
       duracionBloqueada: p.duracionBloqueada ? '🔒 Sí' : '—',
       evaluacion: p.evaluacion ? '⭐'.repeat(p.evaluacion) : '—',
       notadiario: escHtml(p.notasDiario || ''), lat: escHtml(p.lat || ''), lng: escHtml(p.lng || ''),
